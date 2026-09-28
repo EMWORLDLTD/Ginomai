@@ -1,4 +1,4 @@
-// Ginomia Pro - High-Performance Custom Dialog System (Prompt & Confirm)
+// Ginomia - High-Performance Custom Dialog System (Prompt & Confirm)
 'use strict';
 
 (function() {

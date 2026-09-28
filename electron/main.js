@@ -1,4 +1,4 @@
-// Ginomia Pro - Electron Main Process
+// Ginomia - Electron Main Process
 'use strict';
 
 const { app, BrowserWindow, screen, ipcMain, Menu, shell, dialog, session } = require('electron');
@@ -12,10 +12,10 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512');
 
 // Global exception protection
 process.on('uncaughtException', (err) => {
-  console.error('[Ginomia Pro Desktop] Uncaught exception:', err);
+  console.error('[Ginomia Desktop] Uncaught exception:', err);
 });
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('[Ginomia Pro Desktop] Unhandled rejection:', reason);
+  console.error('[Ginomia Desktop] Unhandled rejection:', reason);
 });
 
 let mainWindow = null;
@@ -40,14 +40,14 @@ function startBackgroundServer(onReady) {
   try {
     serverModule.startServer(serverPort, (err, srv, boundPort) => {
       if (err) {
-        console.error('[Ginomia Pro Desktop] Server start warning/error:', err);
+        console.error('[Ginomia Desktop] Server start warning/error:', err);
       }
       const activePort = boundPort || serverPort;
       serverPort = activePort;
       if (onReady) onReady(activePort);
     });
   } catch (err) {
-    console.error('[Ginomia Pro Desktop] Failed to start embedded server:', err);
+    console.error('[Ginomia Desktop] Failed to start embedded server:', err);
     if (onReady) onReady(serverPort);
   }
 }
@@ -79,7 +79,7 @@ function createMainWindow(port) {
     minHeight: 650,
     show: false, // Don't show until page is loaded so there is never an empty/blank window
     backgroundColor: '#0a0f1d',
-    title: 'Ginomia Pro — The Word in Motion',
+    title: 'Ginomia — The Word in Motion',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -97,7 +97,7 @@ function createMainWindow(port) {
         mainWindow.focus();
       }
     }).catch((err) => {
-      console.warn('[Ginomia Pro Desktop] Waiting for server to accept connection, retrying...', err);
+      console.warn('[Ginomia Desktop] Waiting for server to accept connection, retrying...', err);
       setTimeout(loadApp, 250);
     });
   };
@@ -151,7 +151,7 @@ function launchProjectorWindow(targetDisplayId = null, targetMode = 'sanctuary')
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
-    title: 'Ginomia Pro — Sanctuary Projector Output',
+    title: 'Ginomia — Sanctuary Projector Output',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -335,8 +335,8 @@ function setupAppMenu() {
                 if (result.updateInfo.version === currentVer) {
                   dialog.showMessageBox(mainWindow, {
                     type: 'info',
-                    title: 'Ginomia Pro is Up to Date',
-                    message: `You are running the latest version of Ginomia Pro (v${currentVer}).`
+                    title: 'Ginomia is Up to Date',
+                    message: `You are running the latest version of Ginomia (v${currentVer}).`
                   });
                 }
               }).catch((err) => {
@@ -358,18 +358,18 @@ function setupAppMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Ginomia Pro Releases',
+          label: 'Ginomia Releases',
           click: () => {
             shell.openExternal('https://github.com/EMWORLDLTD/ginomai-pro/releases');
           }
         },
         {
-          label: 'About Ginomia Pro',
+          label: 'About Ginomia',
           click: () => {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
-              title: 'About Ginomia Pro',
-              message: 'Ginomia Pro v' + app.getVersion(),
+              title: 'About Ginomia',
+              message: 'Ginomia v' + app.getVersion(),
               detail: 'The Word in Motion\n\nNext-Gen Church Presentation, Multi-Monitor Projection & OBS Broadcast System.\nRunning as native desktop application with embedded broadcast server on port ' + serverPort + '.'
             });
           }
@@ -451,22 +451,22 @@ function initAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
-    console.log('[Ginomia Pro AutoUpdater] Checking for updates...');
+    console.log('[Ginomia AutoUpdater] Checking for updates...');
   });
 
   autoUpdater.on('update-available', (info) => {
-    console.log('[Ginomia Pro AutoUpdater] Update available: v' + info.version);
+    console.log('[Ginomia AutoUpdater] Update available: v' + info.version);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('desktop:update-available', info);
     }
   });
 
   autoUpdater.on('update-not-available', (info) => {
-    console.log('[Ginomia Pro AutoUpdater] Up to date (v' + app.getVersion() + ')');
+    console.log('[Ginomia AutoUpdater] Up to date (v' + app.getVersion() + ')');
   });
 
   autoUpdater.on('error', (err) => {
-    console.warn('[Ginomia Pro AutoUpdater] Update check error:', err ? (err.message || err) : 'unknown');
+    console.warn('[Ginomia AutoUpdater] Update check error:', err ? (err.message || err) : 'unknown');
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
@@ -480,14 +480,14 @@ function initAutoUpdater() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('[Ginomia Pro AutoUpdater] Update downloaded: v' + info.version);
+    console.log('[Ginomia AutoUpdater] Update downloaded: v' + info.version);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('desktop:update-ready', info);
     }
     dialog.showMessageBox(mainWindow, {
       type: 'info',
-      title: 'Update Ready — Ginomia Pro',
-      message: `Ginomia Pro v${info.version} has been downloaded and is ready to install.`,
+      title: 'Update Ready — Ginomia',
+      message: `Ginomia v${info.version} has been downloaded and is ready to install.`,
       detail: 'Click "Restart Now" to apply the update immediately, or choose "Later" to update when you next exit.',
       buttons: ['Restart Now', 'Later'],
       defaultId: 0,
@@ -504,7 +504,7 @@ function initAutoUpdater() {
     setTimeout(() => {
       try {
         autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-          console.warn('[Ginomia Pro AutoUpdater] Background check failed:', err);
+          console.warn('[Ginomia AutoUpdater] Background check failed:', err);
         });
       } catch (e) {
         // ignore

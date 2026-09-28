@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "version": "KJV",
+  "model": {
+    "id": "Xenova/bge-small-en-v1.5",
+    "prefix": "Represent this sentence for searching relevant passages: ",
+    "pooling": "mean"
+  },
+  "dimensions": 384,
+  "count": 31102,
+  "dtype": "q8",
+  "pooling": "mean",
+  "normalized": true,
+  "bibleSha256": "13e5c139f9f4abe67bfd98b88292e5c1e3b4b14f06096ffcb349aefb27bc9d5e",
+  "vectorsSha256": "2cb91b2505d6902fcb67b6bdf04643d19852c5a6bde6575d9f88f618624521c4",
+  "minScore": 0.65,
+  "minMargin": 0.06,
+  "rowsSha256": "88778275cb5303d8f8eafbe77135599d03c2e24a18a230caadfa4fbec6cff4bc",
+  "modelFiles": {
+    "Xenova/bge-small-en-v1.5/tokenizer_config.json": "9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3",
+    "Xenova/bge-small-en-v1.5/config.json": "fa73f90bf92c8cace1fbcb709626306f2bdbc9ea3e5b5f94b440df9b6aa56350",
+    "Xenova/bge-small-en-v1.5/tokenizer.json": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+    "Xenova/bge-small-en-v1.5/onnx/model_quantized.onnx": "6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4"
+  },
+  "runtimeVersion": "3.8.1"
+}

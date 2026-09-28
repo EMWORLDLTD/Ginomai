@@ -21,3 +21,12 @@ ehthumbs.db
 # Environment variables
 .env
 .env.local
+
+# Build artifacts & local test runs
+output/
+.playwright-cli/
+Pewbeam Analyse/
+
+# Benchmark model cache (production uses bge-small-en-v1.5)
+assets/semantic/models/Xenova/all-MiniLM-L6-v2/
+

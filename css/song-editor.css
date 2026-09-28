@@ -1,0 +1,76 @@
+/* Shared song workspace: Classic / Bento, dark / light. */
+#song-editor-modal-backdrop { backdrop-filter:none; -webkit-backdrop-filter:none; }
+#song-editor-modal-backdrop .song-editor-modal-card { width:min(960px, 94vw); max-width:960px; max-height:92dvh; padding:0; display:flex; flex-direction:column; overflow:hidden; border-radius:18px; background:var(--bg-card, #15141b); border:1px solid var(--border, #323039); box-shadow:0 24px 80px #0006; }
+#song-editor-modal-backdrop .settings-header { padding:22px 26px; flex-shrink:0; }
+#song-editor-modal-backdrop .song-editor-modal-title { font-size:15px; font-weight:600; letter-spacing:-.02em; }
+#song-editor-modal-backdrop .song-editor-modal-sub { font-size:11px; margin-top:4px; }
+#song-editor-modal-backdrop .song-editor-body { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); overflow:auto; min-height:0; }
+#song-editor-modal-backdrop .song-editor-writing { display:flex; flex-direction:column; gap:18px; padding:24px 26px; min-width:0; }
+#song-editor-modal-backdrop .song-editor-field-label { display:block; font-size:12px; font-weight:600; margin-bottom:8px; }
+#song-editor-modal-backdrop .song-editor-optional { float:right; font-weight:400; font-size:11px; opacity:.65; }
+#song-editor-modal-backdrop .import-text-field { width:100%; box-sizing:border-box; padding:12px 14px; border-radius:8px; font-size:13px; }
+#song-editor-modal-backdrop .song-editor-lyrics { display:flex; flex-direction:column; flex:1; }
+#song-editor-modal-backdrop .song-editor-lyrics-heading { display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; }
+#song-editor-modal-backdrop .song-editor-stanza-hint { font-size:10px; }
+#song-editor-modal-backdrop .song-editor-tags { display:flex; align-items:center; flex-wrap:wrap; gap:6px; padding:10px; border:1px solid var(--border, #323039); border-bottom:0; border-radius:8px 8px 0 0; }
+#song-editor-modal-backdrop .song-editor-tags > span { color:var(--text-muted, #a3a1ae); font-size:10px; margin-right:4px; }
+#song-editor-modal-backdrop .song-editor-tags button { border:1px solid var(--border, #383540); background:transparent; color:var(--text, #eae8f0); border-radius:5px; padding:5px 8px; font:inherit; font-size:10px; cursor:pointer; }
+#song-editor-modal-backdrop .song-editor-tags button:hover { background:#8a6dff20; border-color:#8a6dff; }
+#song-editor-modal-backdrop .import-textarea { box-sizing:border-box; width:100%; min-height:240px; flex:1; padding:16px; font-family:inherit; font-size:13px; line-height:1.8; resize:vertical; border-radius:0 0 8px 8px; }
+#song-editor-modal-backdrop .song-editor-preview-panel { padding:24px; border-left:1px solid var(--border, #323039); background:#00000012; display:flex; flex-direction:column; min-width:0; }
+#song-editor-modal-backdrop .song-editor-preview-heading { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+#song-editor-modal-backdrop #editor-preview-count { font-size:10px; color:var(--purple-text, #bba9ff); border-radius:5px; background:#8a6dff18; padding:4px 7px; }
+#song-editor-modal-backdrop .song-editor-preview-caption { color:var(--text-muted, #a3a1ae); font-size:11px; margin:0 0 18px; }
+#song-editor-modal-backdrop .song-editor-preview-box { display:flex; flex-direction:column; gap:14px; flex:1; min-height:260px; max-height:435px; overflow:auto; border:0; padding:0; background:transparent; }
+#song-editor-modal-backdrop .song-editor-empty-hint { margin:auto 0; padding:30px 12px; text-align:center; }
+#song-editor-modal-backdrop .song-editor-empty-screen { display:grid; place-items:center; width:160px; aspect-ratio:16/9; margin:0 auto 24px; background:linear-gradient(135deg,#8a6dff16,#8a6dff05); border:1px solid #8a6dff30; border-radius:10px; color:var(--purple-text, #bba9ff); }
+#song-editor-modal-backdrop .song-editor-empty-hint strong { font-size:14px; font-weight:600; color:var(--text, #eeeaf8); }
+#song-editor-modal-backdrop .song-editor-empty-hint p { font-size:12px; line-height:1.8; margin:10px 0 0; }
+#song-editor-modal-backdrop .editor-prev-meta { display:flex; flex-direction:column; gap:5px; font-size:12px; padding-bottom:12px; }
+#song-editor-modal-backdrop .editor-prev-author { font-size:10px; }
+#song-editor-modal-backdrop .editor-prev-stanza { flex-shrink:0; padding:14px; border-radius:10px; background:linear-gradient(145deg,#262137,#14131d); border:1px solid #ffffff14; }
+#song-editor-modal-backdrop .editor-prev-card-heading { display:flex; justify-content:space-between; font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:#a89bbf; }
+#song-editor-modal-backdrop .editor-prev-tag { color:#c6b7ec; }
+#song-editor-modal-backdrop .editor-prev-text { white-space:pre-wrap; overflow-wrap:anywhere; text-align:center; padding:26px 8px; color:#f7f5fc; font-family:inherit; font-size:15px; line-height:1.6; }
+#song-editor-modal-backdrop .targeted-stanza-highlight { border-color:#a88aff; }
+#song-editor-modal-backdrop .song-editor-footer { display:flex; align-items:center; gap:12px; padding:16px 26px; flex-shrink:0; }
+#song-editor-modal-backdrop .song-editor-actions { display:flex; gap:10px; margin-left:auto; }
+#song-editor-modal-backdrop .song-editor-footer button { font-size:12px; padding:10px 18px; border-radius:8px; }
+#song-editor-modal-backdrop button, #song-editor-modal-backdrop input, #song-editor-modal-backdrop textarea { transition:none; }
+#song-editor-modal-backdrop button:focus-visible { outline:2px solid #a88aff; outline-offset:3px; }
+@media(max-width:680px) {
+  #song-editor-modal-backdrop .song-editor-body { grid-template-columns:1fr; }
+  #song-editor-modal-backdrop .song-editor-writing, #song-editor-modal-backdrop .song-editor-preview-panel { padding:18px; }
+  #song-editor-modal-backdrop .song-editor-preview-panel { border-left:0; border-top:1px solid var(--border, #323039); }
+  #song-editor-modal-backdrop .song-editor-preview-box { min-height:180px; max-height:280px; }
+  #song-editor-modal-backdrop .settings-header { padding:18px; }
+  #song-editor-modal-backdrop .song-editor-footer { padding:14px 18px; }
+}
+:root[data-theme-mode="light"] #song-editor-modal-backdrop .song-editor-modal-card,
+body[data-theme-mode="light"] #song-editor-modal-backdrop .song-editor-modal-card { background:#fff; border-color:#dedbe5; }
+:root[data-theme-mode="light"] #song-editor-modal-backdrop .song-editor-preview-panel,
+body[data-theme-mode="light"] #song-editor-modal-backdrop .song-editor-preview-panel { background:#f6f5f9; }
+#song-editor-modal-backdrop .song-editor-tags .song-editor-auto-format { margin-left:auto; color:var(--purple-text, #bba9ff); border-color:#8a6dff60; background:#8a6dff15; font-weight:600; }
+
+/* Light mode uses explicit neutral surfaces and readable secondary text.
+   Scope above legacy theme overrides, including their important declarations. */
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-modal-card { background:#fff !important; border:1px solid #dedee6 !important; box-shadow:0 20px 60px #24243824 !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .settings-header { background:#fff !important; border-bottom:1px solid #e5e5ec !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop :is(.song-editor-preview-caption, .song-editor-tags > span, .song-editor-stanza-hint, .song-editor-optional, .editor-prev-author) { color:#676575 !important; opacity:1; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-field-label { color:#454350 !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-preview-panel { background:#f7f7fa !important; border-color:#e5e5ec !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-preview-box { background:transparent !important; border:0 !important; box-shadow:none !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .editor-prev-meta { color:#34313f !important; border-color:#e0dfe7 !important; padding-bottom:14px; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .editor-prev-stanza { background:#fff !important; border:1px solid #e2e1e9 !important; box-shadow:0 2px 5px #24243806 !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .editor-prev-card-heading { color:#71677f !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .editor-prev-tag { color:#69528e !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .editor-prev-text { color:#282532 !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .targeted-stanza-highlight { border-color:#795bea !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop :is(.song-editor-tags, .import-text-field, .import-textarea) { background:#fff !important; border-color:#dcdbe4 !important; color:#282532 !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop :is(.import-text-field, .import-textarea):focus { border-color:#795bea !important; box-shadow:0 0 0 1px #795bea !important; outline:none; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-tags button { color:#454350; border-color:#dedde6; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-tags .song-editor-auto-format { color:#6340c8 !important; background:#f3efff !important; border-color:#d3c5f6 !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-footer { background:#fafafd !important; border-color:#e5e5ec !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-footer button { box-shadow:none !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-del-btn { color:#b42332 !important; background:#fff !important; border:1px solid #e8cdd1 !important; }
+:is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #song-editor-modal-backdrop .song-editor-empty-hint strong { color:#34313f !important; }

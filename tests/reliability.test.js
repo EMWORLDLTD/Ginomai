@@ -15,12 +15,12 @@ test('release metadata stays aligned across package, UI, server, and Electron', 
   const electronSource = fs.readFileSync(path.join(root, 'electron/main.js'), 'utf8');
 
   assert.equal(pkg.version, '2.4.0');
-  assert.equal(pkg.build.productName, 'Ginomia Pro');
+  assert.equal(pkg.build.productName, 'Ginomia');
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
-  assert.match(index, /Ginomia Pro/);
+  assert.match(index, /Ginomia/);
   assert.match(index, /Build 2\.4\.0/);
-  assert.doesNotMatch(index, /2\.4\.0-PRO|Ginomai Pro/);
+  assert.doesNotMatch(index, /2\.4\.0-PRO|Ginomai Pro|\bGinomia Pro\b/);
   assert.match(serverSource, /version: packageMetadata\.version/);
   assert.match(electronSource, /app\.getVersion\(\)/);
 });
@@ -37,11 +37,14 @@ test('remote control requires pairing, enforces permissions without a client fla
   });
   assert.equal((await request('/api/control', { type: 'PROJECT', text: 'Unauthorized' })).status, 403);
   assert.equal((await request('/api/session/start', {})).status, 403);
+  assert.equal((await request('/api/semantic/query', {text:'test query words here please',version:'KJV'})).status, 403);
   assert.equal((await request('/server.js')).status, 403);
   assert.equal((await request('/.git/config')).status, 403);
   const page = await request('/');
   const host = page.headers.get('set-cookie').split(';')[0];
   assert.match(host, /^sf_access=/);
+  assert.equal((await request('/api/semantic/query', {text:'query',version:'NIV'},host)).status,400);
+  assert.equal((await request('/api/semantic/query', {text:'x'.repeat(2001),version:'KJV'},host)).status,400);
   assert.equal((await request('/api/session/start', {}, host, { Origin: 'https://untrusted.example' })).status, 403);
   assert.equal((await request('/api/session/start', {}, host)).status, 200);
   assert.equal((await request('/api/session/join', null)).status, 400);
@@ -69,6 +72,15 @@ test('remote control requires pairing, enforces permissions without a client fla
   assert.equal(projected.dashboard, undefined);
   assert.equal(projected.hostSpeechState, undefined);
   assert.equal(projected.text, 'Public text');
+  assert.equal((await request('/api/session/speech-ai-update', {
+    isListening: false, isRequested: true, status: 'reconnecting', message: 'Reconnecting speech recognition...'
+  }, host)).status, 200);
+  const speechSnapshot = (await (await request('/api/session', undefined, host)).json()).hostSpeechState;
+  assert.equal(speechSnapshot.status, 'reconnecting');
+  assert.equal(speechSnapshot.isRequested, true);
+  assert.equal(speechSnapshot.isListening, false);
+  assert.equal(speechSnapshot.message, 'Reconnecting speech recognition...');
+  assert.equal((await request('/api/session/speech-ai-update', { isListening: true }, operator)).status, 403);
   assert.equal((await request('/api/output-ack', { id: 'unregistered', revision: 1 })).status, 403);
   const streams = await Promise.all(['/api/events', '/api/control-events'].map(async route => {
     const response = await fetch(base + route, { headers: { Cookie: operator }, signal: AbortSignal.timeout(5000) });
@@ -232,3 +244,204 @@ test('preview requires Take live, preserves a held selection, and can be cancell
   window.setProjectionWorkflow('instant');
   assert.equal(window.prepareSlideIfNeeded('other', 'Instant', 'Reference', {}), false);
 });
+
+test('smart follow-suit stages unengaged decks and projects engaged decks instantly', () => {
+  const elements = new Map();
+  const element = id => { if (!elements.has(id)) elements.set(id, { hidden: true, textContent: '' }); return elements.get(id); };
+  const calls = [];
+  const state = {
+    activeLiveSlideId: null,
+    activeSongId: 'song_1',
+    activeBibleBook: 'John',
+    activeBibleChapter: 3,
+    liveEngagedDeck: null,
+    isHoldLive: false,
+    autoProject: false,
+    isMedleyMode: false
+  };
+  const window = {
+    state,
+    projectSlide: (...args) => calls.push(args),
+    showToast() {}
+  };
+  const document = {
+    readyState: 'loading',
+    addEventListener() {},
+    getElementById: element,
+    querySelector: () => null,
+    querySelectorAll: () => []
+  };
+  const context = vm.createContext({
+    window,
+    document,
+    localStorage: { getItem: () => 'smart', setItem() {} }
+  });
+  vm.runInContext(fs.readFileSync(path.join(root, 'js/operator-experience.js'), 'utf8'), context);
+
+  // 1. Initial click on song_1 should stage (no deck engaged yet)
+  assert.equal(window.prepareSlideIfNeeded('song_1_0', 'Verse 1', 'Song 1', {}), true);
+  assert.equal(calls.length, 0);
+
+  // 2. Take live
+  window.takePreparedSlide();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][3].takeLive, true);
+
+  // Simulate state update from projectSlide
+  state.activeLiveSlideId = 'song_1_0';
+  state.liveEngagedDeck = { type: 'song', songId: 'song_1' };
+
+  // 3. Subsequent clicks in same song follow suit immediately
+  assert.equal(window.prepareSlideIfNeeded('song_1_1', 'Chorus', 'Song 1', {}), false);
+  assert.equal(window.prepareSlideIfNeeded('song_1_2', 'Verse 2', 'Song 1', {}), false);
+
+  // 4. Switching song should stage first slide safely
+  state.activeSongId = 'song_2';
+  assert.equal(window.prepareSlideIfNeeded('song_2_0', 'Verse 1', 'Song 2', {}), true);
+  // Clicking the same staged card again takes it live directly
+  assert.equal(window.prepareSlideIfNeeded('song_2_0', 'Verse 1', 'Song 2', {}), true);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1][3].takeLive, true);
+
+  // 5. Bible workflow: stage first chapter verse
+  state.activeSongId = null;
+  state.activeLiveSlideId = null;
+  state.liveEngagedDeck = null;
+  state.activeBibleBook = 'John';
+  state.activeBibleChapter = 3;
+  assert.equal(window.prepareSlideIfNeeded('bible_John_3_16', 'For God so loved...', 'John 3:16', {}), true);
+
+  // Take Bible live
+  state.activeLiveSlideId = 'bible_John_3_16';
+  state.liveEngagedDeck = { type: 'bible', book: 'John', chapter: 3 };
+
+  // Same chapter follow-suit
+  assert.equal(window.prepareSlideIfNeeded('bible_John_3_17', 'For God sent not...', 'John 3:17', {}), false);
+
+  // Switching chapter stages safely
+  state.activeBibleBook = 'Romans';
+  state.activeBibleChapter = 8;
+  assert.equal(window.prepareSlideIfNeeded('bible_Romans_8_1', 'There is therefore...', 'Romans 8:1', {}), true);
+
+  // 6. Disengage live to CUE: clicking cutout play button while live resolves to CUE
+  // Take Romans 8:1 live first
+  state.activeLiveSlideId = 'bible_Romans_8_1';
+  state.liveEngagedDeck = { type: 'bible', book: 'Romans', chapter: 8 };
+  assert.equal(window.prepareSlideIfNeeded('bible_Romans_8_2', 'For the law...', 'Romans 8:2', {}), false); // follow-suit is active
+
+  // Now disengage
+  window.disengageLiveToCue('bible_Romans_8_1');
+  assert.equal(state.liveEngagedDeck, null); // follow-suit is disengaged
+  assert.equal(state.activeLiveSlideId, 'bible_Romans_8_1'); // live screen is untouched!
+
+  // Next verse click will NOT go live automatically: it safely enters CUE
+  assert.equal(window.prepareSlideIfNeeded('bible_Romans_8_2', 'For the law...', 'Romans 8:2', {}), true);
+});
+
+test('bento card visual cleanup ensures zero orphaned SVGs and docks across card switches', () => {
+  const elements = new Map();
+  const element = id => { if (!elements.has(id)) elements.set(id, { hidden: true, textContent: '' }); return elements.get(id); };
+
+  const createdElements = [];
+  function createMockCard(id, slideId) {
+    const children = [];
+    const classList = new Set(['bento-single-card']);
+    const card = {
+      id,
+      dataset: { slideId },
+      classList: {
+        contains: c => classList.has(c),
+        add: c => classList.add(c),
+        remove: c => classList.delete(c)
+      },
+      children,
+      parentElement: null,
+      insertAdjacentHTML(pos, html) {
+        if (html.includes('bento-live-shape-svg')) {
+          const isStaged = html.includes('bento-staged-shape-svg');
+          const el = {
+            className: isStaged ? 'bento-live-shape-svg bento-staged-shape-svg' : 'bento-live-shape-svg',
+            parentElement: card,
+            remove: () => {
+              const idx = children.indexOf(el);
+              if (idx !== -1) children.splice(idx, 1);
+            }
+          };
+          children.push(el);
+        } else if (html.includes('bento-corner-dock')) {
+          const isStaged = html.includes('staged-dock');
+          const el = {
+            className: isStaged ? 'bento-corner-dock staged-dock' : 'bento-corner-dock live-dock',
+            parentElement: card,
+            remove: () => {
+              const idx = children.indexOf(el);
+              if (idx !== -1) children.splice(idx, 1);
+            }
+          };
+          children.push(el);
+        }
+      },
+      querySelector: sel => {
+        return children.find(ch => {
+          if (sel.includes('bento-live-shape-svg') && ch.className.includes('bento-live-shape-svg')) return true;
+          if (sel.includes('bento-corner-dock') && ch.className.includes('bento-corner-dock')) return true;
+          return false;
+        }) || null;
+      },
+      querySelectorAll: sel => {
+        return children.filter(ch => {
+          if (sel.includes('bento-live-shape-svg') && ch.className.includes('bento-live-shape-svg')) return true;
+          if (sel.includes('bento-corner-dock') && ch.className.includes('bento-corner-dock')) return true;
+          return false;
+        });
+      }
+    };
+    createdElements.push(card);
+    return card;
+  }
+
+  const card1 = createMockCard('bento_card_s1', 's1');
+  const card2 = createMockCard('bento_card_s2', 's2');
+
+  const window = {
+    state: { activeLiveSlideId: null, liveEngagedDeck: null },
+    setupLiveCardObserver() {},
+    cleanupLiveCardObserver() {},
+    updateBentoLiveCardShape() {}
+  };
+  const document = {
+    readyState: 'loading',
+    addEventListener() {},
+    getElementById: element,
+    querySelector: sel => createdElements.find(c => sel.includes(c.id) || sel.includes(c.dataset.slideId)) || null,
+    querySelectorAll: sel => {
+      if (sel === '.staged') return createdElements.filter(c => c.classList.contains('staged'));
+      if (sel.includes('bento-single-card')) return createdElements;
+      return createdElements.filter(c => sel.includes(c.id) || sel.includes(c.dataset.slideId));
+    }
+  };
+  const context = vm.createContext({
+    window,
+    document,
+    localStorage: { getItem: () => 'smart', setItem() {} }
+  });
+  vm.runInContext(fs.readFileSync(path.join(root, 'js/operator-experience.js'), 'utf8'), context);
+
+  // 1. Stage card1
+  window.prepareSlideIfNeeded('s1', 'Verse 1', 'Song 1', {});
+  assert.equal(card1.classList.contains('staged'), true);
+  assert.equal(card1.children.length, 2); // shape + dock
+
+  // 2. Stage card2 (switching cards) -> card1 must be completely cleaned
+  window.prepareSlideIfNeeded('s2', 'Verse 2', 'Song 1', {});
+  assert.equal(card1.classList.contains('staged'), false);
+  assert.equal(card1.children.length, 0); // card1 has ZERO orphaned SVG or dock elements!
+  assert.equal(card2.classList.contains('staged'), true);
+  assert.equal(card2.children.length, 2); // card2 has shape + dock
+
+  // 3. Cancel prepared slide -> card2 must also be completely cleaned
+  window.cancelPreparedSlide();
+  assert.equal(card2.classList.contains('staged'), false);
+  assert.equal(card2.children.length, 0); // card2 has ZERO orphaned SVG or dock elements!
+});
+

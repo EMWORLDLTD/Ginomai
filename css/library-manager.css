@@ -1,0 +1,209 @@
+/* Compact Library Manager sizing, shared by Classic and Bento themes.
+   Important declarations override the existing Bento and inline sizing. */
+#import-modal-backdrop .library-import-modal { height:auto; min-height:380px; max-height:85dvh; max-width:860px !important; display:flex; flex-direction:column; overflow:hidden; }
+#import-modal-backdrop .settings-header { padding:14px 20px !important; flex-shrink:0; }
+#import-modal-backdrop .modal-main-title { font-size:14px !important; font-weight:600 !important; }
+#import-modal-backdrop .modal-sub-title { font-size:10px !important; }
+#import-modal-backdrop .settings-header-icon { width:30px; height:30px; }
+#import-modal-backdrop .import-nav-bar { padding:8px 20px !important; }
+#import-modal-backdrop .import-nav-tabs { flex-wrap:wrap; gap:3px !important; }
+#import-modal-backdrop .import-nav-tab { font-size:10.5px !important; padding:6px 10px !important; }
+#import-modal-backdrop .import-modal-body { padding:18px 20px !important; min-height:0; flex:1 1 auto; }
+#import-modal-backdrop .import-dropzone-box { padding:24px 16px; border-radius:10px !important; }
+#import-modal-backdrop .dropzone-icon-circle { width:34px; height:34px; margin-bottom:10px; }
+#import-modal-backdrop .dropzone-icon-circle svg { width:18px; height:18px; }
+#import-modal-backdrop .dropzone-main-text { font-size:13px; }
+#import-modal-backdrop .dropzone-sub-text { font-size:11px; }
+#import-modal-backdrop .format-pill { font-size:9px; padding:3px 6px; }
+#import-modal-backdrop .dropzone-browse-btn { font-size:11px !important; padding:7px 14px !important; }
+#import-modal-backdrop .import-checkbox-label,
+#import-modal-backdrop .import-footer-row { font-size:10.5px !important; }
+#import-modal-backdrop .import-search-bar-wrap { padding:9px 12px !important; margin-bottom:14px !important; }
+#import-modal-backdrop .import-search-field { font-size:11px !important; }
+#import-modal-backdrop .repo-filter-toolbar { gap:10px !important; margin-bottom:14px !important; }
+#import-modal-backdrop .repo-filter-label,
+#import-modal-backdrop .repo-filter-pill,
+#import-modal-backdrop .repo-view-btn { font-size:10px !important; }
+#import-modal-backdrop .repo-filter-pill { padding:5px 9px !important; }
+#import-modal-backdrop .cloud-lyrics-empty { grid-column:1 / -1; padding:26px 18px; text-align:center; border:1px dashed var(--border, #ffffff20); border-radius:10px; color:var(--text-muted); }
+#import-modal-backdrop .cloud-lyrics-empty-title { font-size:12px; font-weight:600; margin:8px 0; color:var(--text, inherit); }
+#import-modal-backdrop .cloud-lyrics-empty-description { max-width:360px; margin:auto; font-size:11px; line-height:1.6; }
+#import-modal-backdrop #import-subtab-migrate > div:first-child > div:first-child { flex-wrap:wrap; gap:10px; }
+#import-modal-backdrop #import-subtab-migrate > div:first-child > div:first-child > div { flex-wrap:wrap; font-size:12px !important; }
+#import-modal-backdrop #import-subtab-migrate > div:first-child > div:last-child { font-size:11px !important; line-height:1.6 !important; }
+#import-modal-backdrop #import-subtab-migrate .import-input-label { font-size:10px !important; }
+#import-modal-backdrop #import-subtab-migrate button,
+#import-modal-backdrop #import-migrate-folder-path { font-size:11px !important; padding:8px 10px !important; }
+#import-modal-backdrop #import-migrate-folder-path { min-width:0; }
+#import-modal-backdrop #import-migrate-status { font-size:10.5px !important; font-family:inherit !important; line-height:1.6; overflow-wrap:anywhere; }
+#import-modal-backdrop button { transition:none !important; }
+@media (max-width:680px) {
+  #import-modal-backdrop .library-import-modal { min-height:0; }
+  #import-modal-backdrop #import-subtab-migrate > div:nth-child(2) > div { flex-wrap:wrap; }
+  #import-modal-backdrop #import-migrate-folder-path { flex-basis:100% !important; }
+  #import-modal-backdrop .import-footer-row { flex-wrap:wrap; gap:8px; }
+}
+
+/* Library workspace: persistent navigation and a quiet content canvas. */
+#import-modal-backdrop { --library-surface:#15151a; --library-sidebar:#111115; --library-line:#ffffff12; --library-ink:#eeeef2; --library-muted:#9999a6; backdrop-filter:none; -webkit-backdrop-filter:none; }
+:root[data-theme-mode="light"] #import-modal-backdrop,
+body[data-theme-mode="light"] #import-modal-backdrop { --library-surface:#fff; --library-sidebar:#f6f6f8; --library-line:#e5e5eb; --library-ink:#252530; --library-muted:#6b6b79; }
+#import-modal-backdrop .library-import-modal { display:grid !important; grid-template-columns:172px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); width:94vw !important; max-width:980px !important; height:min(610px,88dvh); min-height:0; max-height:88dvh; background:var(--library-surface) !important; border:1px solid var(--library-line) !important; border-radius:12px !important; box-shadow:0 24px 80px #0006 !important; }
+#import-modal-backdrop .settings-header { grid-column:1 / -1; background:var(--library-surface) !important; border-bottom:1px solid var(--library-line) !important; padding:16px 22px !important; }
+#import-modal-backdrop .settings-header-icon { display:none; }
+#import-modal-backdrop .modal-main-title { color:var(--library-ink) !important; }
+#import-modal-backdrop .modal-sub-title { color:var(--library-muted) !important; margin-top:4px !important; }
+#import-modal-backdrop .import-nav-bar { display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:12px; padding:24px 10px !important; background:var(--library-sidebar) !important; border-bottom:0 !important; border-right:1px solid var(--library-line); min-width:0; overflow:auto; }
+#import-modal-backdrop .library-nav-caption { font-size:9px; font-weight:600; letter-spacing:.1em; color:var(--library-muted); padding:0 10px; }
+#import-modal-backdrop .import-nav-tabs { display:flex; flex-direction:column; flex-wrap:nowrap; background:transparent !important; border:0 !important; border-radius:0 !important; padding:0 !important; gap:5px !important; }
+#import-modal-backdrop .import-nav-tab { width:100%; justify-content:flex-start; padding:10px !important; gap:9px; border:0 !important; border-radius:6px !important; color:var(--library-muted) !important; font-size:11px !important; font-weight:500 !important; white-space:normal; text-align:left; }
+#import-modal-backdrop .import-nav-tab svg { flex-shrink:0; width:14px; height:14px; }
+#import-modal-backdrop .import-nav-tab.active { background:#8a6dff14 !important; color:var(--library-ink) !important; box-shadow:inset 2px 0 #8a6dff !important; }
+#import-modal-backdrop .import-nav-tab:hover { background:#8a6dff0d !important; }
+#import-modal-backdrop .import-modal-body { background:var(--library-surface) !important; padding:28px !important; max-height:none !important; min-width:0; overflow:auto; }
+#import-modal-backdrop .library-section-heading { margin-bottom:8px; }
+#import-modal-backdrop .library-section-heading h2 { margin:0 0 7px; color:var(--library-ink); font-size:17px; font-weight:600; letter-spacing:-.025em; }
+#import-modal-backdrop .library-section-heading p { margin:0; color:var(--library-muted); font-size:11px; line-height:1.6; }
+#import-modal-backdrop .import-dropzone-box { background:var(--library-sidebar) !important; border:1px dashed var(--library-line) !important; padding:36px 18px; border-radius:8px !important; }
+#import-modal-backdrop .import-dropzone-box:hover { border-color:#8a6dff !important; transform:none !important; }
+#import-modal-backdrop .dropzone-icon-circle { background:transparent !important; border:0 !important; border-radius:0; color:var(--library-muted) !important; }
+#import-modal-backdrop .dropzone-icon-circle svg { stroke:var(--library-muted) !important; width:24px; height:24px; }
+#import-modal-backdrop .format-pill { background:transparent !important; border:0 !important; color:var(--library-muted) !important; font-family:inherit !important; }
+#import-modal-backdrop .dropzone-browse-btn { background:#795bea !important; border-color:#795bea !important; color:#fff !important; border-radius:6px !important; }
+#import-modal-backdrop .import-search-bar-wrap { background:var(--library-sidebar) !important; border:1px solid var(--library-line) !important; border-radius:6px !important; box-shadow:none !important; }
+#import-modal-backdrop .repo-filter-chips { gap:5px !important; flex-wrap:wrap; }
+#import-modal-backdrop .repo-filter-pill { background:transparent !important; border:1px solid var(--library-line) !important; border-radius:5px !important; box-shadow:none !important; color:var(--library-muted) !important; }
+#import-modal-backdrop .repo-filter-pill.active { color:var(--library-ink) !important; background:#8a6dff15 !important; border-color:#8a6dff40 !important; }
+#import-modal-backdrop .cloud-lyrics-empty { border:0; border-top:1px solid var(--library-line); border-radius:0; padding:40px 18px; color:var(--library-muted); }
+#import-modal-backdrop .cloud-lyrics-empty-title { color:var(--library-ink); }
+#import-modal-backdrop .library-migration-intro { background:transparent !important; border:0 !important; border-bottom:1px solid var(--library-line) !important; border-radius:0 !important; padding:0 0 20px !important; }
+#import-modal-backdrop .library-migration-intro > div:first-child { flex-direction:column; align-items:flex-start !important; }
+#import-modal-backdrop .library-migration-intro > div:first-child > div:first-child { font-size:17px !important; font-weight:600 !important; color:var(--library-ink) !important; }
+#import-modal-backdrop .library-migration-intro > div:first-child > div:first-child svg { display:none; }
+#import-modal-backdrop .library-migration-intro > div:last-child { color:var(--library-muted) !important; }
+#import-modal-backdrop #import-subtab-migrate > div:nth-child(2) > div { flex-wrap:wrap; }
+#import-modal-backdrop #import-migrate-folder-path { flex-basis:100% !important; background:var(--library-sidebar); }
+#import-modal-backdrop #import-subtab-migrate button { border-radius:6px; }
+#import-modal-backdrop button:focus-visible { outline:2px solid #a88aff; outline-offset:2px; }
+@media(max-width:700px) {
+  #import-modal-backdrop .library-import-modal { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto minmax(0,1fr); }
+  #import-modal-backdrop .import-nav-bar { padding:8px 12px !important; border-right:0; border-bottom:1px solid var(--library-line) !important; }
+  #import-modal-backdrop .library-nav-caption { display:none; }
+  #import-modal-backdrop .import-nav-tabs { flex-direction:row; flex-wrap:wrap; }
+  #import-modal-backdrop .import-nav-tab { width:auto; padding:8px !important; }
+  #import-modal-backdrop .import-modal-body { padding:20px !important; }
+}
+#import-modal-backdrop #import-subtab-migrate .library-migration-intro { padding:0 0 20px !important; }
+#import-modal-backdrop #import-subtab-migrate .library-migration-intro .format-pill { padding-left:0; padding-right:0; }
+#import-modal-backdrop #import-subtab-migrate .library-migration-intro > div:first-child > div:last-child { gap:16px !important; }
+#import-modal-backdrop #import-subtab-migrate .library-migration-intro > div:first-child > div:first-child { font-size:17px !important; }
+#import-modal-backdrop .import-split-view > *,
+#import-modal-backdrop .import-form-row > * { min-width:0; }
+#import-modal-backdrop .tag-chips-bar { flex-wrap:wrap; }
+@media(max-width:700px) {
+  #import-modal-backdrop .import-split-view { display:flex; flex-direction:column; }
+  #import-modal-backdrop .import-form-row { flex-direction:column; }
+}
+
+/* Explicit primary action styling avoids the browser's default button bevel. */
+#import-modal-backdrop #import-migrate-execute-btn {
+  appearance:none;
+  -webkit-appearance:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:32px;
+  background:#795bea;
+  color:#fff;
+  border:1px solid #795bea;
+  border-radius:6px;
+  box-shadow:none;
+  font-family:inherit;
+  font-weight:600 !important;
+  line-height:1.3;
+  cursor:pointer;
+}
+#import-modal-backdrop #import-migrate-execute-btn:hover:not(:disabled) { background:#694bd8; border-color:#694bd8; }
+#import-modal-backdrop #import-migrate-execute-btn:active:not(:disabled) { background:#5d40c8; border-color:#5d40c8; }
+#import-modal-backdrop #import-migrate-execute-btn:disabled { opacity:.5; cursor:not-allowed; }
+
+/* Song Creator uses the same neutral fields and flat actions as migration. */
+#import-modal-backdrop #import-subtab-manual .import-form-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
+#import-modal-backdrop #import-subtab-manual .import-input-label,
+#import-modal-backdrop #import-subtab-manual .split-col-header,
+#import-modal-backdrop #import-subtab-manual .tag-chips-label { font-size:11px !important; font-weight:500 !important; text-transform:none; letter-spacing:0 !important; color:var(--library-muted) !important; }
+#import-modal-backdrop #import-subtab-manual .split-col-header { min-height:22px; }
+#import-modal-backdrop #import-subtab-manual .import-text-field,
+#import-modal-backdrop #import-subtab-manual .import-textarea { background:var(--library-sidebar) !important; color:var(--library-ink) !important; border:1px solid var(--library-line) !important; border-radius:6px !important; font-family:inherit !important; font-size:12px !important; box-shadow:none !important; box-sizing:border-box; width:100%; }
+#import-modal-backdrop #import-subtab-manual .import-text-field { padding:9px 12px; }
+#import-modal-backdrop #import-subtab-manual .import-textarea { min-height:200px; line-height:1.7 !important; }
+#import-modal-backdrop #import-subtab-manual .import-text-field:focus,
+#import-modal-backdrop #import-subtab-manual .import-textarea:focus { outline:1px solid #8a6dff; outline-offset:0; border-color:#8a6dff !important; }
+#import-modal-backdrop #import-subtab-manual .tag-chip { background:transparent !important; color:var(--library-muted) !important; border:1px solid var(--library-line) !important; border-radius:5px !important; font-size:10px !important; padding:5px 8px !important; box-shadow:none !important; }
+#import-modal-backdrop #import-subtab-manual .tag-chip:hover { background:#8a6dff15 !important; color:var(--library-ink) !important; }
+#import-modal-backdrop #import-subtab-manual .preview-count-badge,
+#import-modal-backdrop #import-subtab-manual .import-prev-section-badge,
+#import-modal-backdrop #import-subtab-manual .import-prev-slide-badge { background:transparent !important; border:0 !important; color:var(--library-muted) !important; font-family:inherit !important; font-weight:500 !important; font-size:10px !important; padding:0 !important; }
+#import-modal-backdrop #import-subtab-manual .import-preview-container { min-height:200px; background:var(--library-sidebar) !important; border:1px solid var(--library-line) !important; border-radius:6px !important; box-sizing:border-box; }
+#import-modal-backdrop #import-subtab-manual .import-prev-meta { border-color:var(--library-line) !important; gap:8px; flex-wrap:wrap; }
+#import-modal-backdrop #import-subtab-manual .import-prev-title { color:var(--library-ink) !important; font-size:12px !important; font-weight:600 !important; }
+#import-modal-backdrop #import-subtab-manual .import-prev-card { background:var(--library-surface) !important; border:1px solid var(--library-line) !important; border-radius:6px !important; }
+#import-modal-backdrop #import-subtab-manual .import-prev-text { font-family:inherit !important; line-height:1.7 !important; color:var(--library-ink) !important; overflow-wrap:anywhere; }
+#import-modal-backdrop #import-subtab-manual .import-footer-row { padding-top:14px; border-top:1px solid var(--library-line); gap:12px; flex-wrap:wrap; }
+#import-modal-backdrop #import-subtab-manual .import-primary-btn { background:#795bea !important; border:1px solid #795bea !important; border-radius:6px !important; box-shadow:none !important; transform:none !important; font-size:11px !important; padding:8px 12px !important; min-height:32px; margin-left:auto; }
+#import-modal-backdrop #import-subtab-manual .import-primary-btn:hover { background:#694bd8 !important; border-color:#694bd8 !important; }
+@media(max-width:700px) {
+  #import-modal-backdrop #import-subtab-manual .import-form-row { grid-template-columns:minmax(0,1fr); }
+}
+
+/* Match the standalone song editor's writing / presentation arrangement. */
+#import-modal-backdrop .library-song-workspace { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:22px; }
+#import-modal-backdrop .library-song-writing { display:flex; flex-direction:column; gap:18px; min-width:0; }
+#import-modal-backdrop .library-song-optional { float:right; font-weight:400; }
+#import-modal-backdrop .library-song-hint { font-size:9px; font-weight:400; }
+#import-modal-backdrop .library-song-lyrics .split-col-header { flex-wrap:wrap; gap:4px; margin-bottom:6px; }
+#import-modal-backdrop #import-subtab-manual .library-song-lyrics .tag-chips-bar { gap:5px; padding:9px; margin:0; border:1px solid var(--library-line); border-bottom:0; border-radius:8px 8px 0 0; }
+#import-modal-backdrop #import-subtab-manual .library-song-auto-format { margin-left:auto; color:var(--purple-text,#bba9ff) !important; border-color:#8a6dff60 !important; background:#8a6dff15 !important; font-weight:600; }
+#import-modal-backdrop #import-subtab-manual .library-song-lyrics textarea { border-radius:0 0 8px 8px !important; height:240px; padding:14px; }
+#import-modal-backdrop .library-song-preview { border-left:1px solid var(--library-line); padding-left:22px; min-width:0; }
+#import-modal-backdrop .library-song-preview-caption { color:var(--library-muted); font-size:11px; margin:8px 0 18px; }
+#import-modal-backdrop #import-subtab-manual .import-preview-container { background:transparent !important; border:0 !important; padding:0; height:auto; max-height:440px; overflow:auto; }
+#import-modal-backdrop #import-subtab-manual .import-prev-meta { flex-direction:column; align-items:flex-start !important; gap:5px; padding-bottom:12px !important; }
+#import-modal-backdrop #import-subtab-manual .import-prev-title { color:var(--purple-text,#bba9ff) !important; max-width:100% !important; }
+#import-modal-backdrop #import-subtab-manual .import-prev-card { background:linear-gradient(145deg,#262137,#14131d) !important; border:1px solid #ffffff14 !important; border-radius:10px !important; padding:14px !important; margin-top:14px; }
+#import-modal-backdrop #import-subtab-manual .import-prev-section-badge,
+#import-modal-backdrop #import-subtab-manual .import-prev-slide-badge { color:#c6b7ec !important; text-transform:uppercase; font-size:9px !important; }
+#import-modal-backdrop #import-subtab-manual .import-prev-text { text-align:center; padding:24px 6px; color:#f7f5fc !important; font-size:14px !important; }
+#import-modal-backdrop #import-subtab-manual .preview-count-badge { padding:4px 7px !important; background:#8a6dff18 !important; color:var(--purple-text,#bba9ff) !important; border-radius:5px !important; }
+@media(max-width:850px) {
+  #import-modal-backdrop .library-song-workspace { grid-template-columns:minmax(0,1fr); }
+  #import-modal-backdrop .library-song-preview { border-left:0; border-top:1px solid var(--library-line); padding:18px 0 0; }
+}
+
+/* Keep the save row outside the Song Creator's scrolling content. */
+#import-modal-backdrop .library-import-modal:has(#import-tab-btn-manual.active) .import-modal-body {
+  overflow:hidden !important;
+  display:flex;
+  flex-direction:column;
+}
+#import-modal-backdrop #import-subtab-manual {
+  flex:1;
+  min-height:0;
+  gap:0 !important;
+}
+#import-modal-backdrop .library-song-scroll {
+  flex:1;
+  min-height:0;
+  overflow-y:auto;
+  padding:2px 3px 18px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+#import-modal-backdrop .library-song-scroll > * { flex-shrink:0; }
+#import-modal-backdrop #import-subtab-manual > .import-footer-row {
+  flex-shrink:0;
+  margin-top:0 !important;
+  background:var(--library-surface);
+  padding:14px 3px 0;
+}

@@ -1,0 +1,136 @@
+{
+  "scope": "Actual offline host-worker inference on authored development queries; not live STT or held-out service accuracy",
+  "summary": {
+    "positiveCount": 8,
+    "acceptedCorrect": 4,
+    "acceptedWrong": 0,
+    "negativeCount": 4,
+    "negativesRejected": 4
+  },
+  "results": [
+    {
+      "text": "God loved humanity so much he gave his only son so believers could live forever",
+      "reference": "John 3:16",
+      "match": {
+        "reference": "John 3:16",
+        "book": "John",
+        "chapter": 3,
+        "verse": 16,
+        "text": "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.",
+        "version": "KJV",
+        "kind": "semantic",
+        "similarity": 0.8429799973737286,
+        "detectionScore": 84,
+        "recognitionConfidence": null,
+        "autoProjectEligible": false,
+        "matchMethod": "local-embedding"
+      },
+      "latencyMs": 4386.2145900000005
+    },
+    {
+      "text": "Scripture has guided you since childhood and can give you wisdom for salvation",
+      "reference": "2 Timothy 3:15",
+      "match": {
+        "reference": "2 Timothy 3:15",
+        "book": "2 Timothy",
+        "chapter": 3,
+        "verse": 15,
+        "text": "And that from a child thou hast known the holy scriptures, which are able to make thee wise unto salvation through faith which is in Christ Jesus.",
+        "version": "KJV",
+        "kind": "semantic",
+        "similarity": 0.7248666234851664,
+        "detectionScore": 72,
+        "recognitionConfidence": null,
+        "autoProjectEligible": false,
+        "matchMethod": "local-embedding"
+      },
+      "latencyMs": 82.9334259999996
+    },
+    {
+      "text": "Adopt the same attitude that Jesus Christ had",
+      "reference": "Philippians 2:5",
+      "match": null,
+      "latencyMs": 74.54390200000034
+    },
+    {
+      "text": "God's words illuminate the path where I walk",
+      "reference": "Psalms 119:105",
+      "match": null,
+      "latencyMs": 142.63040900000033
+    },
+    {
+      "text": "A gentle reply calms anger but harsh speech makes it worse",
+      "reference": "Proverbs 15:1",
+      "match": {
+        "reference": "Proverbs 15:1",
+        "book": "Proverbs",
+        "chapter": 15,
+        "verse": 1,
+        "text": "A soft answer turneth away wrath: but grievous words stir up anger.",
+        "version": "KJV",
+        "kind": "semantic",
+        "similarity": 0.7170245930097633,
+        "detectionScore": 72,
+        "recognitionConfidence": null,
+        "autoProjectEligible": false,
+        "matchMethod": "local-embedding"
+      },
+      "latencyMs": 56.836599000000206
+    },
+    {
+      "text": "Don't worry about tomorrow because tomorrow has its own troubles",
+      "reference": "Matthew 6:34",
+      "match": null,
+      "latencyMs": 69.16425600000002
+    },
+    {
+      "text": "Nothing can separate us from the love of God",
+      "reference": "Romans 8:39",
+      "match": {
+        "reference": "Romans 8:39",
+        "book": "Romans",
+        "chapter": 8,
+        "verse": 39,
+        "text": "Nor height, nor depth, nor any other creature, shall be able to separate us from the love of God, which is in Christ Jesus our Lord.",
+        "version": "KJV",
+        "kind": "semantic",
+        "similarity": 0.8178711605705654,
+        "detectionScore": 82,
+        "recognitionConfidence": null,
+        "autoProjectEligible": false,
+        "matchMethod": "local-embedding"
+      },
+      "latencyMs": 57.792960999999195
+    },
+    {
+      "text": "Faith without corresponding actions is dead",
+      "reference": "James 2:26",
+      "match": null,
+      "latencyMs": 63.33536300000014
+    },
+    {
+      "text": "Please move your car from the entrance after the service",
+      "reference": null,
+      "match": null,
+      "latencyMs": 53.70598400000017
+    },
+    {
+      "text": "The choir rehearsal will begin at seven on Wednesday",
+      "reference": null,
+      "match": null,
+      "latencyMs": 50.31841499999973
+    },
+    {
+      "text": "The microphone battery needs replacing before the next speaker",
+      "reference": null,
+      "match": null,
+      "latencyMs": 51.72942400000011
+    },
+    {
+      "text": "We are discussing love and faith and hope in our community",
+      "reference": null,
+      "match": null,
+      "latencyMs": 56.11587200000031
+    }
+  ]
+}

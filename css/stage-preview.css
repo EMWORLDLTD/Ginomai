@@ -1,0 +1,93 @@
+/* Stage controls: live actions remain separate from appearance settings. */
+#bento-prev-card { --stage-surface:var(--card,#15151a); --stage-text:var(--text,#eeeef2); --stage-line:var(--border,#ffffff18); display:flex; flex-direction:column; gap:10px; overflow:hidden; }
+#bento-prev-card .bento-mode-row, #bento-prev-card .bento-prev-mode-row, #bento-prev-card .bento-stage-actions, #bento-prev-card .bento-prev-status-row { flex-shrink:0; margin:0; }
+#bento-prev-card .bento-prev-box-wrapper { flex:0 1 auto; margin:0; min-height:80px; }
+#bento-prev-card .bento-prev-box { aspect-ratio:16/9; border-radius:8px; }
+#bento-prev-card .bento-stage-actions { display:flex; gap:6px; flex-wrap:wrap; }
+#bento-prev-card .bento-sbtn { background:transparent; border:1px solid var(--stage-line); color:var(--stage-text); border-radius:6px; box-shadow:none; font-size:11px; padding:8px 10px; min-height:32px; transition:none; }
+#bento-prev-card .bento-sbtn.clear { color:#e14c55; }
+#bento-prev-card .bento-sbtn.hold.active { color:#b97516; background:#dba23716; border-color:#dba23770; }
+#bento-prev-card .bento-sbtn.trans.active, #bento-prev-card #stage-appearance-toggle[aria-expanded="true"] { background:#8a6dff18; border-color:#8a6dff60; color:var(--purple-text,#aa8eff); }
+#bento-prev-card #stage-appearance-toggle { margin-left:auto; }
+#bento-prev-card #stage-appearance-panel[hidden] { display:none !important; }
+#bento-prev-card #stage-appearance-panel { flex:0 1 220px; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:10px 2px; border-top:1px solid var(--stage-line); }
+#bento-prev-card .stage-appearance-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; flex-wrap:wrap; font-size:11px; color:var(--stage-text); }
+#bento-prev-card .bento-zoom button { background:transparent; border:0; color:inherit; font:inherit; padding:4px 8px; cursor:pointer; }
+#bento-prev-card .bento-seg { display:flex; }
+#bento-prev-card .bento-seg button { flex:1; min-width:0; font:inherit; font-size:11px; padding:8px 6px; border:0; border-radius:6px; background:transparent; color:var(--stage-text); cursor:pointer; }
+#bento-prev-card .bento-seg button.active { color:#fff; background:#795bea; }
+#bento-prev-card .bento-trans-dropdown-wrapper { position:static; width:100%; }
+#bento-prev-card .bento-trans-btn-trigger { width:100%; justify-content:flex-start; font-size:11px; }
+#bento-prev-card .bento-trans-dialog { position:static !important; width:100% !important; min-width:0 !important; max-width:none !important; transform:none !important; box-shadow:none !important; margin-top:8px; padding:10px; border:1px solid var(--stage-line); border-radius:6px; display:none; visibility:visible; opacity:1; background:var(--stage-surface); }
+#bento-prev-card .bento-trans-dropdown-wrapper.open .bento-trans-dialog { display:block; }
+#bento-prev-card .bento-trans-option { font:inherit; text-align:left; min-width:0; cursor:pointer; }
+#bento-prev-card .bento-trans-dialog-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; }
+#bento-prev-card .bento-trans-opt-icon { display:none; }
+#bento-prev-card .bento-trans-dialog-footer, #bento-prev-card .bento-trans-speed-row { flex-wrap:wrap; gap:6px; }
+#bento-prev-card .bento-prev-status-row { padding-top:8px; border-top:1px solid var(--stage-line); font-size:10px; }
+#bento-prev-card button { transition:none !important; }
+#bento-prev-card button:focus-visible { outline:2px solid #a88aff; outline-offset:-2px; }
+/* Reserve room for essential controls when the preview column is resized. */
+#bento-prev-card { min-height:300px !important; }
+#bento-prev-card .bento-sbtn { background:transparent !important; box-shadow:none !important; color:var(--stage-text) !important; }
+#bento-prev-card .bento-sbtn.clear { color:#d43d49 !important; }
+#bento-prev-card .bento-sbtn.hold.active { color:#aa6508 !important; background:#dba23716 !important; }
+#bento-prev-card .bento-sbtn.trans.active,
+#bento-prev-card #stage-appearance-toggle[aria-expanded="true"] { color:var(--purple-text,#aa8eff) !important; background:#8a6dff18 !important; }
+
+/* Direct access: no disclosure step between the operator and output controls. */
+#bento-prev-card { height:auto !important; max-height:none !important; flex:0 0 auto !important; }
+#bento-prev-card .bento-prev-box-wrapper { flex:0 0 auto; min-height:0; width:100%; }
+#bento-prev-card .bento-prev-box { height:auto !important; max-height:none !important; aspect-ratio:16 / 9; }
+#bento-prev-card #stage-appearance-panel { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:8px; flex:none; overflow:visible; padding:0; border:0; }
+#bento-prev-card .stage-appearance-row { margin:0; gap:6px; }
+#bento-prev-card .bento-stage-actions { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+#bento-prev-card .bento-stage-actions .bento-sbtn { padding:7px 5px; font-size:10px; justify-content:center; min-width:0; }
+#bento-prev-card .bento-trans-btn-trigger { min-height:30px; padding:5px 8px; flex-wrap:wrap; }
+#bento-prev-card .bento-trans-dropdown-wrapper.open { grid-column:1 / -1; }
+#bento-prev-card .bento-trans-dialog { max-height:240px; overflow-y:auto; }
+/* Narrow columns wrap controls rather than clipping labels or the stage. */
+#bento-prev-card { container-type:inline-size; }
+#bento-col-right { overflow-y:auto; }
+@container (max-width:300px) {
+  #bento-prev-card .bento-stage-actions { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #bento-prev-card #stage-appearance-panel { grid-template-columns:minmax(0,1fr); }
+}
+
+/* Flat transition controls replace the expanding effect gallery. */
+#bento-prev-card #stage-appearance-panel { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; }
+#bento-prev-card .stage-transition-controls { flex:1 1 230px; min-width:0; display:flex; flex-direction:column; gap:5px; font-size:10px; color:var(--stage-text); }
+#bento-prev-card .stage-transition-fields { display:flex; align-items:center; gap:6px; }
+#bento-prev-card .stage-transition-fields select { flex:1; min-width:0; }
+#bento-prev-card :is(.stage-transition-fields select,.stage-duration-field,.stage-transition-test) { background:var(--stage-surface); color:var(--stage-text); border:1px solid var(--stage-line); border-radius:6px; padding:7px 8px; font:inherit; font-size:11px; min-height:32px; box-sizing:border-box; }
+#bento-prev-card .stage-duration-field { display:flex; align-items:center; gap:3px; }
+#bento-prev-card .stage-duration-field input { width:42px; min-width:0; border:0; padding:0; background:transparent; color:inherit; font:inherit; }
+#bento-prev-card .stage-duration-field:has(input:disabled) { opacity:.5; }
+#bento-prev-card .stage-transition-test { cursor:pointer; }
+#bento-prev-card .stage-transition-test:hover { background:#8a6dff18; }
+#bento-prev-card .stage-transition-fields :is(select,input):focus-visible { outline:2px solid #a88aff; outline-offset:2px; }
+/* Compact trigger with a portaled custom picker; no inline expansion. */
+#bento-prev-card .stage-transition-picker { margin-left:auto; }
+#bento-prev-card #bento-trans-trigger { width:auto; min-height:30px; display:flex; gap:8px; align-items:center; white-space:nowrap; border:1px solid var(--stage-line); border-radius:6px; background:transparent; color:var(--stage-text); padding:6px 9px; font:inherit; font-size:11px; cursor:pointer; }
+body > #bento-trans-dialog.stage-transition-popup { position:fixed; z-index:100046; box-sizing:border-box; overflow-y:auto; background:#19181f; color:#eeeef4; border:1px solid #ffffff20; border-radius:10px; padding:12px; box-shadow:0 12px 36px #0005; }
+#bento-trans-dialog.stage-transition-popup[hidden] { display:none !important; }
+.stage-transition-popup-heading { font-size:12px; font-weight:600; margin-bottom:10px; }
+.stage-transition-options { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.stage-transition-popup button { font:inherit; font-size:11px; color:inherit; background:transparent; border:1px solid #8883; border-radius:6px; padding:9px; cursor:pointer; transition:none; }
+.stage-transition-popup button.active { background:#8a6dff20; border-color:#8a6dff; }
+.stage-transition-popup button:hover { background:#8a6dff18; }
+.stage-transition-popup-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid #8883; font-size:11px; }
+.stage-transition-popup-footer input { width:48px; padding:5px; font:inherit; color:inherit; background:transparent; border:1px solid #8885; border-radius:4px; }
+.stage-transition-popup :is(button,input):focus-visible { outline:2px solid #a88aff; outline-offset:1px; }
+:is(:root[data-theme-mode="light"],body[data-theme-mode="light"]) > #bento-trans-dialog.stage-transition-popup,
+body[data-theme-mode="light"] #bento-trans-dialog.stage-transition-popup { background:#fff; color:#302c3c; border-color:#dedbe6; }
+.stage-transition-speed-options { display:flex; gap:4px; }
+.stage-transition-popup .stage-transition-speed-options button { padding:7px 8px; font-size:10px; }
+.stage-transition-popup .stage-transition-speed-options button:disabled { opacity:.4; cursor:default; }
+.stage-transition-popup-footer { flex-wrap:wrap; }
+.stage-transition-popup .stage-transition-options .bento-trans-option { display:flex; align-items:center; gap:8px; text-align:left; }
+.stage-effect-icon { display:flex; align-items:center; justify-content:center; flex-shrink:0; width:24px; height:24px; border-radius:5px; background:#8a6dff12; color:#ac94f4; }
+.stage-effect-icon svg { width:15px; height:15px; }
+.stage-transition-popup .stage-transition-speed-options { gap:3px; }
+.stage-transition-popup .stage-transition-speed-options button { padding:6px; }
+:is(:root[data-theme-mode="light"],body[data-theme-mode="light"]) .stage-effect-icon { color:#7048d8; }

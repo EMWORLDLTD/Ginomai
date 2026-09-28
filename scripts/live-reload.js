@@ -11,9 +11,9 @@ module.exports = function createLiveReload(root) {
     if (!filename) return;
     const file = filename.toString().replace(/\\/g, '/');
     const parts = file.split('/');
-    if (parts.some(part => part.startsWith('.') || ['node_modules', 'dist', 'release', 'installers', 'archive', 'scratch'].includes(part))) return;
+    if (parts.some(part => part.startsWith('.') || ['node_modules', 'dist', 'release', 'installers', 'archive', 'scratch', 'output', 'backgrounds', 'media'].includes(part))) return;
     if (!/\.(html|css|js|json|svg|png|jpe?g|webp|gif|woff2?|mp4|webm)$/i.test(file)) return;
-    if (file === 'server.js' || file.startsWith('scripts/') || file.startsWith('electron/') || file.startsWith('lib/') || file.startsWith('tests/')) return;
+    if (file === 'server.js' || file.startsWith('scripts/') || file.startsWith('electron/') || file.startsWith('lib/') || file.startsWith('tests/') || file.startsWith('output/') || file.startsWith('backgrounds/') || file.startsWith('media/')) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
       revision = `${Date.now()}`;

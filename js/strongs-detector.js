@@ -1,4 +1,4 @@
-// Ginomia Pro - High-Speed Greek & Hebrew Concordance Lexicon Detector
+// Ginomia - High-Speed Greek & Hebrew Concordance Lexicon Detector
 'use strict';
 
 (function() {
@@ -80,7 +80,7 @@
   const STRONGS_ID_REGEX = /\b(?:strong(?:'s)?\s+)?([HG]\d{1,5})\b/i;
 
   // Context cues pattern: "the greek word", "in greek", "the hebrew word", "in hebrew"
-  const CONTEXT_CUE_REGEX = /\b(?:greek|hebrew|word\s+for|in\s+the\s+greek|in\s+the\s+hebrew|original\s+greek|original\s+hebrew)\b/i;
+  const CONTEXT_CUE_REGEX = /\b(?:greek|hebrew|in\s+the\s+greek|in\s+the\s+hebrew|original\s+greek|original\s+hebrew)\b/i;
 
   window.detectConcordanceTerms = function(rawText) {
     if (!rawText || typeof rawText !== 'string') return [];
@@ -100,15 +100,6 @@
         if (matchEntry) {
           detected.push(matchEntry);
           detectedIds.add(matchEntry.id);
-        } else {
-          detected.push({
-            id: cleaned,
-            lemma: cleaned,
-            translit: cleaned,
-            lang: cleaned.startsWith('H') ? 'Hebrew' : 'Greek',
-            def: `Strong's Concordance ${cleaned}`
-          });
-          detectedIds.add(cleaned);
         }
       }
     }
@@ -123,11 +114,8 @@
 
       const entry = KEYWORD_MAP.get(w);
       if (entry && !detectedIds.has(entry.id)) {
-        // If it's a high-uniqueness term (e.g. agape, dunamis, koinonia, shalom, ruach), accept directly.
-        // Otherwise, if common English word or ambiguity, require context cue.
-        const isDistinctBiblicalTerm = ['agape', 'phileo', 'dunamis', 'rhema', 'koinonia', 'parakletos', 'metanoia', 'sozo', 'shalom', 'chesed', 'ruach', 'elohim', 'yahweh', 'adonai', 'shema', 'kadosh', 'berith', 'hallelujah', 'shekinah', 'kaphar', 'yeshuah', 'rapha', 'chokmah'].includes(w);
-
-        if (isDistinctBiblicalTerm || hasContext) {
+        // Require a nearby language-study cue; worship vocabulary alone is insufficient.
+        if (hasContext && words.slice(Math.max(0,i-6),i+7).includes(entry.lang.toLowerCase())) {
           detected.push(entry);
           detectedIds.add(entry.id);
         }

@@ -3,13 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ginomia Pro — The Word in Motion</title>
+  <title>Ginomia — The Word in Motion</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Didact+Gothic&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/main.css?v=20260903-05">
   <link rel="stylesheet" href="css/bento-theme.css?v=20260903-13">
   <link rel="stylesheet" href="css/interaction.css?v=20260903-13">
+  <link rel="stylesheet" href="css/song-editor.css?v=20260927-01">
+  <link rel="stylesheet" href="css/library-manager.css?v=20260927-01">
+  <link rel="stylesheet" href="css/broadcast-hub.css?v=20260927-01">
+  <link rel="stylesheet" href="css/stage-preview.css?v=20260927-01">
   <script src="js/accessibility.js"></script>
   <style id="sf-deck-grid-guarantee">
     .bento-single-deck:not(:has(> .bento-empty-unit.hero)),
@@ -24,11 +28,14 @@
     }
   </style>
   <script src="js/theme-manager.js"></script>
+  <script src="js/sanctuary-media.js"></script>
   <script src="js/bible-db.js"></script>
   <script src="js/songs-db.js"></script>
   <script src="js/import-engine.js"></script>
   <script src="js/custom-dialog.js"></script>
   <script src="js/session-manager.js"></script>
+  <script src="js/auto-projection-policy.js"></script>
+  <script src="js/detection-cards.js"></script>
   <script src="js/speech-ai.js"></script>
   <script src="js/strongs-detector.js"></script>
   <script src="js/sermon-transcript.js"></script>
@@ -36,14 +43,14 @@
 </head>
 <body data-theme-style="bento" data-theme-mode="dark">
 
-  <!-- BENTO STUDIO PRO LAYOUT ROOT (Matches Styles/scriptureflow-studio-full.html) -->
+  <!-- BENTO STUDIO LAYOUT ROOT (Matches Styles/scriptureflow-studio-full.html) -->
   <div id="bento-layout-root" class="bento-app">
 
     <!-- TOP BAR -->
     <div class="bento-topbar">
       <div class="bento-brand">
         <div class="bento-logo">G</div>
-        <div class="bento-brand-name">Ginomia Pro</div>
+        <div class="bento-brand-name">Ginomia</div>
         <div class="bento-pro-badge">THE WORD IN MOTION</div>
       </div>
 <button type="button" class="bento-cmdk" onclick="openCommandPalette()" title="Jump to verse or song (Ctrl+K)">
@@ -198,15 +205,16 @@
               <span id="bento-active-version-label">NIV</span>
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
               <!-- Custom Search Dialog Popover for Translation Picker -->
-              <div id="translation-dropdown-dialog" class="custom-search-dialog" style="right:0; left:auto; width:260px; z-index:1000;" onclick="event.stopPropagation()">
+              <div id="translation-dropdown-dialog" class="custom-search-dialog" style="right:0; left:auto; width:240px; z-index:1000;" onclick="event.stopPropagation()">
                 <div class="dialog-search-header">
-                  <input type="text" id="translation-search-input" class="dialog-search-input" placeholder="Search Bible version..." autocomplete="off">
+                  <label class="translation-picker-label" for="translation-search-input">Bible translation</label>
+                  <input type="text" id="translation-search-input" class="dialog-search-input" placeholder="Search name or abbreviation…" autocomplete="off">
                 </div>
                 <div id="translation-options-list" class="dialog-options-list"></div>
-                <div class="dialog-footer-action" onclick="openImportModal(); switchImportSubTab('bibles'); closeTranslationDropdown();">
+                <button type="button" class="dialog-footer-action" onclick="openImportModal(); switchImportSubTab('bibles'); closeTranslationDropdown();">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                  <span>+ Add / Manage Translations</span>
-                </div>
+                  <span>Manage translations</span>
+                </button>
               </div>
             </div>
           </div>
@@ -239,7 +247,7 @@
               <div class="t" id="bento-deck-title">Worship medley</div>
               <div class="s" id="bento-deck-sub">3 songs loaded · lyrics view</div>
             </div>
-            <div class="bento-tbtn" id="bento-strongs-btn" onclick="toggleStrongsMode()" title="Toggle Strong's Greek/Hebrew Concordance (Alt+S)">
+            <div class="bento-tbtn" id="bento-strongs-btn" onclick="toggleStrongsMode()" title="Toggle Strong's Greek/Hebrew Concordance (Alt+S)" style="display: none;">
               <span class="sf-strong-icon">S</span>
               <span>Strong</span>
             </div>
@@ -250,6 +258,10 @@
             <div class="bento-tbtn" id="bento-edit-btn" onclick="openSongEditor(state.activeSongId)">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
               Edit song
+            </div>
+            <div class="bento-tbtn" id="bento-add-song-btn" onclick="openNewSongModal()" title="Add / Create new song (Ctrl+N)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>New song</span>
             </div>
             <div class="bento-seg" id="bento-cols-seg" title="Columns layout">
               <span data-cols="1" class="active" onclick="setBentoSingleCols(1)" title="Single column list">1 Col</span>
@@ -294,174 +306,18 @@
             </div>
             <div class="bento-prev-top-cluster">
               <!-- Custom Stage Transition Dialog & Trigger -->
-              <div class="bento-trans-dropdown-wrapper" id="bento-trans-wrapper">
-                <button type="button" class="bento-trans-btn-trigger" id="bento-trans-trigger" onclick="toggleTransitionDialog(event)" title="Select slide transition effect and timing">
-                  <span class="bento-trans-icon-wrap" id="bento-stage-trans-icon">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
-                  </span>
-                  <span class="bento-trans-name" id="bento-stage-trans-label">Fade</span>
-                  <svg class="bento-trans-arrow" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
 
-                <!-- Custom Floating Transition Dialog -->
-                <div class="bento-trans-dialog" id="bento-trans-dialog" onclick="event.stopPropagation()">
-                  <div class="bento-trans-dialog-header">
-                    <div class="bento-trans-dialog-title">Slide Transition</div>
-                    <span class="bento-trans-dialog-badge" id="bento-trans-speed-badge">300ms</span>
-                  </div>
-
-                  <!-- Transition Options Grid -->
-                  <div class="bento-trans-dialog-grid">
-                    <div class="bento-trans-option active" data-type="fade" onclick="selectTransitionOption('fade')">
-                      <div class="bento-trans-opt-icon">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
-                      </div>
-                      <div class="bento-trans-opt-text">
-                        <div class="bento-trans-opt-name">Crossfade</div>
-                        <div class="bento-trans-opt-sub">Smooth dissolve</div>
-                      </div>
-                      <svg class="bento-trans-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-
-                    <div class="bento-trans-option" data-type="zoom-in" onclick="selectTransitionOption('zoom-in')">
-                      <div class="bento-trans-opt-icon">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                      </div>
-                      <div class="bento-trans-opt-text">
-                        <div class="bento-trans-opt-name">Zoom In</div>
-                        <div class="bento-trans-opt-sub">Zoom through</div>
-                      </div>
-                      <svg class="bento-trans-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-
-                    <div class="bento-trans-option" data-type="zoom-out" onclick="selectTransitionOption('zoom-out')">
-                      <div class="bento-trans-opt-icon">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                      </div>
-                      <div class="bento-trans-opt-text">
-                        <div class="bento-trans-opt-name">Zoom Out</div>
-                        <div class="bento-trans-opt-sub">Settle in view</div>
-                      </div>
-                      <svg class="bento-trans-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-
-                    <div class="bento-trans-option" data-type="slide-left" onclick="selectTransitionOption('slide-left')">
-                      <div class="bento-trans-opt-icon">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-                      </div>
-                      <div class="bento-trans-opt-text">
-                        <div class="bento-trans-opt-name">Slide Left</div>
-                        <div class="bento-trans-opt-sub">Right to left push</div>
-                      </div>
-                      <svg class="bento-trans-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-
-                    <div class="bento-trans-option" data-type="slide-right" onclick="selectTransitionOption('slide-right')">
-                      <div class="bento-trans-opt-icon">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                      </div>
-                      <div class="bento-trans-opt-text">
-                        <div class="bento-trans-opt-name">Slide Right</div>
-                        <div class="bento-trans-opt-sub">Left to right push</div>
-                      </div>
-                      <svg class="bento-trans-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-
-                    <div class="bento-trans-option" data-type="slide-up" onclick="selectTransitionOption('slide-up')">
-                      <div class="bento-trans-opt-icon">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-                      </div>
-                      <div class="bento-trans-opt-text">
-                        <div class="bento-trans-opt-name">Slide Up</div>
-                        <div class="bento-trans-opt-sub">Bottom to top rise</div>
-                      </div>
-                      <svg class="bento-trans-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-
-                    <div class="bento-trans-option" data-type="slide-down" onclick="selectTransitionOption('slide-down')">
-                      <div class="bento-trans-opt-icon">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
-                      </div>
-                      <div class="bento-trans-opt-text">
-                        <div class="bento-trans-opt-name">Slide Down</div>
-                        <div class="bento-trans-opt-sub">Top to bottom drop</div>
-                      </div>
-                      <svg class="bento-trans-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-
-                    <div class="bento-trans-option" data-type="cut" onclick="selectTransitionOption('cut')">
-                      <div class="bento-trans-opt-icon">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                      </div>
-                      <div class="bento-trans-opt-text">
-                        <div class="bento-trans-opt-name">Cut</div>
-                        <div class="bento-trans-opt-sub">Instant switch</div>
-                      </div>
-                      <svg class="bento-trans-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-                  </div>
-
-                  <!-- Speed Duration Controls & Test Action in Dialog -->
-                  <div class="bento-trans-dialog-footer">
-                    <div class="bento-trans-speed-row">
-                      <span class="bento-trans-speed-label">Speed:</span>
-                      <div class="bento-trans-speed-group">
-                        <button type="button" class="bento-trans-speed-btn" data-dur="150" onclick="setTransitionDurationSetting(150)" title="Low (150ms)">
-                          <svg class="bento-speed-icon" width="9" height="10" viewBox="0 0 9 10" fill="currentColor">
-                            <rect x="0" y="6" width="2" height="4" rx="0.75"/>
-                            <rect x="3.5" y="3" width="2" height="7" rx="0.75" opacity="0.25"/>
-                            <rect x="7" y="0" width="2" height="10" rx="0.75" opacity="0.25"/>
-                          </svg>
-                          <span>Low</span>
-                        </button>
-                        <button type="button" class="bento-trans-speed-btn active" data-dur="300" onclick="setTransitionDurationSetting(300)" title="Medium (300ms)">
-                          <svg class="bento-speed-icon" width="9" height="10" viewBox="0 0 9 10" fill="currentColor">
-                            <rect x="0" y="6" width="2" height="4" rx="0.75"/>
-                            <rect x="3.5" y="3" width="2" height="7" rx="0.75"/>
-                            <rect x="7" y="0" width="2" height="10" rx="0.75" opacity="0.25"/>
-                          </svg>
-                          <span>Med</span>
-                        </button>
-                        <button type="button" class="bento-trans-speed-btn" data-dur="600" onclick="setTransitionDurationSetting(600)" title="High (600ms)">
-                          <svg class="bento-speed-icon" width="9" height="10" viewBox="0 0 9 10" fill="currentColor">
-                            <rect x="0" y="6" width="2" height="4" rx="0.75"/>
-                            <rect x="3.5" y="3" width="2" height="7" rx="0.75"/>
-                            <rect x="7" y="0" width="2" height="10" rx="0.75"/>
-                          </svg>
-                          <span>High</span>
-                        </button>
-                      </div>
-                    </div>
-                    <button type="button" class="bento-trans-test-btn" onclick="testLiveTransitionEffect()" title="Test transition effect">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                      <span>Test</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
               <div class="bento-live-cluster idle" id="bento-live-status"><i></i>IDLE</div>
             </div>
           </div>
           <div class="bento-prev-mode-row">
             <div class="bento-seg" id="bento-prev-mode-seg" role="group" aria-label="Stage preview layout">
-              <span id="bento-prev-mode-full" class="active" role="button" aria-pressed="true" onclick="setPreviewTargetMode('sanctuary')" title="Full-screen Sanctuary output">Full</span>
-              <span id="bento-prev-mode-lt" role="button" aria-pressed="false" onclick="setPreviewTargetMode('livestream')" title="Lower-third livestream overlay">Lower third</span>
-              <span id="bento-prev-mode-dual" role="button" aria-pressed="false" onclick="setPreviewTargetMode('dual')" title="Show both outputs">Dual</span>
+              <button type="button" id="bento-prev-mode-full" class="active" role="button" aria-pressed="true" onclick="setPreviewTargetMode('sanctuary')" title="Full-screen Sanctuary output">Full screen</button>
+              <button type="button" id="bento-prev-mode-lt" role="button" aria-pressed="false" onclick="setPreviewTargetMode('livestream')" title="Lower-third livestream overlay">Lower third</button>
+              <button type="button" id="bento-prev-mode-dual" role="button" aria-pressed="false" onclick="setPreviewTargetMode('dual')" title="Show both outputs">Dual</button>
             </div>
           </div>
-          <div class="bento-prev-status-row">
-            <div class="sf-output-status" aria-label="Display connections" role="status">
-              <span id="sanctuary-connection">Sanctuary: checking…</span>
-              <span id="livestream-connection">Stream: checking…</span>
-            </div>
-            <div class="bento-zoom" title="Adjust text scaling"><b onclick="adjustTextScale(-0.1)">−</b><span id="bento-textscale-label">1.0x</span><b onclick="adjustTextScale(0.1)">+</b></div>
-          </div>
-            <div class="sf-prepared" id="prepared-slide" hidden>
-              <strong id="prepared-reference">Preview</strong>
-              <p id="prepared-text"></p>
-              <button class="sf-action" type="button" onclick="takePreparedSlide()">Take live</button>
-              <button class="sf-action" type="button" onclick="cancelPreparedSlide()">Cancel</button>
-            </div>
+
           <div class="bento-prev-box-wrapper">
             <div class="bento-prev-box" id="bento-preview-box">
               <!-- Single Mode View -->
@@ -511,24 +367,41 @@
           <div class="bento-stage-actions">
             <button type="button" class="bento-sbtn clear" onclick="clearAllOutputs()" title="Clear projected text from outputs (Panic / F1)">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-              <span>Clear</span>
+              <span>Clear text</span>
             </button>
             <button type="button" class="bento-sbtn hold" id="bento-hold-btn" onclick="toggleHoldLive()" title="Hold current slide live">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               <span class="btn-label">Hold</span>
             </button>
-            <button type="button" class="bento-sbtn trans" id="bento-trans-btn" onclick="toggleTransparencyLive()" title="Toggle transparent background for OBS overlay">
+          <button type="button" class="bento-sbtn trans" id="bento-trans-btn" onclick="toggleTransparencyLive()" title="Toggle transparent background for OBS overlay">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-              <span>Trans</span>
-            </button>
-            <button type="button" class="bento-sbtn theme" id="bento-theme-btn" onclick="openSanctuaryThemeModal()" title="Sanctuary Visual Themes & Fonts">
+              <span>Transparent</span>
+            </button><button type="button" class="bento-sbtn theme" id="bento-theme-btn" onclick="openSanctuaryThemeModal()" title="Sanctuary Visual Themes & Fonts">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
               <span>Themes</span>
-            </button>
+            </button></div>
+          <section id="stage-appearance-panel" aria-label="Preview controls">
+            <div class="stage-appearance-row"><span>Text size</span><div class="bento-zoom" title="Adjust text scaling"><button type="button" aria-label="Decrease text size" onclick="adjustTextScale(-0.1)">−</button><span id="bento-textscale-label">1.0x</span><button type="button" aria-label="Increase text size" onclick="adjustTextScale(0.1)">+</button></div></div>
+
+            <div id="bento-trans-wrapper" class="stage-transition-picker">
+              <button type="button" id="bento-trans-trigger" aria-expanded="false" aria-controls="bento-trans-dialog" onclick="toggleTransitionDialog(event)" title="Slide transition"><span id="bento-stage-trans-label">Crossfade</span><span aria-hidden="true">⌄</span></button>
+              <div id="bento-trans-dialog" class="stage-transition-popup" role="dialog" aria-label="Slide transition" hidden onclick="event.stopPropagation()">
+                <div class="stage-transition-popup-heading">Slide transition</div>
+                <div class="stage-transition-options"><button type="button" class="bento-trans-option" data-type="fade" onclick="selectTransitionOption('fade')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg></span><span>Crossfade</span></button><button type="button" class="bento-trans-option" data-type="zoom-in" onclick="selectTransitionOption('zoom-in')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></span><span>Zoom in</span></button><button type="button" class="bento-trans-option" data-type="zoom-out" onclick="selectTransitionOption('zoom-out')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></span><span>Zoom out</span></button><button type="button" class="bento-trans-option" data-type="slide-left" onclick="selectTransitionOption('slide-left')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></span><span>Slide left</span></button><button type="button" class="bento-trans-option" data-type="slide-right" onclick="selectTransitionOption('slide-right')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span><span>Slide right</span></button><button type="button" class="bento-trans-option" data-type="slide-up" onclick="selectTransitionOption('slide-up')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></span><span>Slide up</span></button><button type="button" class="bento-trans-option" data-type="slide-down" onclick="selectTransitionOption('slide-down')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span><span>Slide down</span></button><button type="button" class="bento-trans-option" data-type="cut" onclick="selectTransitionOption('cut')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span><span>Cut</span></button></div>
+                <div class="stage-transition-popup-footer"><div class="stage-transition-speed-options" role="group" aria-label="Transition speed"><button type="button" class="bento-trans-speed-btn" data-dur="150" onclick="setTransitionDurationSetting(150)" title="150 milliseconds">Fast</button><button type="button" class="bento-trans-speed-btn" data-dur="300" onclick="setTransitionDurationSetting(300)" title="300 milliseconds">Normal</button><button type="button" class="bento-trans-speed-btn" data-dur="500" onclick="setTransitionDurationSetting(500)" title="500 milliseconds">Smooth</button><button type="button" class="bento-trans-speed-btn" data-dur="800" onclick="setTransitionDurationSetting(800)" title="800 milliseconds">Slow</button></div><button type="button" onclick="testLiveTransitionEffect()" title="Test on live outputs">Test</button></div>
+              </div>
+            </div>
+          </section>
+          <div class="bento-prev-status-row">
+            <div class="sf-output-status" aria-label="Display connections" role="status">
+              <span id="sanctuary-connection">Sanctuary: checking…</span>
+              <span id="livestream-connection">Stream: checking…</span>
+            </div>
+
           </div>
         </div>
 
-        <!-- Resizable Splitter between Stage Preview & AI Feed in Right Column -->
+<!-- Resizable Splitter between Stage Preview & AI Feed in Right Column -->
         <div class="bento-prev-resizer" id="bento-resizer-preview" title="Drag up/down to resize Preview / AI Feed height (Double-click to reset)"><i></i><i></i><i></i></div>
 
         <div class="bento-card bento-feed-card" id="bento-feed-card">
@@ -624,83 +497,133 @@
 
   <!-- Sanctuary Presentation Theme Palette & Display Settings Modal -->
   <div id="sanctuary-theme-modal-backdrop" class="modal-backdrop" style="display:none;" onclick="if(event.target===this) closeSanctuaryThemeModal()">
-    <div class="sanctuary-theme-modal-card" onclick="event.stopPropagation()">
+    <div class="sanctuary-theme-modal-card" role="dialog" aria-modal="true" aria-labelledby="sanctuary-modal-heading" onclick="event.stopPropagation()">
       <div class="sanctuary-modal-header">
         <div class="sanctuary-modal-title">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a6dff" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"/></svg>
-          <span>SANCTUARY PRESENTATION THEMES</span>
+          <div><span class="sanctuary-eyebrow">SANCTUARY DISPLAY</span><h2 id="sanctuary-modal-heading">Set the atmosphere</h2><p>Choose a background. Make every word stand out.</p></div>
         </div>
-        <button type="button" class="sanctuary-modal-close" onclick="closeSanctuaryThemeModal()" title="Close (Esc)">✕</button>
+        <button type="button" class="sanctuary-modal-close" onclick="closeSanctuaryThemeModal()" aria-label="Close presentation settings" title="Close (Esc)">✕</button>
       </div>
 
+      <div class="sanctuary-settings-layout">
+      <section class="sanctuary-background-panel" aria-label="Background library">
+      <div class="sanctuary-section-heading">Background library <button type="button" class="sanctuary-upload-button" id="sanctuary-upload-button" onclick="document.getElementById('sanctuary-upload-input').click()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/></svg>Upload background</button></div>
+      <input id="sanctuary-upload-input" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.avif,.mp4,.webm,.mov,.m4v,.ogv" multiple hidden onchange="uploadSanctuaryBackgrounds(this)">
+      <p class="sanctuary-upload-status" id="sanctuary-upload-status" role="status" aria-live="polite">Images, GIFs and videos · Up to 250 MB each · Videos loop without sound</p>
       <!-- Category Filter Tabs -->
       <div class="sanctuary-cat-tabs">
-        <span class="sanctuary-cat-tab active" data-cat="all" onclick="filterSanctuaryThemes('all')">All Themes</span>
-        <span class="sanctuary-cat-tab" data-cat="motion" onclick="filterSanctuaryThemes('motion')">Motion (WebM)</span>
-        <span class="sanctuary-cat-tab" data-cat="still" onclick="filterSanctuaryThemes('still')">Still (WebP)</span>
-        <span class="sanctuary-cat-tab" data-cat="minimal" onclick="filterSanctuaryThemes('minimal')">Minimal / LED</span>
+        <span class="sanctuary-tab-indicator" aria-hidden="true"></span>
+        <button type="button" class="sanctuary-cat-tab active" data-cat="all" aria-pressed="true" onclick="filterSanctuaryThemes('all')">All backgrounds</button>
+        <button type="button" class="sanctuary-cat-tab" data-cat="motion" aria-pressed="false" onclick="filterSanctuaryThemes('motion')">Motion</button>
+        <button type="button" class="sanctuary-cat-tab" data-cat="still" aria-pressed="false" onclick="filterSanctuaryThemes('still')">Still</button>
+        <button type="button" class="sanctuary-cat-tab" data-cat="uploads" aria-pressed="false" onclick="filterSanctuaryThemes('uploads')">Custom</button>
+        <button type="button" class="sanctuary-cat-tab" data-cat="minimal" aria-pressed="false" onclick="filterSanctuaryThemes('minimal')">Minimal</button>
       </div>
 
       <!-- Themes Grid (3 columns on wide modal) -->
       <div class="sanctuary-modal-themes-grid" id="sanctuary-themes-grid"></div>
 
-      <!-- Background Dimmer & Contrast Slider -->
-      <div class="sanctuary-control-section">
-        <div class="sanctuary-control-header">
-          <span>Background Ambient Dimmer (Projector Contrast)</span>
-          <span class="sanctuary-control-val" id="sanctuary-dimmer-val">30%</span>
+      </section>
+      <aside class="sanctuary-output-panel" aria-label="Output settings">
+        <div class="sanctuary-preview-sticky-wrap">
+          <div class="sanctuary-section-heading">Fine-tune your display</div>
+          <div class="sanctuary-control-header">
+            <label for="sanctuary-preview-ratio">Theme preview</label>
+            <select id="sanctuary-preview-ratio" onchange="updateSanctuaryFramingPreview()">
+              <option value="16/9">16:9</option>
+              <option value="4/3">4:3</option>
+              <option value="1/1">1:1</option>
+            </select>
+          </div>
+          <div class="sanctuary-framing-preview" id="sanctuary-framing-preview">
+            <img id="sanctuary-framing-image" alt="Selected background framing" hidden>
+            <video id="sanctuary-framing-video" muted loop playsinline preload="auto" autoplay hidden></video>
+            <div id="sanctuary-framing-dimmer" class="sanctuary-framing-dimmer"></div>
+            <div id="sanctuary-framing-text" class="sanctuary-framing-text">Amazing grace<br>How sweet the sound</div>
+            <span>Preview only</span>
+          </div>
+          <p id="sanctuary-source-dimensions" class="sanctuary-control-hint" style="margin: 6px 0 0;">Output automatically follows your screen.</p>
         </div>
-        <input type="range" min="0" max="80" step="5" value="30" class="sanctuary-dimmer-slider" id="sanctuary-dimmer-slider" oninput="onSanctuaryDimmerChange(this.value)">
-      </div>
 
-      <!-- Livestream & OBS Broadcast Mode Rule -->
-      <div class="sanctuary-control-section">
-        <div class="sanctuary-control-header">
-          <span>Livestream / OBS Broadcast Layout</span>
-          <select id="obs-mode-rule-select" onchange="onObsModeRuleChange(this.value)" style="background:#13121a; color:#fff; border:1px solid rgba(255,255,255,0.18); border-radius:6px; padding:3px 8px; font-size:11px; font-weight:600; outline:none; cursor:pointer;">
-            <option value="follow">Follow Studio Toggle (Dynamic)</option>
-            <option value="always_full">Always Full Screen (Mirror Sanctuary)</option>
-            <option value="always_lt">Always Lower-Third Overlay</option>
-          </select>
-        </div>
-        <div style="font-size:10px; color:var(--mute, #8e8c99); line-height:1.4;">
-          Controls how display outputs with <code style="color:#c3b6ff; background:rgba(138,109,255,0.12); padding:1px 4px; border-radius:3px;">target=obs</code> render in OBS Studio & vMix.
-        </div>
-      </div>
+        <div class="sanctuary-output-controls-scroll">
+          <div class="sanctuary-control-section">
+            <div class="sanctuary-control-header">
+              <label for="sanctuary-media-fit">Background sizing</label>
+            </div>
+            <select id="sanctuary-media-fit" onchange="window.themeManager.setSanctuaryFit(this.value)">
+              <option value="cover">Fill — crop edges</option>
+              <option value="contain">Fit — show whole file</option>
+              <option value="fill">Stretch — fill without cropping</option>
+            </select>
+            <p id="sanctuary-fit-hint" class="sanctuary-control-hint">Fills any screen. Edges may be cropped.</p>
+            <button type="button" id="sanctuary-delete-selected-btn" class="sanctuary-delete-selected-btn" onclick="window.deleteSelectedSanctuaryBackground()" style="display:none;" title="Delete this uploaded file" aria-label="Delete this uploaded background">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <span>Delete this background</span>
+            </button>
+          </div>
 
-      <!-- Big-Screen Projection Font Family -->
-      <div class="sanctuary-control-section">
-        <div class="sanctuary-control-header">
-          <span>Sanctuary Big-Screen Typography</span>
+          <!-- Background Dimmer & Contrast Slider -->
+          <div class="sanctuary-control-section">
+            <div class="sanctuary-control-header">
+              <label for="sanctuary-dimmer-slider">Background dimmer</label>
+              <span class="sanctuary-control-val" id="sanctuary-dimmer-val">30%</span>
+            </div>
+            <input type="range" min="0" max="80" step="5" value="30" class="sanctuary-dimmer-slider" id="sanctuary-dimmer-slider" oninput="onSanctuaryDimmerChange(this.value)">
+            <p class="sanctuary-control-hint" style="margin-top: 6px; margin-bottom: 0;">Soften the background to keep your text readable.</p>
+          </div>
+
+          <!-- Livestream & OBS Broadcast Mode Rule -->
+          <div class="sanctuary-control-section">
+            <div class="sanctuary-control-header">
+              <label for="obs-mode-rule-select">Broadcast layout</label>
+            </div>
+            <select id="obs-mode-rule-select" onchange="onObsModeRuleChange(this.value)">
+              <option value="follow">Follow studio</option>
+              <option value="always_full">Full screen</option>
+              <option value="always_lt">Lower third</option>
+            </select>
+            <p class="sanctuary-control-hint" style="margin-top: 6px; margin-bottom: 0;">Layout for your OBS Studio and vMix output.</p>
+          </div>
+
+          <!-- Big-Screen Projection Font Family -->
+          <div class="sanctuary-control-section">
+            <div class="sanctuary-control-header">
+              <span>Projection typography</span>
+            </div>
+            <div class="sanctuary-font-group">
+              <button type="button" class="sanctuary-font-btn active" data-font="Outfit" onclick="onSanctuaryFontChange('Outfit')"><span class="sanctuary-font-sample" style="font-family:'Outfit', serif">Aa</span>Outfit</button>
+              <button type="button" class="sanctuary-font-btn" data-font="Cormorant Garamond" onclick="onSanctuaryFontChange('Cormorant Garamond')"><span class="sanctuary-font-sample" style="font-family:'Cormorant Garamond', serif">Aa</span>Cormorant</button>
+              <button type="button" class="sanctuary-font-btn" data-font="Cinzel" onclick="onSanctuaryFontChange('Cinzel')"><span class="sanctuary-font-sample" style="font-family:'Cinzel', serif">Aa</span>Cinzel</button>
+              <button type="button" class="sanctuary-font-btn" data-font="Inter" onclick="onSanctuaryFontChange('Inter')"><span class="sanctuary-font-sample" style="font-family:'Inter', serif">Aa</span>Inter</button>
+              <button type="button" class="sanctuary-font-btn" data-font="Century Gothic" onclick="onSanctuaryFontChange('Century Gothic')"><span class="sanctuary-font-sample" style="font-family:'Century Gothic', 'CenturyGothic', AppleGothic, 'Didact Gothic', sans-serif">Aa</span>Century Gothic</button>
+            </div>
+          </div>
         </div>
-        <div class="sanctuary-font-group">
-          <button type="button" class="sanctuary-font-btn active" data-font="Outfit" onclick="onSanctuaryFontChange('Outfit')">Outfit (Modern Clean)</button>
-          <button type="button" class="sanctuary-font-btn" data-font="Cormorant Garamond" onclick="onSanctuaryFontChange('Cormorant Garamond')">Cormorant (Hymnal Serif)</button>
-          <button type="button" class="sanctuary-font-btn" data-font="Cinzel" onclick="onSanctuaryFontChange('Cinzel')">Cinzel (Classical Stone)</button>
-          <button type="button" class="sanctuary-font-btn" data-font="Inter" onclick="onSanctuaryFontChange('Inter')">Inter (Technical Precision)</button>
-        </div>
+      </aside>
       </div>
+      <footer class="sanctuary-modal-footer"><span id="sanctuary-draft-status" role="status">Preview changes here. Apply when ready.</span><div class="sanctuary-footer-actions"><button type="button" class="sanctuary-cancel-button" onclick="closeSanctuaryThemeModal()">Cancel</button><button type="button" id="sanctuary-apply-button" disabled onclick="window.themeManager.applySanctuaryDraft(); closeSanctuaryThemeModal()">Apply</button></div></footer>
     </div>
   </div>
 
   <!-- Broadcast & Remote Hub Modal (Wide & Minimalist) -->
   <div id="links-modal-backdrop" class="modal-backdrop">
-    <div class="links-modal" style="padding:22px 26px; max-width:660px; width:92%; border-radius:16px;">
+    <div class="links-modal" role="dialog" aria-modal="true" aria-labelledby="broadcast-hub-heading" style="padding:22px 26px; max-width:660px; width:92%; border-radius:16px;">
       
       <!-- Top Header (Single Clean Eyebrow Header like SERVICE AGENDA) -->
       <div class="links-modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:10px;">
         <div style="display:flex; align-items:center; gap:8px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2.5"><path d="M2 16.1A5 5 0 0 1 5.9 20"/><path d="M2 12.05A9 9 0 0 1 9.95 20"/><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><line x1="2" y1="20" x2="2.01" y2="20"/></svg>
-          <span class="links-modal-title" style="font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">BROADCAST & REMOTE HUB</span>
+          <span id="broadcast-hub-heading" class="links-modal-title" style="font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Broadcast & remote</span>
         </div>
 
         <div style="display:flex; align-items:center; gap:8px;">
           <span id="hub-operators-badge" style="display:none; font-family:var(--font-mono); font-size:9.5px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:#86EFAC; background:rgba(34,197,94,0.12); padding:2px 8px; border-radius:var(--radius-pill);">0 ONLINE</span>
 
           <div class="links-modal-ip-pill" style="display:flex; align-items:center; gap:5px; font-family:var(--font-mono); font-size:10.5px; padding:2px 9px; border-radius:var(--radius-pill);">
-            <span style="width:5px; height:5px; border-radius:50%; background:#10B981; flex-shrink:0;"></span>
+
             <span class="links-modal-ip-label" style="font-size:9.5px; font-weight:600; letter-spacing:0.04em;">IP</span>
-            <input type="text" id="lan-ip-input" class="links-modal-ip-input" placeholder="192.168.x.x" style="width:96px; font-size:10.5px; font-weight:500; font-family:var(--font-mono); background:transparent; border:none; outline:none;" oninput="updateLanIpHost(this.value.trim())">
+            <input type="text" id="lan-ip-input" class="links-modal-ip-input" aria-label="Local network IP address" placeholder="192.168.x.x" style="width:96px; font-size:10.5px; font-weight:500; font-family:var(--font-mono); background:transparent; border:none; outline:none;" oninput="updateLanIpHost(this.value.trim())">
             <span class="links-modal-ip-reset" style="cursor:pointer; font-size:11px;" onclick="resetLanIpHost()" title="Reset to auto-detected IP">↺</span>
           </div>
           <button class="settings-close-btn" onclick="document.getElementById('links-modal-backdrop').classList.remove('open')" title="Close" style="width:26px; height:26px; border-radius:6px;">
@@ -725,8 +648,8 @@
         </div>
       </div>
 
-      <!-- Clean Minimalist Output Rows -->
-      <div style="display:flex; flex-direction:column;">
+      <div class="hub-section-heading"><h2>Connect your screens</h2><p>Choose an output, then copy its link or open a preview.</p></div>
+      <div class="hub-output-grid">
         
         <!-- 1. Smart Stream Sync (OBS & vMix Dynamic) -->
         <div class="links-row" style="padding:11px 4px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
@@ -734,15 +657,15 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2" style="flex-shrink:0;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             <div style="min-width:0;">
               <div style="display:flex; align-items:center; gap:6px;">
-                <span class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">OBS & vMix (Smart Dynamic)</span>
-                <span style="font-size:9px; font-weight:700; background:rgba(167,139,250,0.18); color:#C4B5FD; padding:1px 5px; border-radius:4px; text-transform:uppercase;">Recommended</span>
+                <span class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">OBS & vMix</span>
+
               </div>
-              <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Auto-switches between Full theme & Lower-third as you toggle</div>
+              <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Switches between full screen and lower-third with your live layout.</div>
             </div>
           </div>
           <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
             <button class="hub-action-btn" onclick="copyOutputLink('obs', this)">Copy Link</button>
-            <button class="hub-action-btn icon-only" onclick="openOutputLink('obs')" title="Open in new window">
+            <button class="hub-action-btn icon-only" onclick="openOutputLink('obs')" title="Open in new window" aria-label="Open in new window">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </button>
           </div>
@@ -754,29 +677,29 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2" style="flex-shrink:0;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             <div style="min-width:0;">
               <div class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Sanctuary Projector</div>
-              <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Full 16:9 output with active video/image theme for house displays</div>
+              <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Full-screen lyrics and backgrounds for your sanctuary display.</div>
             </div>
           </div>
           <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
             <button class="hub-action-btn" onclick="copyOutputLink('sanctuary', this)">Copy Link</button>
-            <button class="hub-action-btn icon-only" onclick="openOutputLink('sanctuary')" title="Open in new window">
+            <button class="hub-action-btn icon-only" onclick="openOutputLink('sanctuary')" title="Open in new window" aria-label="Open in new window">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </button>
           </div>
         </div>
 
-        <!-- 3. Fixed Lower-Third Overlay -->
+        <!-- 3. Lower-third overlay -->
         <div class="links-row" style="padding:11px 4px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
           <div style="display:flex; align-items:center; gap:12px; min-width:0;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F472B6" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
             <div style="min-width:0;">
-              <div class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Fixed Lower-Third Overlay</div>
-              <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Permanent lower-third browser source for camera overlay scenes</div>
+              <div class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Lower-third overlay</div>
+              <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">A fixed lower-third for lyrics over your camera feed.</div>
             </div>
           </div>
           <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
             <button class="hub-action-btn" onclick="copyOutputLink('?target=livestream&layout=lt', this)">Copy Link</button>
-            <button class="hub-action-btn icon-only" onclick="openOutputLink('?target=livestream&layout=lt')" title="Open in new window">
+            <button class="hub-action-btn icon-only" onclick="openOutputLink('?target=livestream&layout=lt')" title="Open in new window" aria-label="Open in new window">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </button>
           </div>
@@ -797,7 +720,7 @@
           <div id="hub-remote-actions" style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
             <button id="hub-toggle-session-btn" class="hub-action-btn status-paused" onclick="toggleSession()" title="Start or pause wireless remote session">Start</button>
             <button id="hub-remote-copy-btn" class="hub-action-btn" onclick="copyRemoteControlLink(this)">Copy Link</button>
-            <button id="hub-remote-open-btn" class="hub-action-btn icon-only" onclick="openRemoteControl()" title="Open in new window">
+            <button id="hub-remote-open-btn" class="hub-action-btn icon-only" onclick="openRemoteControl()" title="Open in new window" aria-label="Open in new window">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </button>
             <button id="hub-qr-toggle-btn" class="hub-action-btn" onclick="toggleHubQrCode()" title="Scan QR Code with phone">
@@ -851,7 +774,7 @@
 
   <!-- Import & Cloud Library Manager Modal -->
   <div id="import-modal-backdrop" class="modal-backdrop">
-    <div class="settings-modal-card library-import-modal">
+    <div class="settings-modal-card library-import-modal" role="dialog" aria-modal="true" aria-label="Library Manager">
       
       <!-- Top Header -->
       <div class="settings-header">
@@ -876,7 +799,8 @@
       </div>
 
       <!-- Clean Segmented Navigation Bar -->
-      <div class="import-nav-bar">
+      <div class="import-nav-bar" aria-label="Library sections">
+        <div class="library-nav-caption">YOUR LIBRARY</div>
         <div class="import-nav-tabs">
           <button id="import-tab-btn-files" class="import-nav-tab active" onclick="switchImportSubTab('files')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -894,6 +818,10 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
             <span>Cloud Lyrics</span>
           </button>
+          <button id="import-tab-btn-migrate" class="import-nav-tab" onclick="switchImportSubTab('migrate')" title="Migrate from VideoPsalm, EasyWorship, OpenSong">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16l4-4-4-4"/><path d="M4 12h16"/><path d="M2 19V5a2 2 0 0 1 2-2h8"/></svg>
+            <span>Software Migration</span>
+          </button>
         </div>
       </div>
 
@@ -902,6 +830,7 @@
         
         <!-- SUB TAB 1: FILE IMPORT & DROPZONE -->
         <div id="import-subtab-files" class="import-subtab-pane" style="display:flex; flex-direction:column; gap:16px;">
+          <div class="library-section-heading"><h2>Bring your library together</h2><p>Import songs, Bibles, or a library backup from your computer.</p></div>
           
           <div id="import-dropzone" class="import-dropzone-box" onclick="document.getElementById('import-file-input').click()">
             <input type="file" id="import-file-input" accept=".txt,.json,.xml,.usfm,.sfm,.csv" multiple style="display:none;" onchange="handleUnifiedFileImport(event)">
@@ -935,48 +864,38 @@
 
         <!-- SUB TAB 2: MANUAL SONG ENTRY (SONG CREATOR) -->
         <div id="import-subtab-manual" class="import-subtab-pane" style="display:none; flex-direction:column; gap:12px;">
+          <div class="library-song-scroll">
+          <div class="library-section-heading"><h2>Create a song</h2><p>Write your lyrics and arrange them into presentation slides.</p></div>
           
-          <!-- Title & Author Inline Row -->
-          <div class="import-form-row">
-            <div class="import-input-wrap" style="flex:1.2;">
-              <span class="import-input-label">Title</span>
-              <input type="text" id="import-song-title" class="import-text-field" placeholder="Song Title (e.g. Ageless God)" oninput="updateImportLivePreview()">
+          <div class="library-song-workspace">
+            <div class="library-song-writing">
+              <div class="import-input-wrap">
+                <label for="import-song-title" class="import-input-label">Song title</label>
+                <input type="text" id="import-song-title" class="import-text-field" placeholder="e.g. Amazing Grace" oninput="updateImportLivePreview()">
+              </div>
+              <div class="import-input-wrap">
+                <label for="import-song-author" class="import-input-label">Artist or songbook <span class="library-song-optional">Optional</span></label>
+                <input type="text" id="import-song-author" class="import-text-field" placeholder="e.g. John Newton" oninput="updateImportLivePreview()">
+              </div>
+              <div class="library-song-lyrics">
+                <div class="split-col-header"><label for="import-song-text">Lyrics</label><span class="library-song-hint">Separate slides with a blank line</span></div>
+                <div class="tag-chips-bar">
+                  <span class="tag-chips-label">Add section</span>
+                  <button type="button" class="tag-chip" onclick="insertTagIntoImport('Verse')">+ Verse</button>
+                  <button type="button" class="tag-chip" onclick="insertTagIntoImport('Chorus')">+ Chorus</button>
+                  <button type="button" class="tag-chip" onclick="insertTagIntoImport('Bridge')">+ Bridge</button>
+                  <button type="button" class="tag-chip library-song-auto-format" onclick="autoFormatImportSong()" title="Split lyrics into slides of 2–3 lines">Auto Format</button>
+                </div>
+                <textarea id="import-song-text" class="import-textarea" onscroll="syncSongPreviewScroll(this, 'import-preview-box')" placeholder="[Verse 1]&#10;Amazing grace how sweet the sound&#10;That saved a wretch like me…" oninput="updateImportLivePreview()"></textarea>
+              </div>
             </div>
-            <div class="import-input-wrap" style="flex:1;">
-              <span class="import-input-label">Artist / Author</span>
-              <input type="text" id="import-song-author" class="import-text-field" placeholder="Artist or Writer" oninput="updateImportLivePreview()">
+            <div class="library-song-preview">
+              <div class="split-col-header"><span>Slide preview</span><span id="import-preview-count" class="preview-count-badge">0 slides</span></div>
+              <p class="library-song-preview-caption">Your lyrics, ready for the screen.</p>
+              <div id="import-preview-box" class="import-preview-container"><span class="import-prev-empty">Start writing or paste your lyrics. Each section becomes a slide here.</span></div>
             </div>
           </div>
 
-          <!-- Quick Tag Insertion Chips -->
-          <div class="tag-chips-bar">
-            <span class="tag-chips-label">Insert Section:</span>
-            <button type="button" class="tag-chip" onclick="insertTagIntoImport('Verse 1')">+ Verse 1</button>
-            <button type="button" class="tag-chip" onclick="insertTagIntoImport('Verse 2')">+ Verse 2</button>
-            <button type="button" class="tag-chip" onclick="insertTagIntoImport('Chorus')">+ Chorus</button>
-            <button type="button" class="tag-chip" onclick="insertTagIntoImport('Bridge')">+ Bridge</button>
-            <button type="button" class="tag-chip" onclick="insertTagIntoImport('Pre-Chorus')">+ Pre-Chorus</button>
-            <button type="button" class="tag-chip" onclick="insertTagIntoImport('Outro')">+ Outro</button>
-          </div>
-
-          <!-- 2-Column Split: Lyrics Input & Parsed Slides Preview -->
-          <div class="import-split-view">
-            <div class="split-col">
-              <div class="split-col-header">
-                <span>Lyrics Input</span>
-              </div>
-              <textarea id="import-song-text" class="import-textarea" placeholder="Verse 1&#10;You are here moving in our midst...&#10;&#10;Chorus&#10;Way Maker, Miracle Worker..." oninput="updateImportLivePreview()"></textarea>
-            </div>
-
-            <div class="split-col">
-              <div class="split-col-header">
-                <span>Slide Deck Preview</span>
-                <span id="import-preview-count" class="preview-count-badge">0 Slides</span>
-              </div>
-              <div id="import-preview-box" class="import-preview-container">
-                <span style="color:var(--text-muted); font-size:11px; margin:auto;">Type lyrics on the left to see live parsed slides...</span>
-              </div>
-            </div>
           </div>
 
           <!-- Footer Actions -->
@@ -991,6 +910,7 @@
 
         <!-- SUB TAB 3: ONLINE BIBLES -->
         <div id="import-subtab-bibles" class="import-subtab-pane" style="display:none; flex-direction:column; gap:12px;">
+          <div class="library-section-heading"><h2>Find a Bible translation</h2><p>Browse translations and add the ones your congregation uses.</p></div>
           <div class="import-search-bar-wrap">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" id="cloud-bible-search-input" class="import-search-field" placeholder="Search 28+ Bible versions by code or name (e.g. NIV, ESV, KJV, Berean, MSG, Yoruba, Spanish)..." oninput="filterCloudBibles(this.value)">
@@ -1024,9 +944,10 @@
 
         <!-- SUB TAB 4: ONLINE SONGS SEARCH -->
         <div id="import-subtab-cloudsongs" class="import-subtab-pane" style="display:none; flex-direction:column; gap:12px;">
+          <div class="library-section-heading"><h2>Find your next song</h2><p>Search online lyrics and save songs to your library.</p></div>
           <div class="import-search-bar-wrap">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="cloud-song-search-input" class="import-search-field" placeholder="Search any song online by title, artist, or lyrics (e.g. Way Maker, Gratitude, Ageless God)..." oninput="filterCloudSongs(this.value)">
+            <input type="text" id="cloud-song-search-input" class="import-search-field" placeholder="Search by song title, artist, or lyrics…" oninput="filterCloudSongs(this.value)">
           </div>
 
           <!-- Popular Category Chips & View Switcher -->
@@ -1057,6 +978,93 @@
           <div id="cloud-songs-results" class="cloud-songs-grid view-grid" style="display:flex; flex-direction:column; gap:8px;"></div>
         </div>
 
+        <!-- SUB TAB 5: SOFTWARE MIGRATION (VIDEOPSALM, EASYWORSHIP, OPENSONG, ETC) -->
+        <div id="import-subtab-migrate" class="import-subtab-pane" style="display:none; flex-direction:column; gap:16px;">
+
+          <!-- Migration Info Banner -->
+          <div class="library-migration-intro" style="background:var(--card-bg, #1a1921); border:1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <div style="font-weight:700; font-size:14px; color:var(--text-main, #ffffff); display:flex; align-items:center; gap:8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16l4-4-4-4"/><path d="M4 12h16"/><path d="M2 19V5a2 2 0 0 1 2-2h8"/></svg>
+                <span>Move your existing library</span>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <span class="format-pill">VideoPsalm</span>
+                <span class="format-pill">EasyWorship</span>
+                <span class="format-pill">OpenSong</span>
+                <span class="format-pill">OpenLyrics</span>
+              </div>
+            </div>
+            <div style="font-size:12px; color:var(--text-muted, #94a3b8); line-height:1.5;">
+              Import all your data files into GNOMY in 1 to 2 clicks. Songs map to your songbook, Bibles map to Scripture database, background motion videos and still images map to your Sanctuary Themes library, and agendas map to your live deck.
+            </div>
+          </div>
+
+          <!-- Folder Path & Ingestion Input Row -->
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted, #94a3b8);">
+              Select Software Root Folder or Path
+            </label>
+            <div class="library-migration-actions" style="display:flex; gap:8px; align-items:center;">
+              <input type="text" id="import-migrate-folder-path" class="import-text-field" placeholder="e.g. /Users/corpine/Downloads/Blip/VideoPsalm" style="flex:1; padding:9px 12px; font-size:12px; font-family:var(--font-mono, monospace);">
+              <input type="file" id="import-migrate-folder-picker" webkitdirectory directory multiple style="display:none;" onchange="handleMigrationFolderSelected(event)">
+              <button type="button" class="mode-toggle-btn" onclick="document.getElementById('import-migrate-folder-picker').click()" style="padding:9px 14px; font-size:12px; white-space:nowrap;">
+                Browse Folder
+              </button>
+              <button type="button" class="mode-toggle-btn active" onclick="handleMigrationScan()" style="padding:9px 14px; font-size:12px; white-space:nowrap;">
+                Scan Folder
+              </button>
+              <button type="button" id="import-migrate-execute-btn" class="bento-btn bento-btn-primary" onclick="handleMigrationExecute()" style="padding:9px 18px; font-size:12px; white-space:nowrap; font-weight:700;">
+                Migrate Everything
+              </button>
+            </div>
+          </div>
+
+          <!-- Progress Bar Container -->
+          <div id="import-migrate-progress-container" style="display:none; width:100%; background:rgba(255,255,255,0.06); border-radius:6px; height:6px; overflow:hidden;">
+            <div id="import-migrate-progress-bar" style="width:0%; height:100%; background:var(--accent-pink-gradient, #3b82f6); transition:width 0.2s ease;"></div>
+          </div>
+
+          <!-- Live Status Indicator -->
+          <div id="import-migrate-status" style="font-size:12px; color:var(--text-muted, #94a3b8); font-family:var(--font-mono, monospace);">
+            Ready. Click "Scan Folder" to preview data or "Migrate Everything" to import immediately.
+          </div>
+
+          <!-- Migration Breakdown Card -->
+          <div id="import-migrate-breakdown" style="display:none; flex-direction:column; gap:12px; background:var(--bg-secondary, #131218); border:1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius:12px; padding:16px;">
+            <div style="font-size:12px; font-weight:700; color:var(--text-main, #ffffff); text-transform:uppercase; letter-spacing:0.04em;">
+              Detected Content Overview
+            </div>
+
+            <!-- Counts Row -->
+            <div id="import-migrate-counts-row" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+
+            <!-- Checkbox Ingestion Filters -->
+            <div style="display:flex; flex-wrap:wrap; gap:16px; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08); border-bottom:1px solid rgba(255,255,255,0.08);">
+              <label class="import-checkbox-label">
+                <input type="checkbox" id="import-migrate-opt-songs" class="bento-modal-checkbox" checked>
+                <span>Import Songs & Lyrics</span>
+              </label>
+              <label class="import-checkbox-label">
+                <input type="checkbox" id="import-migrate-opt-bibles" class="bento-modal-checkbox" checked>
+                <span>Activate Bibles</span>
+              </label>
+              <label class="import-checkbox-label">
+                <input type="checkbox" id="import-migrate-opt-media" class="bento-modal-checkbox" checked>
+                <span>Ingest Background Videos & Images</span>
+              </label>
+              <label class="import-checkbox-label">
+                <input type="checkbox" id="import-migrate-opt-agendas" class="bento-modal-checkbox" checked>
+                <span>Import Service Agendas</span>
+              </label>
+            </div>
+
+            <!-- Detailed Breakdown List -->
+            <div id="import-migrate-details" style="font-size:11px; color:var(--text-muted, #94a3b8); line-height:1.6; display:flex; flex-direction:column; gap:4px;"></div>
+          </div>
+
+        </div>
+
       </div>
     </div>
   </div>
@@ -1085,42 +1093,43 @@
 
   <!-- Interactive Song & Lyrics Editor Modal -->
   <div id="song-editor-modal-backdrop" class="modal-backdrop">
-    <div class="settings-modal-card song-editor-modal-card" style="max-width:880px; width:92vw; border-radius:18px; overflow:hidden;">
-      <div class="settings-header" style="padding:16px 20px;">
+    <div class="settings-modal-card song-editor-modal-card" role="dialog" aria-modal="true" aria-labelledby="song-editor-heading">
+      <div class="settings-header">
         <div class="settings-header-title">
           <div class="settings-header-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           </div>
           <div>
-            <div class="song-editor-modal-title modal-main-title" style="font-weight:700; font-size:15px; letter-spacing:-0.01em;">Song Lyrics Editor</div>
-            <div class="song-editor-modal-sub modal-sub-title" style="font-size:11px;">Edit song stanzas, verse tags, chorus lines, and live slide preview</div>
+            <div id="song-editor-heading" class="song-editor-modal-title modal-main-title">Song Lyrics Editor</div>
+            <div class="song-editor-modal-sub modal-sub-title">Edit song stanzas, verse tags, chorus lines, and live slide preview</div>
           </div>
         </div>
-        <button type="button" class="settings-close-btn" onclick="closeSongEditor()" title="Close Editor">
+        <button type="button" class="settings-close-btn" onclick="closeSongEditor()" title="Close Editor" aria-label="Close editor">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
 
-      <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:20px; padding:20px; max-height:75vh; overflow-y:auto;">
+      <div class="song-editor-body">
         <!-- Left Column: Inputs & Raw Stanza Editor -->
-        <div style="display:flex; flex-direction:column; gap:12px;">
+        <div class="song-editor-writing">
           <input type="hidden" id="editor-song-id">
           <div>
-            <label class="song-editor-field-label" style="display:block; font-size:11px; font-weight:700; margin-bottom:4px; letter-spacing:0.04em;">SONG TITLE</label>
-            <input type="text" id="editor-song-title" class="import-text-field search-input" placeholder="e.g. Amazing Grace" style="width:100%; padding:8px 12px; font-size:13px; font-weight:600;" oninput="handleSongEditorInput()">
+            <label for="editor-song-title" class="song-editor-field-label">Song title</label>
+            <input type="text" id="editor-song-title" class="import-text-field search-input" placeholder="e.g. Amazing Grace" oninput="handleSongEditorInput()">
           </div>
 
           <div>
-            <label class="song-editor-field-label" style="display:block; font-size:11px; font-weight:700; margin-bottom:4px; letter-spacing:0.04em;">AUTHOR / ARTIST / SONGBOOK</label>
-            <input type="text" id="editor-song-author" class="import-text-field search-input" placeholder="e.g. John Newton" style="width:100%; padding:8px 12px; font-size:12.5px;" oninput="handleSongEditorInput()">
+            <label for="editor-song-author" class="song-editor-field-label">Artist or songbook <span class="song-editor-optional">Optional</span></label>
+            <input type="text" id="editor-song-author" class="import-text-field search-input" placeholder="e.g. John Newton" oninput="handleSongEditorInput()">
           </div>
 
-          <div style="display:flex; flex-direction:column; flex:1;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-              <label class="song-editor-field-label" style="font-size:11px; font-weight:700; letter-spacing:0.04em;">LYRICS & STANZAS ([Verse 1], [Chorus], etc.)</label>
-              <span class="song-editor-stanza-hint" style="font-size:10px;">Separate stanzas with empty lines</span>
+          <div class="song-editor-lyrics">
+            <div class="song-editor-lyrics-heading">
+              <label for="editor-song-text" class="song-editor-field-label">Lyrics</label>
+              <span class="song-editor-stanza-hint">Separate slides with a blank line</span>
             </div>
-            <textarea id="editor-song-text" class="import-textarea" style="width:100%; min-height:260px; flex:1; padding:12px; font-family:var(--font-mono, monospace); font-size:12.5px; line-height:1.5; resize:vertical;" oninput="handleSongEditorInput()" placeholder="[Verse 1]
+            <div class="song-editor-tags" aria-label="Insert a song section"><span>Add section</span><button type="button" onclick="insertTagIntoEditor('Verse')">+ Verse</button><button type="button" onclick="insertTagIntoEditor('Chorus')">+ Chorus</button><button type="button" onclick="insertTagIntoEditor('Bridge')">+ Bridge</button><button type="button" class="song-editor-auto-format" onclick="autoFormatSongEditor()" title="Split lyrics into slides of 2–3 lines">Auto Format</button></div>
+            <textarea id="editor-song-text" class="import-textarea" onscroll="syncSongPreviewScroll(this, 'editor-preview-box')" oninput="handleSongEditorInput()" placeholder="[Verse 1]
 Amazing grace how sweet the sound
 That saved a wretch like me...
 
@@ -1130,19 +1139,19 @@ My chains are gone, I've been set free..."></textarea>
         </div>
 
         <!-- Right Column: Live Slide Preview Split -->
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div class="song-editor-field-label" style="font-size:11px; font-weight:700; letter-spacing:0.04em;">LIVE SLIDES PREVIEW</div>
-          <div id="editor-preview-box" class="song-editor-preview-box" style="display:flex; flex-direction:column; gap:10px; border-radius:10px; padding:14px; min-height:340px; max-height:420px; overflow-y:auto;">
-            <div class="song-editor-empty-hint" style="font-size:12px; text-align:center; padding:20px;">Type lyrics to see generated presentation slides.</div>
+        <div class="song-editor-preview-panel">
+          <div class="song-editor-preview-heading"><div class="song-editor-field-label">Slide preview</div><span id="editor-preview-count">0 slides</span></div><p class="song-editor-preview-caption">Your lyrics, ready for the screen.</p>
+          <div id="editor-preview-box" class="song-editor-preview-box">
+            <div class="song-editor-empty-hint">Type lyrics to see generated presentation slides.</div>
           </div>
         </div>
       </div>
 
-      <div class="song-editor-footer" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px;">
-        <button type="button" class="mode-toggle-btn song-editor-del-btn" onclick="deleteSongEditor()" style="font-size:12px; font-weight:600;">Delete Song</button>
-        <div style="display:flex; gap:10px;">
-          <button type="button" class="mode-toggle-btn song-editor-cancel-btn" onclick="closeSongEditor()" style="font-size:12px;">Cancel</button>
-          <button type="button" class="mode-toggle-btn active repo-action-btn song-editor-save-btn" onclick="saveSongEditor()" style="font-size:12px; font-weight:600; padding:6px 18px;">Save Changes</button>
+      <div class="song-editor-footer">
+        <button type="button" class="mode-toggle-btn song-editor-del-btn" onclick="deleteSongEditor()">Delete Song</button>
+        <div class="song-editor-actions">
+          <button type="button" class="mode-toggle-btn song-editor-cancel-btn" onclick="closeSongEditor()">Cancel</button>
+          <button type="button" class="mode-toggle-btn active repo-action-btn song-editor-save-btn" onclick="saveSongEditor()">Save Changes</button>
         </div>
       </div>
     </div>
@@ -1342,7 +1351,7 @@ My chains are gone, I've been set free..."></textarea>
           </div>
 
           <div class="settings-version-tag">
-            <div class="settings-version-title" style="font-weight:600;">GINOMIA PRO</div>
+            <div class="settings-version-title" style="font-weight:600;">GINOMIA</div>
             <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:2px;">
               <span>Build 2.4.0</span>
               <button type="button" onclick="checkForUpdates()" title="Check for software updates" style="background:none; border:none; color:var(--purple, #8a6dff); font-size:10px; font-weight:600; cursor:pointer; padding:0; text-decoration:underline;">Check</button>
@@ -1363,15 +1372,15 @@ My chains are gone, I've been set free..."></textarea>
             <!-- Section 1: UI Layout Style -->
             <div class="settings-card-group">
               <div class="settings-field-label" style="margin-bottom:2px;">Console Layout Style</div>
-              <div class="settings-field-sub" style="margin-bottom:12px;">Ginomia Pro flagship console architecture</div>
+              <div class="settings-field-sub" style="margin-bottom:12px;">Ginomia flagship console architecture</div>
               
               <div class="theme-styles-picker-grid" style="grid-template-columns: 1fr;">
-                <!-- Bento Studio Pro Card -->
+                <!-- Bento Studio Card -->
                 <div class="theme-style-card active" data-style-id="bento" onclick="setUiThemeStyle('bento')">
                   <div class="theme-style-card-header">
                     <div class="theme-style-card-title">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>
-                      <span>Bento Studio Pro</span>
+                      <span>Bento Studio</span>
                     </div>
                     <span class="theme-style-card-badge" style="background:rgba(59,130,246,0.15); color:#60A5FA; border-color:rgba(59,130,246,0.3);">FLAGSHIP</span>
                   </div>
@@ -1502,6 +1511,47 @@ My chains are gone, I've been set free..."></textarea>
                   <button type="button" class="settings-segmented-btn active" onclick="setShadowIntensityLevel(1)">Normal</button>
                   <button type="button" class="settings-segmented-btn" onclick="setShadowIntensityLevel(2)">Medium</button>
                   <button type="button" class="settings-segmented-btn" onclick="setShadowIntensityLevel(3)">Heavy</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 3: SONG OUTPUT SIZING (PROJECTION VS. LIVESTREAM) -->
+            <div class="settings-card-group">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div class="settings-field-label" style="display:flex; align-items:center; gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    <span>Song Output Sizing (Independent Targets)</span>
+                  </div>
+                  <div class="settings-field-sub">Control song font sizes for Sanctuary Projection and OBS Lower-Third independently without altering Bible verses</div>
+                </div>
+                <button type="button" class="mode-toggle-btn" style="padding:4px 10px; font-size:10.5px; font-weight:600; display:flex; align-items:center; gap:4px;" onclick="resetSongSizingDefaults()" title="Reset song sizing to default (Projection: 2.2x, Livestream: 1.4x)">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                  <span>Reset Defaults</span>
+                </button>
+              </div>
+
+              <!-- Song Projection (Full Screen) -->
+              <div class="settings-field-row" style="margin-top:12px;">
+                <div class="settings-field-info">
+                  <div class="settings-field-label">Song Projection Scale (Full Screen)</div>
+                  <div class="settings-field-sub">Sanctuary full display magnification for congregational worship (Default: 2.2x)</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:12px; width:220px;">
+                  <input type="range" id="setting-song-scale-full" min="1.0" max="3.5" step="0.1" value="2.2" style="flex:1; accent-color:var(--purple, #8A6DFF); cursor:pointer;" oninput="updateSongScaleFullSetting(this.value)">
+                  <span id="setting-song-scale-full-readout" style="min-width:42px; font-size:12px; font-weight:700; color:#E2E8F0; text-align:right; font-variant-numeric:tabular-nums;">2.2x</span>
+                </div>
+              </div>
+
+              <!-- Song OBS / Livestream (Lower Third) -->
+              <div class="settings-field-row">
+                <div class="settings-field-info">
+                  <div class="settings-field-label">Song Livestream / OBS Scale (Lower Third)</div>
+                  <div class="settings-field-sub">Bounds lyrics neatly inside the broadcast lower-third zone (Default: 1.4x)</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:12px; width:220px;">
+                  <input type="range" id="setting-song-scale-lt" min="0.8" max="2.5" step="0.1" value="1.4" style="flex:1; accent-color:var(--purple, #8A6DFF); cursor:pointer;" oninput="updateSongScaleLtSetting(this.value)">
+                  <span id="setting-song-scale-lt-readout" style="min-width:42px; font-size:12px; font-weight:700; color:#E2E8F0; text-align:right; font-variant-numeric:tabular-nums;">1.4x</span>
                 </div>
               </div>
             </div>
@@ -1720,10 +1770,10 @@ My chains are gone, I've been set free..."></textarea>
                   <div class="settings-field-sub">Adjust duration for slide animations</div>
                 </div>
                 <div class="settings-segmented-group">
-                  <button type="button" class="settings-segmented-btn transition-speed-btn" data-duration="150" onclick="setTransitionDurationSetting(150)">Fast (150ms)</button>
-                  <button type="button" class="settings-segmented-btn transition-speed-btn active" data-duration="300" onclick="setTransitionDurationSetting(300)">Normal (300ms)</button>
-                  <button type="button" class="settings-segmented-btn transition-speed-btn" data-duration="500" onclick="setTransitionDurationSetting(500)">Smooth (500ms)</button>
-                  <button type="button" class="settings-segmented-btn transition-speed-btn" data-duration="800" onclick="setTransitionDurationSetting(800)">Slow (800ms)</button>
+                  <button type="button" class="settings-segmented-btn transition-speed-btn" data-duration="150" onclick="setTransitionDurationSetting(150)">Fast</button>
+                  <button type="button" class="settings-segmented-btn transition-speed-btn active" data-duration="300" onclick="setTransitionDurationSetting(300)">Normal</button>
+                  <button type="button" class="settings-segmented-btn transition-speed-btn" data-duration="500" onclick="setTransitionDurationSetting(500)">Smooth</button>
+                  <button type="button" class="settings-segmented-btn transition-speed-btn" data-duration="800" onclick="setTransitionDurationSetting(800)">Slow</button>
                 </div>
               </div>
 
@@ -1876,6 +1926,7 @@ My chains are gone, I've been set free..."></textarea>
                     <div class="audio-vu-track">
                       <div id="mic-vu-meter-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #10B981, #22C55E); border-radius:3px; transition:width 0.05s ease-out;"></div>
                     </div>
+                    <div id="mic-audio-health" role="status" style="font-size:11px; line-height:1.4; margin-top:6px; overflow-wrap:anywhere;">Start listening to check input.</div>
                   </div>
                 </div>
               </div>
@@ -1917,7 +1968,7 @@ My chains are gone, I've been set free..."></textarea>
               <div class="settings-field-row">
                 <div class="settings-field-info">
                   <div class="settings-field-label">Online Cloud Sync</div>
-                  <div class="settings-field-sub">Connect to Ginomia Pro Cloud for automatic song lyrics updates</div>
+                  <div class="settings-field-sub">Connect to Ginomia Cloud for automatic song lyrics updates</div>
                 </div>
                 <label class="settings-switch">
                   <input type="checkbox" checked>
@@ -1954,11 +2005,12 @@ My chains are gone, I've been set free..."></textarea>
           <div id="tab-shortcuts" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
             <label>Slide selection
               <select id="projection-workflow" onchange="setProjectionWorkflow(this.value)">
+                <option value="smart">Smart Follow-Suit — stage new items, follow through</option>
                 <option value="instant">Instant — click to project</option>
                 <option value="preview">Preview — select, then Take live</option>
               </select>
             </label>
-            <p>Preview mode lets you check a slide before the audience sees it. Auto-project bypasses this review when armed.</p>
+            <p>Smart mode stages the first verse of a new song or chapter for safe review, then lets you click through remaining verses instantly once live. Instant mode projects every click immediately. Preview mode requires Take Live for every slide.</p>
             <div>
               <div class="settings-section-title">Keyboard Shortcuts & Fast Control</div>
               <div class="settings-section-desc">Master hotkeys for instantaneous live service broadcast operation.</div>
@@ -2040,7 +2092,7 @@ My chains are gone, I've been set free..."></textarea>
               <div class="settings-field-row settings-help-row">
                 <div class="settings-field-info">
                   <div class="settings-field-label">What's New</div>
-                  <div class="settings-field-sub">Read the full changelog for every Ginomia Pro release</div>
+                  <div class="settings-field-sub">Read the full changelog for every Ginomia release</div>
                 </div>
                 <button type="button" class="settings-help-btn" onclick="openChangelogModal()">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -2076,7 +2128,7 @@ My chains are gone, I've been set free..."></textarea>
               <div class="settings-field-row settings-help-row">
                 <div class="settings-field-info">
                   <div class="settings-field-label">Contact Us on WhatsApp</div>
-                  <div class="settings-field-sub">Chat directly with the Ginomia Pro team for help or feedback</div>
+                  <div class="settings-field-sub">Chat directly with the Ginomia team for help or feedback</div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
                   <button type="button" class="settings-help-icon-btn" title="Copy WhatsApp Link / Number" onclick="copySupportWhatsApp()">
@@ -2252,7 +2304,7 @@ My chains are gone, I've been set free..."></textarea>
       </div>
 
       <div id="operator-modal-title" class="modal-main-title" style="font-size:18px; font-weight:700; margin-bottom:6px; letter-spacing:-0.01em;">Join as Operator</div>
-      <div id="operator-modal-desc" class="modal-sub-title" style="font-size:12.5px; line-height:1.5; margin-bottom:22px;">Enter your name so the Studio Pro host can identify your console.</div>
+      <div id="operator-modal-desc" class="modal-sub-title" style="font-size:12.5px; line-height:1.5; margin-bottom:22px;">Enter your name so the Studio host can identify your console.</div>
 
       <!-- Input Field -->
       <div style="margin-bottom:18px; text-align:left;">
@@ -2483,19 +2535,19 @@ My chains are gone, I've been set free..."></textarea>
   <div id="session-dropzone-overlay" class="session-dropzone-overlay" style="display:none;">
     <div class="session-dropzone-box">
       <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      <div class="t">Drop Ginomia Pro Session File Here</div>
+      <div class="t">Drop Ginomia Session File Here</div>
       <div class="d">Release your .sflow service package to load the agenda instantly</div>
     </div>
   </div>
 
-  <!-- ── Ginomia Pro Changelog Modal ───────────────────────────────────── -->
+  <!-- ── Ginomia Changelog Modal ───────────────────────────────────── -->
   <div id="changelog-modal-backdrop" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeChangelogModal()">
     <div class="changelog-modal-card" style="width:580px; max-width:92vw; background:var(--card, #131218); border:1px solid var(--border-strong, rgba(255,255,255,0.14)); border-radius:18px; padding:24px; box-shadow:0 24px 64px rgba(0,0,0,0.8); max-height:85vh; display:flex; flex-direction:column; overflow:hidden;" onclick="event.stopPropagation()">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-shrink:0;">
         <div style="display:flex; align-items:center; gap:10px;">
           <div style="width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg, #8a6dff, #f178b6); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:14px;">G</div>
           <div>
-            <div style="font-size:15px; font-weight:700; color:var(--text, #f3f2f7);">What's New in Ginomia Pro</div>
+            <div style="font-size:15px; font-weight:700; color:var(--text, #f3f2f7);">What's New in Ginomia</div>
             <div style="font-size:11px; color:var(--mute, #696773);">Release notes & studio performance updates</div>
           </div>
         </div>
@@ -2511,7 +2563,7 @@ My chains are gone, I've been set free..."></textarea>
             <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px; background:rgba(62,207,126,0.15); color:#3ecf7e; border:1px solid rgba(62,207,126,0.3);">CURRENT</span>
           </div>
           <ul style="margin:0; padding-left:18px; font-size:12px; color:var(--dim, #a3a1ae); line-height:1.7;">
-            <li><b>Bento Studio Pro Console</b>: 3-zone modular workspace with resizable card zones and quick toolbar.</li>
+            <li><b>Bento Studio Console</b>: 3-zone modular workspace with resizable card zones and quick toolbar.</li>
             <li><b>0ms Tactile Latency</b>: Instant in-place slide transitions and visual updates without DOM rebuilding.</li>
             <li><b>Hardware-Accelerated Surfaces</b>: Pure non-GPU blur architecture ensuring 60-120fps fluid response.</li>
             <li><b>Deepgram Nova-2 / Nova-3 Engine</b>: Sub-250ms live AI speech recognition with scripture auto-projection.</li>
@@ -2527,8 +2579,8 @@ My chains are gone, I've been set free..."></textarea>
     </div>
   </div>
 
-  <!-- ── Custom Ginomia Pro Prompt & Confirm Dialog Modal ────────────── -->
-  <div id="sf-custom-dialog-backdrop" class="modal-backdrop sf-dialog-backdrop" style="display:none;" onclick="if(event.target===this) window.sfCloseCustomDialog(null)">
+  <!-- ── Custom Dialog (Prompt & Confirm) Modal ────────────────────── -->
+  <div id="sf-custom-dialog-backdrop" class="modal-backdrop sf-dialog-backdrop" style="display:none;" onclick="if(event.target===this){event.stopPropagation(); window.sfCloseCustomDialog(null);}">
     <div class="sf-custom-dialog-card" onclick="event.stopPropagation()">
       <div class="sf-dialog-head">
         <div class="sf-dialog-icon-badge" id="sf-dialog-icon-badge">
@@ -2538,7 +2590,7 @@ My chains are gone, I've been set free..."></textarea>
           <h3 class="sf-dialog-title" id="sf-dialog-title">Save Session Snapshot</h3>
           <p class="sf-dialog-subtitle" id="sf-dialog-subtitle">Save current agenda snapshot as a new session:</p>
         </div>
-        <button type="button" class="sf-dialog-close-btn" onclick="window.sfCloseCustomDialog(null)" title="Cancel (Esc)">
+        <button type="button" class="sf-dialog-close-btn" onclick="event.stopPropagation(); window.sfCloseCustomDialog(null)" title="Cancel (Esc)">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -2549,8 +2601,8 @@ My chains are gone, I've been set free..."></textarea>
         <div class="sf-dialog-message" id="sf-dialog-message" style="display:none;"></div>
       </div>
       <div class="sf-dialog-foot">
-        <button type="button" class="sf-dialog-btn secondary" id="sf-dialog-cancel-btn" onclick="window.sfCloseCustomDialog(null)">Cancel</button>
-        <button type="button" class="sf-dialog-btn primary" id="sf-dialog-confirm-btn" onclick="window.sfSubmitCustomDialog()">Save</button>
+        <button type="button" class="sf-dialog-btn secondary" id="sf-dialog-cancel-btn" onclick="event.stopPropagation(); window.sfCloseCustomDialog(null)">Cancel</button>
+        <button type="button" class="sf-dialog-btn primary" id="sf-dialog-confirm-btn" onclick="event.stopPropagation(); window.sfSubmitCustomDialog()">Save</button>
       </div>
     </div>
   </div>

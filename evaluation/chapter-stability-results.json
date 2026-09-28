@@ -1,0 +1,191 @@
+{
+  "scope": "Transcript replay, not STT accuracy or measured audio-to-screen latency. Auto-policy projections are simulated with loaded KJV; observed projections are separate.",
+  "dataset": "Synthetic lifecycle and detection baseline",
+  "projectionMetrics": {
+    "auto-policy": {
+      "total": 4,
+      "wrong": 0,
+      "wrongPerHour": 0
+    },
+    "observed": {
+      "total": 0,
+      "wrong": 0,
+      "wrongPerHour": 0
+    }
+  },
+  "summary": {
+    "expected": 4,
+    "hits": 4,
+    "missed": 0,
+    "recall": 1,
+    "candidateEvents": 5,
+    "falseCandidateEvents": 0,
+    "falseCandidatesPerMinute": 0,
+    "projections": 4,
+    "wrongProjections": 0,
+    "wrongProjectionsPerHour": 0,
+    "latencyP50Ms": 200,
+    "latencyP95Ms": 500
+  },
+  "cases": [
+    {
+      "id": "partial-correction",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "expected": 1,
+      "hits": 1,
+      "missed": [],
+      "latencyMs": [
+        500
+      ],
+      "candidates": [
+        {
+          "at": 2000,
+          "reference": "John 3:17",
+          "kind": "direct"
+        }
+      ],
+      "falseCandidates": [],
+      "projections": [
+        {
+          "at": 2350,
+          "reference": "John 3:17",
+          "source": "auto-policy"
+        }
+      ],
+      "wrongProjections": [],
+      "ignoredEvents": 0
+    },
+    {
+      "id": "ordinary-numbers",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "expected": 0,
+      "hits": 0,
+      "missed": [],
+      "latencyMs": [],
+      "candidates": [],
+      "falseCandidates": [],
+      "projections": [],
+      "wrongProjections": [],
+      "ignoredEvents": 0
+    },
+    {
+      "id": "split-reference",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "expected": 1,
+      "hits": 1,
+      "missed": [],
+      "latencyMs": [
+        500
+      ],
+      "candidates": [
+        {
+          "at": 3000,
+          "reference": "Luke 1:17",
+          "kind": "direct"
+        }
+      ],
+      "falseCandidates": [],
+      "projections": [
+        {
+          "at": 3350,
+          "reference": "Luke 1:17",
+          "source": "auto-policy"
+        }
+      ],
+      "wrongProjections": [],
+      "ignoredEvents": 0
+    },
+    {
+      "id": "reconnect-stale-result",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "expected": 1,
+      "hits": 1,
+      "missed": [],
+      "latencyMs": [
+        200
+      ],
+      "candidates": [
+        {
+          "at": 2000,
+          "reference": "Romans 8:28",
+          "kind": "direct"
+        }
+      ],
+      "falseCandidates": [],
+      "projections": [
+        {
+          "at": 2350,
+          "reference": "Romans 8:28",
+          "source": "auto-policy"
+        }
+      ],
+      "wrongProjections": [],
+      "ignoredEvents": 2
+    },
+    {
+      "id": "silence",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "expected": 0,
+      "hits": 0,
+      "missed": [],
+      "latencyMs": [],
+      "candidates": [],
+      "falseCandidates": [],
+      "projections": [],
+      "wrongProjections": [],
+      "ignoredEvents": 0
+    },
+    {
+      "id": "invalid-verse",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "expected": 0,
+      "hits": 0,
+      "missed": [],
+      "latencyMs": [],
+      "candidates": [],
+      "falseCandidates": [],
+      "projections": [],
+      "wrongProjections": [],
+      "ignoredEvents": 0
+    },
+    {
+      "id": "duplicate-final",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "expected": 1,
+      "hits": 1,
+      "missed": [],
+      "latencyMs": [
+        100
+      ],
+      "candidates": [
+        {
+          "at": 1000,
+          "reference": "John 3:16",
+          "kind": "direct"
+        },
+        {
+          "at": 1100,
+          "reference": "John 3:16",
+          "kind": "direct"
+        }
+      ],
+      "falseCandidates": [],
+      "projections": [
+        {
+          "at": 1350,
+          "reference": "John 3:16",
+          "source": "auto-policy"
+        }
+      ],
+      "wrongProjections": [],
+      "ignoredEvents": 0
+    }
+  ]
+}

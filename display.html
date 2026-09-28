@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Ginomia Pro — The Word in Motion</title>
+  <title>Ginomia — The Word in Motion</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=David+Libre:wght@500;700&family=GFS+Didot&family=Inter:wght@400;600;700;800&family=Noto+Serif+Hebrew:wght@600;800&family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=David+Libre:wght@500;700&family=Didact+Gothic&family=GFS+Didot&family=Inter:wght@400;600;700;800&family=Noto+Serif+Hebrew:wght@600;800&family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * {
       box-sizing: border-box;
@@ -262,6 +262,8 @@
       color: #FFFFFF;
       text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
       word-break: break-word;
+      max-height: 300px;
+      overflow: hidden;
     }
 
     /* Blackout / Hide Overlay */
@@ -1101,7 +1103,10 @@
 
       // Font propagates to ALL output targets (sanctuary projector + OBS/livestream overlay)
       if (theme.font) {
-        document.documentElement.style.setProperty('--sf-sanctuary-font', `'${theme.font}', -apple-system, sans-serif`);
+        const fontFallbacks = theme.font === 'Century Gothic'
+          ? `'Century Gothic', 'CenturyGothic', AppleGothic, 'Didact Gothic', -apple-system, sans-serif`
+          : `'${theme.font}', -apple-system, sans-serif`;
+        document.documentElement.style.setProperty('--sf-sanctuary-font', fontFallbacks);
       }
 
       const isLt = isLowerThirdLayout(window.LATEST_STATE || {});
@@ -1110,6 +1115,8 @@
       const shouldShowBg = !isLt && !isClearBg;
 
       const vid = document.getElementById('bg-video');
+      const mediaFit = ['cover', 'contain', 'fill'].includes(theme.fit) ? theme.fit : 'cover';
+      if (vid) vid.style.objectFit = mediaFit;
 
       if (bgLayer) {
         if (shouldShowBg) {
@@ -1132,7 +1139,9 @@
               vid.pause();
             }
             bgLayer.style.backgroundImage = `url('${theme.imageUrl}')`;
-            bgLayer.style.backgroundSize = 'cover';
+            bgLayer.style.backgroundSize = mediaFit === 'fill' ? '100% 100%' : mediaFit;
+            bgLayer.style.backgroundRepeat = 'no-repeat';
+            bgLayer.style.backgroundColor = '#000';
             bgLayer.style.backgroundPosition = 'center';
           } else {
             if (vid) {
@@ -1375,7 +1384,10 @@
         slot.ref.style.display = 'none';
       }
 
-      const stdSlotKey = `STD|${data.slideId || ''}|${data.text || ''}|${data.reference || ''}|${data.compare ? JSON.stringify(data.compareData) : ''}|${data.mode}|${data.transparentBg ? 1 : 0}|${data.textSize || 1}|${data.showSongTitleInDisplay ? 1 : 0}`;
+      const songScaleFull = data.songScaleFull !== undefined ? data.songScaleFull : 2.2;
+      const songScaleLt = data.songScaleLt !== undefined ? data.songScaleLt : 1.4;
+
+      const stdSlotKey = `STD|${data.slideId || ''}|${data.text || ''}|${data.reference || ''}|${data.compare ? JSON.stringify(data.compareData) : ''}|${data.mode}|${data.transparentBg ? 1 : 0}|${data.textSize || 1}|${songScaleFull}|${songScaleLt}|${data.showSongTitleInDisplay ? 1 : 0}|${isLt ? 1 : 0}`;
       if (slot._renderedKey !== stdSlotKey) {
         slot._renderedKey = stdSlotKey;
         if (data.compare) {
@@ -1423,17 +1435,30 @@
         slot.content.style.textShadow = '0 6px 18px rgba(0,0,0,0.95), 0 3px 6px rgba(0,0,0,0.95), 0 0 20px rgba(0,0,0,0.8)';
       }
 
-      const scale = data.textSize || 1.0;
+      let scale = data.textSize || 1.0;
+      let effectiveBasePx = typo.fontSize || 64;
+
+      if (!isBibleRef) {
+        // Song lyrics sizing: decoupled from Bible sizing
+        if (isLt) {
+          scale = songScaleLt;
+          effectiveBasePx = 36; // Proportional base for lower-third broadcast card
+        } else {
+          scale = songScaleFull;
+          effectiveBasePx = 48; // Bold presence base for sanctuary projection
+        }
+      }
+
       const textLen = (data.text || '').length;
 
       if (data.textAutoScale !== false) {
-        let basePx = typo.fontSize || 64;
+        let basePx = effectiveBasePx;
         if (textLen > 240) basePx = Math.round(basePx * 0.72);
         else if (textLen > 140) basePx = Math.round(basePx * 0.82);
         else if (textLen < 60) basePx = Math.round(basePx * 1.12);
-        slot.content.style.fontSize = `${basePx * scale}px`;
+        slot.content.style.fontSize = `${Math.round(basePx * scale)}px`;
       } else {
-        slot.content.style.fontSize = `${(typo.fontSize || 60) * scale}px`;
+        slot.content.style.fontSize = `${Math.round(effectiveBasePx * scale)}px`;
       }
     }
 
@@ -1455,6 +1480,8 @@
           transparentBg: data.dashboard.transparentBg !== undefined ? data.dashboard.transparentBg : data.transparentBg,
           typography: data.dashboard.typography || data.typography,
           textSize: data.dashboard.textSize || data.textSize,
+          songScaleFull: data.dashboard.songScaleFull !== undefined ? data.dashboard.songScaleFull : data.songScaleFull,
+          songScaleLt: data.dashboard.songScaleLt !== undefined ? data.dashboard.songScaleLt : data.songScaleLt,
           ...data.dashboard
         };
       }
@@ -1465,10 +1492,13 @@
       const lexStyle = data.lexiconStyle || (data.lexiconData && data.lexiconData.style) || 'hero';
       const lexMode = data.lexiconDisplayMode || (data.lexiconData && data.lexiconData.displayMode) || data.mode || 'full';
       const lexPos = data.concordancePosition || (data.lexiconData && data.lexiconData.position) || data.lexiconPosition || 'right';
+      const songScaleFull = data.songScaleFull !== undefined ? data.songScaleFull : 2.2;
+      const songScaleLt = data.songScaleLt !== undefined ? data.songScaleLt : 1.4;
+      const isLt = isLowerThirdLayout(data);
 
       const contentKey = isLex 
         ? `LEX|${lexId}|${lexWord}|${lexStyle}|${lexMode}|${lexPos}|${data.transparentBg ? 1 : 0}`
-        : `${data.slideId || ''}|${data.text || ''}|${data.reference || ''}|${data.compare ? JSON.stringify(data.compareData) : ''}|${data.mode}|${data.transparentBg ? 1 : 0}|${data.textSize || 1}|${data.showSongTitleInDisplay ? 1 : 0}`;
+        : `${data.slideId || ''}|${data.text || ''}|${data.reference || ''}|${data.compare ? JSON.stringify(data.compareData) : ''}|${data.mode}|${data.transparentBg ? 1 : 0}|${data.textSize || 1}|${songScaleFull}|${songScaleLt}|${data.showSongTitleInDisplay ? 1 : 0}|${isLt ? 1 : 0}`;
 
       // Drop stale out-of-order or duplicate broadcast messages
       if (data._timestamp && typeof data._timestamp === 'number') {

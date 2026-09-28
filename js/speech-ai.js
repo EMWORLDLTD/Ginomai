@@ -1,4 +1,4 @@
-// Ginomia Pro - Web Speech AI & Intelligent Bible / Song Detection Engine
+// Ginomia - Web Speech AI & Intelligent Bible / Song Detection Engine
 'use strict';
 
 class SpeechAiEngine {
@@ -16,6 +16,24 @@ class SpeechAiEngine {
       this.onParaphraseDetected = options.onParaphraseDetected || null;
     }
 
+    this.onDiagnostic = typeof options === 'object' ? options.onDiagnostic || null : null;
+    this.onReferencePending = typeof options === 'object' ? options.onReferencePending || null : null;
+    this.onStatusChange = typeof options === 'object' ? options.onStatusChange || null : null;
+    this.onAudioHealth = typeof options === 'object' ? options.onAudioHealth || null : null;
+    this.audioHealth = null;
+    this.getScriptureVerses = typeof options === 'object' ? options.getScriptureVerses || null : null;
+    this.getQuotationSource = typeof options === 'object' ? options.getQuotationSource || null : null;
+    this.semanticSearch = typeof options === 'object' ? options.semanticSearch || null : null;
+    this.semanticQueryId = 0;
+    this.quotationMatcher = typeof options === 'object' ? options.quotationMatcher || null : null;
+    this.quotationGeneration = 0;
+    this.quotationQueryId = 0;
+    this.resetScriptureContext();
+    this.connectionState = 'idle';
+    this.statusMessage = '';
+    this.sessionGeneration = 0;
+    this.session = null;
+    this.reconnectAttempts = 0;
     this.recognition = null;
     this.isListening = false;
     this.restartTimer = null;
@@ -276,373 +294,413 @@ class SpeechAiEngine {
       }
     ];
 
-    this.initNativeSpeech();
   }
 
-  initNativeSpeech() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn('Web Speech API is not supported in this browser. Deepgram Live Streaming and Simulation mode remain available.');
-      return;
-    }
-
-    try {
-      this.recognition = new SpeechRecognition();
-      this.recognition.continuous = true;
-      this.recognition.interimResults = true;
-      this.recognition.lang = 'en-US';
-      this.hasSelectedAudioEnergy = false;
-
-      this.recognition.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          } else {
-            interimTranscript += event.results[i][0].transcript;
-          }
-        }
-
-        const isFinal = Boolean(finalTranscript && finalTranscript.trim());
-        const fullText = (finalTranscript || interimTranscript || '').trim();
-        if (fullText && (fullText !== this.lastProcessedText || isFinal)) {
-          this.lastProcessedText = fullText;
-          this.processSpokenText(fullText, isFinal);
-        }
-      };
-
-      this.recognition.onerror = (event) => {
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          console.warn('Microphone permission denied.');
-          this.isListening = false;
-          const transcriptBox = document.getElementById('ai-transcript-text');
-          if (transcriptBox) transcriptBox.textContent = 'Mic access blocked. Please click the mic/lock icon in your browser address bar to allow microphone access.';
-          if (typeof showToast === 'function') showToast('Microphone permission blocked. Please allow mic access.', 'error');
-          const btn = document.getElementById('ai-mic-btn');
-          if (btn) {
-            btn.classList.remove('active');
-            const span = btn.querySelector('span:not(.ai-dot)');
-            if (span) span.textContent = 'AI Mic: Off';
-            const dot = btn.querySelector('.ai-dot');
-            if (dot) dot.style.background = '#EF4444';
-          }
-        } else if (event.error !== 'no-speech') {
-          console.warn('Speech recognition error:', event.error);
-        }
-      };
-
-      this.recognition.onend = () => {
-        if (this.isListening && this.provider === 'native') {
-          clearTimeout(this.restartTimer);
-          this.restartTimer = setTimeout(() => {
-            if (this.isListening && this.provider === 'native') {
-              try { this.recognition.start(); } catch (e) {}
-            }
-          }, 300);
-        }
-      };
-    } catch (err) {
-      console.warn('Could not initialize SpeechRecognition', err);
-    }
+  // isListening is the user's start/stop intent. connectionState reports readiness.
+  setConnectionState(status, message = '') {
+    this.connectionState = status;
+    this.statusMessage = message;
+    if (this.onStatusChange) this.onStatusChange({
+      status, message, isRequested: this.isListening, isListening: status === 'listening'
+    });
   }
 
-  // ── Start Audio & Recognition Engine (Provider Dispatched) ───────────────────
+  isCurrentSession(session) {
+    return this.isListening && this.session === session && !session.closed;
+  }
+
   start() {
+    if (this.isListening) return;
     this.isListening = true;
-    const provider = this.provider || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_ai_provider')) || 'deepgram';
-
-    if (provider === 'deepgram') {
-      this.startDeepgram();
-    } else {
-      this.startNative();
-    }
+    this.reconnectAttempts = 0;
+    this.beginSession();
   }
 
-  // ── Stop Audio & Recognition Engine ──────────────────────────────────────────
+  beginSession(status = 'connecting') {
+    clearTimeout(this.restartTimer);
+    this.restartTimer = null;
+    this.disposeSession();
+    const session = { id: ++this.sessionGeneration, provider: this.provider, closed: false };
+    this.session = session;
+    this.lastProcessedText = '';
+    this.resetScriptureContext();
+    this.hasSelectedAudioEnergy = false;
+    this.setConnectionState(status, status === 'reconnecting' ? 'Reconnecting speech recognition...' : 'Connecting speech recognition...');
+    if (!this.isCurrentSession(session)) return;
+    if (session.provider === 'deepgram') this.startDeepgram(session);
+    else this.startNative(session);
+  }
+
   stop() {
     this.isListening = false;
+    this.resetScriptureContext();
+    ++this.sessionGeneration;
     clearTimeout(this.restartTimer);
-    this.stopDeepgram();
-    this.stopNative();
+    this.restartTimer = null;
+    this.disposeSession();
+    this.setConnectionState('idle', 'Speech recognition stopped.');
   }
 
-  // ── Native Speech Start/Stop ────────────────────────────────────────────────
-  startNative() {
-    if (this.recognition) {
-      try { 
-        this.recognition.start(); 
-      } catch (e) {
-        // Recognition might already be running
-      }
-    }
+  failSession(session, message) {
+    if (!this.isCurrentSession(session)) return;
+    this.stop();
+    this.setConnectionState('error', message);
   }
 
-  stopNative() {
-    if (this.recognition) {
-      try { this.recognition.stop(); } catch (e) {}
-    }
-  }
-
-  // ── Deepgram Live Streaming WebSocket Pipeline ──────────────────────────────
-  async startDeepgram() {
-    const apiKey = this.deepgramApiKey || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_api_key')) || '';
-    if (!apiKey) {
-      this.isListening = false;
-      if (typeof showToast === 'function') {
-        showToast('Deepgram API Key is required. Please configure in Settings.', 'warning');
-      }
-      const transcriptBox = document.getElementById('ai-transcript-text');
-      if (transcriptBox) {
-        transcriptBox.textContent = 'Deepgram API Key required. Open Studio Preferences → AI Speech Engine.';
-      }
-      if (typeof window.openAiSettingsTab === 'function') {
-        window.openAiSettingsTab();
-      }
+  reconnect(session, message, normalNativeEnd = false) {
+    if (!this.isCurrentSession(session)) return;
+    if (!normalNativeEnd && ++this.reconnectAttempts > 6) {
+      this.failSession(session, 'Speech connection could not recover. Check your network and speech settings, then start again.');
       return;
     }
+    this.onDiagnostic?.('reconnecting', { reason: message });
+    this.resetScriptureContext();
+    this.disposeSession();
+    const generation = this.sessionGeneration;
+    this.setConnectionState('reconnecting', message);
+    const delay = normalNativeEnd ? 300 : Math.min(30000, 1000 * (2 ** (this.reconnectAttempts - 1)));
+    this.restartTimer = setTimeout(() => {
+      if (this.isListening && this.sessionGeneration === generation) this.beginSession('reconnecting');
+    }, delay);
+  }
 
+  disposeSession() {
+    const session = this.session;
+    if (!session) return;
+    session.closed = true; // Invalidate callbacks before closing anything.
+    clearTimeout(session.connectTimer);
+    clearInterval(session.healthTimer);
+    clearInterval(session.audioMonitorTimer);
+    this.setAudioActivity(false);
+    this.publishAudioHealth({ status: 'idle', percent: 0, message: 'Start listening to check input.' });
+    if (session.recognition) {
+      const recognition = session.recognition;
+      recognition.onstart = recognition.onresult = recognition.onerror = recognition.onend = null;
+      try { recognition.abort(); } catch (_) {}
+    }
+    if (session.recorder) {
+      session.recorder.ondataavailable = session.recorder.onerror = null;
+      try { if (session.recorder.state !== 'inactive') session.recorder.stop(); } catch (_) {}
+    }
+    if (session.socket) {
+      const socket = session.socket;
+      socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+      try {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'CloseStream' }));
+        socket.close();
+      } catch (_) {}
+    }
+    for (const stream of [session.stream, session.processedStream]) {
+      if (stream) stream.getTracks().forEach(track => { track.onended = null; track.stop(); });
+    }
+    if (session.context) {
+      try { Promise.resolve(session.context.close()).catch(() => {}); } catch (_) {}
+    }
+    this.session = null;
+    this.recognition = this.deepgramSocket = this.mediaRecorder = null;
+    this.audioStream = this.processedAudioStream = this.audioProcessingContext = null;
+  }
+
+  startNative(session) {
+    this.publishAudioHealth({ status: 'unavailable', percent: 0, message: 'Browser Native uses the browser microphone; selected input and signal monitoring are unavailable. Use Deepgram to verify input.' });
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      this.failSession(session, 'Browser speech recognition is unavailable. Select Deepgram in speech settings.');
+      return;
+    }
     try {
-      // 1. Capture Microphone Stream with Selected Hardware Device
-      const targetDeviceId = this.selectedDeviceId || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_selected_mic_device')) || 'default';
-      this.selectedDeviceId = targetDeviceId;
-
-      const audioConstraints = {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: true
+      const recognition = new SpeechRecognition();
+      session.recognition = this.recognition = recognition;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      recognition.onstart = () => {
+        if (!this.isCurrentSession(session)) return;
+        clearTimeout(session.connectTimer);
+        this.setConnectionState('listening', 'Listening with Browser Native (browser microphone; input monitoring unavailable).');
       };
-      if (targetDeviceId && targetDeviceId !== 'default') {
-        audioConstraints.deviceId = { ideal: targetDeviceId };
-      }
-
-      try {
-        this.audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-      } catch (devErr) {
-        console.warn('Could not capture audio with ideal deviceId, falling back to default input stream:', devErr);
-        this.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      }
-
-      // 1b. Create Web Audio Downmixer: Mixes multi-channel USB soundboard inputs (Channel 1 Left + Channel 2 Right)
-      // This guarantees that whether the church soundboard is plugged into Left, Right, or Stereo, Deepgram hears it loud and clear.
-      let streamToSend = this.audioStream;
-      try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-          this.audioProcessingContext = new AudioCtx();
-          if (this.audioProcessingContext.state === 'suspended') {
-            await this.audioProcessingContext.resume();
-          }
-          const srcNode = this.audioProcessingContext.createMediaStreamSource(this.audioStream);
-          const destNode = this.audioProcessingContext.createMediaStreamDestination();
-          srcNode.connect(destNode);
-          if (destNode.stream && destNode.stream.getAudioTracks().length > 0) {
-            this.processedAudioStream = destNode.stream;
-            streamToSend = this.processedAudioStream;
+      recognition.onresult = event => {
+        if (!this.isCurrentSession(session)) return;
+        let finalText = '', interimText = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) finalText += ' ' + event.results[i][0].transcript;
+          else interimText += ' ' + event.results[i][0].transcript;
+        }
+        for (const [text, final] of [[finalText, true], [interimText, false]]) {
+          if (!this.isCurrentSession(session)) return;
+          const clean = text.trim();
+          if (clean && (final || clean !== this.lastProcessedText)) {
+            this.reconnectAttempts = 0;
+            this.lastProcessedText = clean;
+            this.processSpokenText(clean, final);
           }
         }
-      } catch (audioMixErr) {
-        console.warn('Web Audio downmix pass-through, using direct hardware stream:', audioMixErr);
-        streamToSend = this.audioStream;
-      }
-
-      // 2. Build Deepgram Live WebSocket Endpoint with Church Keywords
-      const model = this.deepgramModel || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_model')) || 'nova-2';
-      const params = new URLSearchParams({
-        model: model,
-        smart_format: 'true',
-        punctuate: 'true',
-        interim_results: 'true',
-        endpointing: '300',
-        language: 'en'
-      });
-
-      // Pass Bible Books to Deepgram Keywords Booster
-      if (this.bibleBooks && Array.isArray(this.bibleBooks)) {
-        this.bibleBooks.forEach(b => {
-          params.append('keywords', `${b.name}:2`);
-        });
-      }
-
-      // Pass Custom Church Terms to Deepgram Keywords Booster
-      const termsStr = this.churchCustomTerms || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_church_custom_terms')) || '';
-      if (termsStr) {
-        const customList = termsStr.split(',').map(t => t.trim()).filter(Boolean);
-        customList.forEach(t => params.append('keywords', `${t}:2`));
-      }
-
-      // Pass Active Service Agenda Songs to Deepgram Keywords Booster (Highest Weight :3)
-      const agendaSongs = (typeof state !== 'undefined' && Array.isArray(state.agendaItems))
-        ? state.agendaItems.filter(i => i.type === 'song' || i.songId)
-        : [];
-      agendaSongs.slice(0, 15).forEach(s => {
-        if (s.title) params.append('keywords', `${s.title}:3`);
-      });
-
-      // Pass Top Active Church Song Titles to Deepgram Keywords Booster (:2)
-      if (typeof SONGS_DATABASE !== 'undefined' && Array.isArray(SONGS_DATABASE)) {
-        SONGS_DATABASE.slice(0, 30).forEach(s => {
-          if (s.title) params.append('keywords', `${s.title}:2`);
-        });
-      }
-
-      const wsUrl = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
-      this.deepgramSocket = new WebSocket(wsUrl, ['token', apiKey]);
-
-      const transcriptBox = document.getElementById('ai-transcript-text');
-      if (transcriptBox) {
-        transcriptBox.textContent = `Connecting to Deepgram Live (${model})...`;
-      }
-
-      this.deepgramSocket.onopen = () => {
-        if (!this.isListening) {
-          this.stopDeepgram();
-          return;
-        }
-
-        if (transcriptBox) {
-          transcriptBox.textContent = `Listening with Deepgram (${model})... Speak scripture or sing lyrics.`;
-        }
-
-        // Determine best supported MediaRecorder mimeType
-        let mimeType = 'audio/webm';
-        if (typeof MediaRecorder !== 'undefined') {
-          if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-            mimeType = 'audio/webm;codecs=opus';
-          } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-            mimeType = 'audio/webm';
-          } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-            mimeType = 'audio/ogg;codecs=opus';
-          }
-        }
-
-        try {
-          this.mediaRecorder = new MediaRecorder(streamToSend, { mimeType: mimeType });
-          this.mediaRecorder.ondataavailable = (event) => {
-            if (event.data && event.data.size > 0 && this.deepgramSocket && this.deepgramSocket.readyState === WebSocket.OPEN) {
-              this.deepgramSocket.send(event.data);
-            }
-          };
-          this.mediaRecorder.start(250); // Stream 250ms chunks for sub-second live STT
-        } catch (recErr) {
-          console.warn('Could not start MediaRecorder for Deepgram', recErr);
+      };
+      recognition.onerror = event => {
+        if (!this.isCurrentSession(session) || event.error === 'no-speech') return;
+        if (['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'].includes(event.error)) {
+          this.failSession(session, 'Microphone or speech access is unavailable. Check permissions and your input device.');
+        } else {
+          this.reconnect(session, 'Browser speech connection interrupted. Reconnecting...');
         }
       };
-
-      this.deepgramSocket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          const transcript = data.channel?.alternatives?.[0]?.transcript || '';
-          const isFinal = Boolean(data.is_final || data.speech_final);
-          if (transcript && transcript.trim()) {
-            const cleanText = transcript.trim();
-            if (cleanText !== this.lastProcessedText || isFinal) {
-              this.lastProcessedText = cleanText;
-              this.processSpokenText(cleanText, isFinal);
-            }
-          }
-        } catch (parseErr) {
-          console.warn('Deepgram message parse error', parseErr);
-        }
-      };
-
-      this.deepgramSocket.onerror = (errEvent) => {
-        console.warn('Deepgram WebSocket error:', errEvent);
-        if (transcriptBox && this.isListening) {
-          transcriptBox.textContent = 'Deepgram Connection Error. Please verify your API Key in Studio Preferences.';
-        }
-        if (typeof showToast === 'function') {
-          showToast('Deepgram streaming connection error. Check API key and internet.', 'error');
-        }
-      };
-
-      this.deepgramSocket.onclose = () => {
-        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-          try { this.mediaRecorder.stop(); } catch(e) {}
-        }
-      };
-
-    } catch (micErr) {
-      console.warn('Microphone stream error for Deepgram:', micErr);
-      this.isListening = false;
-      if (typeof showToast === 'function') {
-        showToast(`Could not access microphone: ${micErr.message}`, 'error');
-      }
-      const transcriptBox = document.getElementById('ai-transcript-text');
-      if (transcriptBox) {
-        transcriptBox.textContent = 'Microphone access failed. Please check device permissions.';
-      }
+      recognition.onend = () => this.reconnect(session, 'Restarting browser speech recognition...', true);
+      session.connectTimer = setTimeout(() => this.reconnect(session, 'Speech startup timed out. Reconnecting...'), 15000);
+      recognition.start();
+    } catch (_) {
+      this.failSession(session, 'Could not start browser speech recognition. Check microphone access.');
     }
   }
 
-  stopDeepgram() {
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      try { this.mediaRecorder.stop(); } catch (e) {}
+  buildDeepgramParams() {
+    const model = this.deepgramModel || 'nova-2';
+    const nova3 = /^nova-3(?:-|$)/i.test(model);
+    const params = new URLSearchParams({ model, smart_format: 'true', punctuate: 'true',
+      interim_results: 'true', endpointing: '300', language: 'en' });
+    const agenda = typeof state !== 'undefined' && Array.isArray(state.agendaItems)
+      ? state.agendaItems.filter(item => item.type === 'song' || item.songId) : [];
+    const library = typeof SONGS_DATABASE !== 'undefined' && Array.isArray(SONGS_DATABASE) ? SONGS_DATABASE : [];
+    // Explicit church vocabulary gets first priority; the general song library is last.
+    const candidates = [
+      ...(this.churchCustomTerms || '').split(/[,;\n]/),
+      ...this.bibleBooks.map(book => book.name),
+      ...agenda.slice(0, 15).map(song => song.title),
+      ...library.slice(0, 30).map(song => song.title)
+    ];
+    const seen = new Set();
+    let byteBudget = 0;
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') continue;
+      const term = candidate.normalize('NFKC').replace(/:\s*\d+(?:\.\d+)?\s*$/, '').replace(/\s+/g, ' ').trim();
+      const key = term.toLowerCase();
+      if (!term || term.length > 80 || seen.has(key)) continue;
+      // Nova-3 caps the combined prompt at 500 model tokens. Use a conservative
+      // UTF-8 byte budget (including a separator per term), not a word-count guess.
+      const bytes = new TextEncoder().encode(term).length + 1;
+      if (nova3 && byteBudget + bytes > 450) continue;
+      if (seen.size >= (nova3 ? 50 : 100)) break;
+      seen.add(key);
+      byteBudget += bytes;
+      params.append(nova3 ? 'keyterm' : 'keywords', nova3 ? term : `${term}:1`);
     }
-    this.mediaRecorder = null;
+    return params;
+  }
 
-    if (this.deepgramSocket) {
+  async startDeepgram(session) {
+    const apiKey = this.deepgramApiKey;
+    if (!apiKey) {
+      this.failSession(session, 'Deepgram API key required. Open Studio Preferences → AI Speech Engine.');
+      return;
+    }
+    let stream;
+    try {
+      const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: true };
+      if (this.selectedDeviceId && this.selectedDeviceId !== 'default') audio.deviceId = { exact: this.selectedDeviceId };
+      stream = await navigator.mediaDevices.getUserMedia({ audio });
+      if (!this.isCurrentSession(session)) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      session.stream = this.audioStream = stream;
+      stream.getTracks().forEach(track => {
+        track.onended = () => this.failSession(session, 'Microphone disconnected. Select an input and start again.');
+      });
+      const track = stream.getAudioTracks()[0];
+      const settings = track?.getSettings?.() || {};
+      if (this.selectedDeviceId !== 'default' && settings.deviceId && settings.deviceId !== this.selectedDeviceId) {
+        this.failSession(session, 'The captured microphone does not match the selected input. Select the input again.');
+        return;
+      }
+      // Monitor the original stream passed to MediaRecorder; no second capture or downmix.
+      const streamToSend = stream;
       try {
-        if (this.deepgramSocket.readyState === WebSocket.OPEN) {
-          this.deepgramSocket.send(JSON.stringify({ type: 'CloseStream' }));
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) throw new Error('Web Audio unavailable');
+        const context = new AudioCtx();
+        session.context = this.audioProcessingContext = context;
+        if (context.state === 'suspended') await context.resume();
+        if (!this.isCurrentSession(session)) return;
+        this.monitorAudio(session, stream, context, settings);
+      } catch (_) {
+        if (!this.isCurrentSession(session)) return;
+        this.publishAudioHealth({ status: 'unavailable', percent: 0, message: 'Transcription input connected; signal monitoring unavailable.' });
+      }
+      if (!this.isCurrentSession(session)) return;
+      this.connectDeepgram(session, streamToSend, apiKey);
+    } catch (_) {
+      this.failSession(session, 'Could not access the microphone. Check input device and permissions.');
+    }
+  }
+
+  publishAudioHealth(health) {
+    this.audioHealth = health;
+    if (this.onAudioHealth) this.onAudioHealth(health);
+  }
+
+  monitorAudio(session, stream, context, settings) {
+    const source = context.createMediaStreamSource(stream);
+    const channelCount = Number.isInteger(settings.channelCount) && settings.channelCount > 0 && settings.channelCount <= 32 ? settings.channelCount : null;
+    const count = Math.max(1, Math.min(32, channelCount || 1));
+    const splitter = context.createChannelSplitter(count);
+    source.connect(splitter);
+    const analysers = Array.from({ length: count }, (_, i) => {
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 2048;
+      splitter.connect(analyser, i);
+      return { analyser, samples: new Float32Array(analyser.fftSize) };
+    });
+    session.audioNodes = [source, splitter, ...analysers.map(a => a.analyser)];
+    let lastSignal = Date.now();
+    const sample = () => {
+      if (!this.isCurrentSession(session)) return;
+      const track = stream.getAudioTracks()[0];
+      if (!track || track.readyState === 'ended') {
+        this.failSession(session, 'Microphone disconnected. Select an input and start again.');
+        return;
+      }
+      const channels = analysers.map(({ analyser, samples }, index) => {
+        analyser.getFloatTimeDomainData(samples);
+        let sum = 0, peak = 0;
+        for (const value of samples) { sum += value * value; peak = Math.max(peak, Math.abs(value)); }
+        const rms = Math.sqrt(sum / samples.length);
+        return { channel: index + 1, rms, peak, dbfs: rms > 0 ? 20 * Math.log10(rms) : -120 };
+      });
+      const rms = Math.max(...channels.map(c => c.rms));
+      const active = !track.muted && context.state === 'running' && rms > 0.00316;
+      if (active) lastSignal = Date.now();
+      this.setAudioActivity(active);
+      const status = track.muted ? 'muted' : context.state !== 'running' ? 'suspended' :
+        channels.some(c => c.peak >= 0.99) ? 'clipping' : Date.now() - lastSignal >= 8000 ? 'silence' : 'ok';
+      const messages = { muted: 'Microphone muted or unavailable.', suspended: 'Audio monitoring suspended.',
+        clipping: 'Input is clipping; lower microphone or mixer gain.', silence: 'No input signal for 8 seconds; check microphone and mixer routing.', ok: 'Input connected.' };
+      this.publishAudioHealth({ status, percent: active ? Math.round(Math.min(100, Math.max(0, (20 * Math.log10(rms) + 60) / 60 * 100))) : 0,
+        message: messages[status], deviceId: settings.deviceId || null, deviceLabel: track.label || 'Microphone',
+        channelCount, channelsVerified: channelCount !== null, sampleRate: settings.sampleRate || context.sampleRate,
+        channels });
+    };
+    sample();
+    session.audioMonitorTimer = setInterval(sample, 100);
+  }
+
+  connectDeepgram(session, stream, apiKey) {
+    let socket;
+    try {
+      socket = new WebSocket(`wss://api.deepgram.com/v1/listen?${this.buildDeepgramParams()}`, ['token', apiKey]);
+    } catch (_) {
+      this.failSession(session, 'Could not create the speech connection. Check speech settings.');
+      return;
+    }
+    session.socket = this.deepgramSocket = socket;
+    session.connectTimer = setTimeout(() => this.reconnect(session, 'Speech connection timed out. Reconnecting...'), 15000);
+    socket.onopen = () => {
+      if (!this.isCurrentSession(session)) return;
+      clearTimeout(session.connectTimer);
+      try {
+        const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
+          .find(type => MediaRecorder.isTypeSupported(type));
+        if (!mimeType) throw new Error('Unsupported audio format');
+        const recorder = new MediaRecorder(stream, { mimeType });
+        session.recorder = this.mediaRecorder = recorder;
+        session.lastSentAt = session.lastTranscriptAt = Date.now();
+        recorder.ondataavailable = event => {
+          if (!this.isCurrentSession(session) || socket.readyState !== WebSocket.OPEN || !event.data?.size) return;
+          if (socket.bufferedAmount > 1024 * 1024) {
+            this.reconnect(session, 'Speech upload stalled. Reconnecting...');
+            return;
+          }
+          try { socket.send(event.data); session.lastSentAt = Date.now(); }
+          catch (_) { this.reconnect(session, 'Speech upload interrupted. Reconnecting...'); }
+        };
+        recorder.onerror = () => this.failSession(session, 'Audio recording failed. Check your microphone and start again.');
+        recorder.start(250);
+        session.healthTimer = setInterval(() => this.checkDeepgramHealth(session), 1000);
+        this.setConnectionState('listening', `Listening with Deepgram (${this.deepgramModel})...`);
+      } catch (_) {
+        this.failSession(session, 'Could not record audio in a supported format. Try Browser Native or restart the app.');
+      }
+    };
+    socket.onmessage = event => {
+      if (!this.isCurrentSession(session)) return;
+      let data;
+      try { data = JSON.parse(event.data); } catch (_) { return; }
+      if (data.type === 'Error') {
+        this.failSession(session, 'Speech provider rejected the request. Check your API key, model and vocabulary settings.');
+        return;
+      }
+      const clean = (data.channel?.alternatives?.[0]?.transcript || '').trim();
+      const final = data.is_final === true;
+      if (clean) {
+        session.lastTranscriptAt = Date.now();
+        this.reconnectAttempts = 0;
+        if (clean !== this.lastProcessedText || final) {
+          this.lastProcessedText = clean;
+          this.processSpokenText(clean, final, { recognitionConfidence: data.channel?.alternatives?.[0]?.confidence });
         }
-        this.deepgramSocket.close();
-      } catch (e) {}
-    }
-    this.deepgramSocket = null;
+      }
+    };
+    socket.onerror = () => this.reconnect(session, 'Speech connection failed. Reconnecting...');
+    socket.onclose = event => {
+      if ([1003, 1007, 1008].includes(event.code)) {
+        this.failSession(session, 'Speech provider rejected the connection. Check your API key and speech settings.');
+      } else {
+        this.reconnect(session, 'Speech connection lost. Reconnecting...');
+      }
+    };
+  }
 
-    if (this.audioProcessingContext) {
-      try { this.audioProcessingContext.close(); } catch(e) {}
-      this.audioProcessingContext = null;
-    }
-
-    if (this.processedAudioStream) {
+  checkDeepgramHealth(session) {
+    if (!this.isCurrentSession(session)) return;
+    const now = Date.now();
+    if (now - session.lastSentAt >= 3000) {
       try {
-        this.processedAudioStream.getTracks().forEach(track => track.stop());
-      } catch (e) {}
-      this.processedAudioStream = null;
+        session.socket.send(JSON.stringify({ type: 'KeepAlive' }));
+        session.lastSentAt = now;
+      } catch (_) {
+        this.reconnect(session, 'Speech connection interrupted. Reconnecting...');
+        return;
+      }
     }
-
-    if (this.audioStream) {
-      try {
-        this.audioStream.getTracks().forEach(track => track.stop());
-      } catch (e) {}
-      this.audioStream = null;
+    // Use the existing activity signal, with a freshness check. Silence alone
+    // must never cause reconnect loops. Unifying capture/meter is a later task.
+    const audible = this.hasSelectedAudioEnergy && now - this.lastAudioActivityAt < 2000;
+    if (!audible) session.audibleSince = null;
+    else if (session.audibleSince == null) session.audibleSince = now;
+    if (session.audibleSince != null && now - Math.max(session.audibleSince, session.lastTranscriptAt) >= 45000) {
+      this.reconnect(session, 'Audio is active but transcription has stalled. Reconnecting...');
     }
   }
 
   setAudioDeviceId(deviceId) {
-    this.selectedDeviceId = deviceId;
-    if (this.isListening) {
-      this.stop();
-      setTimeout(() => this.start(), 300);
-    }
+    this.setProviderConfig({ selectedDeviceId: deviceId });
   }
 
   setAudioActivity(isActive) {
     this.hasSelectedAudioEnergy = !!isActive;
+    this.lastAudioActivityAt = Date.now();
   }
 
   setProviderConfig(cfg = {}) {
-    if (cfg.provider) this.provider = cfg.provider;
-    if (cfg.deepgramApiKey !== undefined) this.deepgramApiKey = cfg.deepgramApiKey;
-    if (cfg.deepgramModel) this.deepgramModel = cfg.deepgramModel;
-    if (cfg.churchCustomTerms !== undefined) this.churchCustomTerms = cfg.churchCustomTerms;
-    if (cfg.selectedDeviceId !== undefined) this.selectedDeviceId = cfg.selectedDeviceId;
+    let changed = false;
+    for (const key of ['provider', 'deepgramApiKey', 'deepgramModel', 'churchCustomTerms', 'selectedDeviceId']) {
+      if (cfg[key] !== undefined && cfg[key] !== this[key]) {
+        this[key] = cfg[key];
+        changed = true;
+      }
+    }
+    if (changed && this.isListening) {
+      this.reconnectAttempts = 0;
+      this.beginSession();
+    }
   }
 
   toggle() {
-    if (this.isListening) {
-      this.stop();
-    } else {
-      this.start();
-    }
+    if (this.isListening) this.stop();
+    else this.start();
     return this.isListening;
   }
 
   // Process live or simulated speech text through all detection pipelines
-  processSpokenText(text, isFinal = false) {
+  processSpokenText(text, isFinal = false, metadata = {}) {
     if (!text || typeof text !== 'string') return;
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -651,8 +709,14 @@ class SpeechAiEngine {
       this.onTranscript(cleanText, isFinal);
     }
 
+    // Interim hypotheses can be revised by the provider; display them only.
+    if (!isFinal) {
+      if (this.pendingChapter) this.deferChapterSuggestion(this.pendingChapter);
+      return;
+    }
+
     // 1. Bible Reference & Quote Detection
-    this.parseScriptureReferences(cleanText);
+    this.parseScriptureReferences(cleanText, metadata);
 
     // 2. Song Title & Lyrics Matching (Worldwide Church Adaptive Index)
     this.parseSongLyrics(cleanText);
@@ -669,7 +733,7 @@ class SpeechAiEngine {
   // Helper: Normalize speech text converting word numbers into digit integers
   normalizeSpokenNumbers(text) {
     if (!text) return '';
-    let lower = text.toLowerCase().replace(/[-_]/g, ' ');
+    let lower = text.toLowerCase().replace(/([a-z])[-_]([a-z])/g, '$1 $2').replace(/([a-z])([,.;!?])/g, '$1 $2');
 
     // Normalize ordinal prefixes e.g. "1 st" -> "1st", "2 nd" -> "2nd"
     lower = lower.replace(/\b(1|2|3)\s*(st|nd|rd|th)\b/g, '$1$2');
@@ -716,80 +780,139 @@ class SpeechAiEngine {
     return resultTokens.join(' ');
   }
 
-  // Bible Reference Recognition
-  parseScriptureReferences(text) {
-    if (!text) return;
-    const normalized = this.normalizeSpokenNumbers(text);
+  cancelChapterSuggestion() {
+    if (this.chapterSuggestionTimer != null) clearTimeout(this.chapterSuggestionTimer);
+    this.chapterSuggestionTimer = null;
+    this.pendingChapter = null;
+  }
 
-    // Common spoken cues to clean out: "turn with me to", "book of", "let's read from", "open your bible to"
-    const cleaned = normalized.replace(/\b(turn to|turn with me to|open to|open your bibles? to|let us read|reading from|the book of|look at|in the scripture|in the book of)\b/gi, ' ');
+  deferChapterSuggestion(result) {
+    this.cancelChapterSuggestion();
+    this.pendingChapter = result;
+    this.onReferencePending?.();
+    this.chapterSuggestionTimer = setTimeout(() => {
+      if (this.pendingChapter !== result) return;
+      this.chapterSuggestionTimer = null;
+      this.pendingChapter = null;
+      this.onVerseDetected?.(result);
+    }, 2500);
+  }
 
-    // Detect spoken Bible translation indicator if present (e.g. "in the NIV", "KJV", "NLT", "NKJV", "ESV")
-    let detectedVersion = null;
-    const versionMatch = cleaned.match(/\b(in the\s+)?(kjv|niv|nkjv|nlt|esv|nasb|amp|msg|asv)\b/i);
-    if (versionMatch && versionMatch[2]) {
-      detectedVersion = versionMatch[2].toUpperCase();
+  resetScriptureContext() {
+    this.cancelChapterSuggestion();
+    this.quotationContextGeneration = (this.quotationContextGeneration || 0) + 1;
+    this.quotationPending?.clear();
+    this.scriptureContext = null;
+    this.pendingReference = null;
+  }
+
+  // Bounded finalized-segment assembly. Provisional text never mutates context.
+  parseScriptureReferences(text, metadata = {}) {
+    const now = Date.now();
+    if (this.scriptureContext && now - this.scriptureContext.at > 60000) this.scriptureContext = null;
+    let normalized = this.normalizeSpokenNumbers(text).replace(/[–—]/g, '-');
+    if (this.pendingReference && now - this.pendingReference.at <= 8000 &&
+        /^(?:\d|chapter\b|verses?\b|to\b|through\b)/.test(normalized)) {
+      normalized = `${this.pendingReference.text} ${normalized}`;
+      this.cancelChapterSuggestion();
     }
-
-    for (const b of this.bibleBooks) {
-      for (const alias of b.aliases) {
-        const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const pattern = new RegExp(
-          `\\b${escapedAlias}\\b(?:\\s*(?:chapter|chap|ch)?\\s*(\\d+))?(?:(?:\\s*(?:verses?|vs?|from verse|:)|\\s+)\\s*(\\d+)(?:\\s*(?:to|-|through|and|until)\\s*(\\d+))?)?`,
-          'i'
-        );
-
-        const match = cleaned.match(pattern);
-        if (match && (match[1] || match[2])) {
-          const rawBook = b.name;
-          const maxCh = b.maxChapters || 150;
-          let chapter = match[1] ? parseInt(match[1], 10) : 1;
-          let verse = match[2] ? parseInt(match[2], 10) : 1;
-          const endVerse = match[3] ? parseInt(match[3], 10) : null;
-
-          if (maxCh === 1) {
-            if (!match[2] && match[1]) {
-              verse = chapter;
-              chapter = 1;
-            } else if (!match[1] && match[2]) {
-              chapter = 1;
-              verse = parseInt(match[2], 10);
-            } else if (chapter === 1) {
-              verse = match[2] ? parseInt(match[2], 10) : 1;
-            } else {
-              continue;
-            }
-          }
-
-          if (chapter < 1 || chapter > maxCh) continue;
-          if (verse < 1 || verse > 176) continue;
-          if (endVerse && (endVerse <= verse || endVerse > 176)) continue;
-
-          let rawRef = `${rawBook} ${chapter}:${verse}`;
-          if (endVerse && endVerse > verse) {
-            rawRef = `${rawBook} ${chapter}:${verse}-${endVerse}`;
-          }
-
-          let confidence = 85;
-          if (match[1] && match[2]) confidence = 98;
-          else if (match[1]) confidence = 90;
-
-          if (this.onVerseDetected) {
-            this.onVerseDetected({
-              book: rawBook,
-              chapter: chapter,
-              verse: verse,
-              endVerse: endVerse,
-              rawReference: rawRef,
-              confidence: confidence,
-              version: detectedVersion,
-              matchedQuery: match[0],
-              timestamp: Date.now()
-            });
-          }
-          return;
-        }
+    this.pendingReference = null;
+    const aliases = this.bibleBooks.flatMap(book => book.aliases.map(alias => ({ book, alias: this.normalizeSpokenNumbers(alias) })))
+      .sort((a,b) => b.alias.length - a.alias.length);
+    const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const byAlias = new Map(aliases.map(a => [a.alias, a.book]));
+    const bookPattern = new RegExp(`\\b(?:${[...byAlias.keys()].map(escape).join('|')})\\b`, 'g');
+    const version = normalized.match(/\b(kjv|niv|nkjv|nlt|esv|nasb|amp|msg|asv)\b/i)?.[1]?.toUpperCase() || null;
+    const mentions = [...normalized.matchAll(bookPattern)].filter(m => {
+      const book = byAlias.get(m[0]);
+      return /^\d/.test(book.name) || !/\b[123]\s+$/.test(normalized.slice(0,m.index));
+    });
+    const outputs = [];
+    // A new book (including an invalid replacement) supersedes a waiting chapter.
+    if (mentions.length) this.cancelChapterSuggestion();
+    const emit = (book, chapter, verse, endVerse, query, explicit, correction = false) => {
+      if (!Number.isInteger(chapter) || chapter < 1 || chapter > book.maxChapters ||
+          (verse !== null && (!Number.isInteger(verse) || verse < 1 || verse > 176)) ||
+          (endVerse !== null && (verse === null || endVerse < verse || endVerse > 176))) return false;
+      const rows = this.getScriptureVerses ? this.getScriptureVerses(book.name, chapter, version) : null;
+      const validated = Array.isArray(rows) && rows.length > 0;
+      if (Array.isArray(rows) && (!rows.length || (verse !== null &&
+          Array.from({length:(endVerse || verse)-verse+1}, (_,i) => verse+i).some(n => !rows.some(v => v.verse === n))))) return false;
+      const rawReference = `${book.name} ${chapter}${verse === null ? '' : `:${verse}${endVerse !== null ? `-${endVerse}` : ''}`}`;
+      const detectionScore = verse === null ? 90 : explicit ? 98 : 94;
+      const recognitionConfidence = Number.isFinite(metadata.recognitionConfidence) && metadata.recognitionConfidence >= 0 && metadata.recognitionConfidence <= 1 ? metadata.recognitionConfidence : null;
+      const result = { book: book.name, chapter, verse, endVerse, kind: verse === null ? 'chapter' : 'verse', rawReference,
+        detectionScore, confidence: detectionScore, recognitionConfidence, validation: validated ? 'verified' : 'unavailable',
+        version, autoProjectEligible: validated && verse !== null && explicit && !correction && (recognitionConfidence === null || recognitionConfidence >= .8),
+        matchedQuery: query, timestamp: now, correction };
+      if (correction && outputs.length) outputs.pop();
+      outputs.push(result);
+      this.scriptureContext = { book, chapter, verse, at: now };
+      return true;
+    };
+    const followups = (tail, context, correction = false) => {
+      if (!context) return;
+      const re = /\b(?:(chapter)\s+(\d+)(?:\s*[, :]?\s*verses?\s+(\d+))?|verses?\s+(\d+))(?:\s*(?:to|through|until|-)\s*(\d+))?/g;
+      for (const m of tail.matchAll(re)) {
+        const before = tail.slice(0,m.index);
+        const corrected = correction || /(?:\bno|\bsorry|\bi mean|\brather|\bcorrection)[,\s]*$/.test(before);
+        const chapter = m[1] ? +m[2] : context.chapter;
+        const verse = m[1] ? (m[3] ? +m[3] : null) : +m[4];
+        if (/^\s*(?:year|people|percent|dollars|minutes|hours)\b/.test(tail.slice(m.index+m[0].length))) continue;
+        if (emit(context.book, chapter, verse, m[5] ? +m[5] : null, m[0], false, corrected)) context = this.scriptureContext;
       }
+    };
+    if (!mentions.length) {
+      const correction = normalized.match(/^(?:no|sorry|i mean|rather|correction)[,\s]+(\d+)(?:\s*(?:to|through|-)\s*(\d+))?[.!]?$/);
+      if (correction && this.scriptureContext) {
+        const c = this.scriptureContext;
+        emit(c.book, c.chapter, +correction[1], correction[2] ? +correction[2] : null, normalized, false, true);
+      } else followups(normalized, this.scriptureContext);
+    } else {
+      for (let i=0; i<mentions.length; i++) {
+        const mention = mentions[i], book = byAlias.get(mention[0]);
+        this.scriptureContext = null;
+        const after = normalized.slice(mention.index+mention[0].length, mentions[i+1]?.index);
+        const before = normalized.slice(0,mention.index);
+        const correction = /(?:\bno|\bsorry|\bi mean|\brather|\bcorrection)[,\s]*$/.test(before);
+        // Explicit separators or two bare numbers; lexical suffixes reject prose lookalikes.
+        const m = after.match(/^\s*(?:(chapter|chap|ch)\s*)?(\d+)(?:(\s*:\s*|\s*,?\s*(?:verses?|vs?)\s*|\s+)(\d+))?(?:\s*(?:to|through|until|-)\s*(\d+))?/);
+        if (!m) {
+          if (i === mentions.length-1 && /^\s*(?:chapter|verses?)?\s*[.,]?\s*$/.test(after) && mention[0].length > 2) this.pendingReference = { text: `${mention[0]}${after.replace(/[.,]/g,'')}`, at:now };
+          continue;
+        }
+        const rest = after.slice(m[0].length);
+        if (/^\s*(?:years?|people|percent|dollars|minutes|hours|children|men|women|times|days|months|weeks|students|arrived)\b/.test(rest)) continue;
+        const cue = /\b(?:book of|turn (?:with me )?to|open (?:your bibles? )?to|read from)\s*$/.test(before);
+        const explicitSyntax = Boolean(m[1] || (m[3] && /[:a-z]/.test(m[3])));
+        if (mention[0].length <= 2 && !explicitSyntax && !cue) continue;
+        // An unfinished range must not project its start verse.
+        if (/^\s*(?:to|through|until|-|:|verses?)\s*[.,]?\s*$/.test(rest)) {
+          this.pendingReference={text:`${mention[0]}${after.replace(/[.,]/g,'')}`,at:now};continue;
+        }
+        if (/^\s*(?:to\b|through\b|until\b|-|:|verses?\b)/.test(rest) || /^\.\d/.test(rest)) continue;
+        if (!m[4] && !m[1] && !cue && book.maxChapters !== 1 && ['job','mark','john','james','ruth','numbers','song'].includes(mention[0])) {
+          if (/^[.,\s]*$/.test(rest)) this.pendingReference = { text: mention[0]+m[0], at: now };
+          continue;
+        }
+        let chapter=+m[2], verse=m[4] ? +m[4] : null, end=m[5] ? +m[5] : null;
+        if (book.maxChapters===1 && !m[1] && verse===null) { verse=chapter;chapter=1; }
+        if (emit(book,chapter,verse,end,mention[0]+m[0],true,correction)) {
+          if (verse === null && /^[.,\s]*$/.test(rest)) this.pendingReference = { text: mention[0]+m[0], at: now };
+          const correctedRest = rest.replace(/\b(no|sorry|i mean|rather|correction)[,\s]+(?=\d)/g, '$1 verse ');
+          followups(correctedRest,this.scriptureContext);
+          for (const extra of correctedRest.matchAll(/\band\s+(\d+)(?:\s*(?:to|through|-)\s*(\d+))?/g)) {
+            if (/^[.,\s]*$/.test(correctedRest.slice(extra.index+extra[0].length))) emit(book,chapter,+extra[1],extra[2] ? +extra[2] : null,extra[0],false);
+          }
+        } else this.scriptureContext = null;
+      }
+    }
+    // Same-utterance corrections replace the previous candidate before any callbacks run.
+    if (outputs.length) this.cancelChapterSuggestion();
+    for (const [index, result] of outputs.entries()) {
+      // Final STT segments are not necessarily complete spoken references.
+      if (result.kind === 'chapter' && index === outputs.length - 1) this.deferChapterSuggestion(result);
+      else this.onVerseDetected?.(result);
     }
   }
 
@@ -803,7 +926,7 @@ class SpeechAiEngine {
     // Filter out filler words for density calculation
     const musicalFillers = new Set(['oh', 'yeah', 'woah', 'amen', 'hallelujah', 'we', 'you', 'and', 'the', 'is', 'are', 'in', 'of', 'to', 'for']);
     const inputWords = cleanInput.split(' ').filter(w => w.length > 2);
-    const meaningfulInputWords = inputWords.filter(w => !musicalFillers.has(w));
+    const meaningfulInputWords = [...new Set(inputWords.filter(w => !musicalFillers.has(w)))];
     if (inputWords.length === 0) return;
 
     // Collect active Agenda song IDs for priority weighting
@@ -816,6 +939,7 @@ class SpeechAiEngine {
 
     let bestMatch = null;
     let highestScore = 0;
+    const songEvidence = new Map();
 
     const songsList = (typeof SONGS_DATABASE !== 'undefined' && Array.isArray(SONGS_DATABASE)) ? SONGS_DATABASE : [];
 
@@ -824,7 +948,7 @@ class SpeechAiEngine {
       if (!song || !song.title) continue;
 
       const isAgenda = agendaSongIds.has(song.id);
-      const agendaBoost = isAgenda ? 15 : 0;
+      const agendaBoost = 0; // Agenda membership is metadata, never evidence.
 
       if (!song._cleanTitle) {
         song._cleanTitle = song.title.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').trim();
@@ -832,9 +956,11 @@ class SpeechAiEngine {
       const songTitle = song._cleanTitle;
 
       // 1. Direct Title Match Check
-      if (cleanInput.includes(songTitle) || (songTitle.length > 5 && songTitle.includes(cleanInput))) {
+      if ((songTitle.split(/\s+/).length >= 3 && (cleanInput === songTitle || /\b(?:song|sing|singing|hymn|titled|called)\b/.test(cleanInput)) && (` ${cleanInput} `).includes(` ${songTitle} `)) ||
+          (songTitle.split(/\s+/).length >= 2 && cleanInput === songTitle)) {
         const firstStanza = song.stanzas && song.stanzas.length > 0 ? song.stanzas[0] : null;
         const score = Math.min(99, 94 + agendaBoost);
+        songEvidence.set(song.id, Math.max(songEvidence.get(song.id) || 0, score));
         if (score > highestScore) {
           highestScore = score;
           bestMatch = {
@@ -869,8 +995,9 @@ class SpeechAiEngine {
           let lineMatched = false;
           for (let lIdx = 0; lIdx < stanza._cleanLines.length; lIdx++) {
             const cl = stanza._cleanLines[lIdx];
-            if (cl.length >= 8 && (cleanInput.includes(cl) || cl.includes(cleanInput))) {
+            if (cl.split(/\s+/).length >= 4 && meaningfulInputWords.length >= 3 && (` ${cleanInput} `).includes(` ${cl} `)) {
               const score = Math.min(99, 95 + agendaBoost);
+              songEvidence.set(song.id, Math.max(songEvidence.get(song.id) || 0, score));
               if (score > highestScore) {
                 highestScore = score;
                 bestMatch = {
@@ -899,11 +1026,12 @@ class SpeechAiEngine {
               if (stanzaWords.includes(meaningfulInputWords[wIdx])) matchedCount++;
             }
 
-            const minWordsNeeded = Math.min(3, meaningfulInputWords.length);
+            const minWordsNeeded = 4;
             const ratio = meaningfulInputWords.length > 0 ? (matchedCount / meaningfulInputWords.length) : 0;
 
-            if (matchedCount >= minWordsNeeded && ratio >= 0.4) {
+            if (matchedCount >= Math.max(5,minWordsNeeded) && ratio >= 0.8 && meaningfulInputWords.some((_,i) => i+3 <= meaningfulInputWords.length && stanza._clean.includes(meaningfulInputWords.slice(i,i+3).join(' ')))) {
               const score = Math.min(99, Math.round(55 + (ratio * 35) + (matchedCount * 3) + agendaBoost));
+              songEvidence.set(song.id, Math.max(songEvidence.get(song.id) || 0, score));
               if (score > highestScore) {
                 highestScore = score;
                 bestMatch = {
@@ -925,38 +1053,20 @@ class SpeechAiEngine {
       }
     }
 
-    if (bestMatch && highestScore >= 55) {
+    const rankedSongs = [...songEvidence.values()].sort((a,b) => b-a);
+    if (rankedSongs.length > 1 && rankedSongs[0]-rankedSongs[1] < 5) return;
+    if (bestMatch && highestScore >= 90) {
       if (this.onSongDetected) {
         this.onSongDetected({
           ...bestMatch,
+          autoProjectEligible: false, // Text alone cannot distinguish preaching from singing.
           timestamp: Date.now()
         });
       }
       return;
     }
 
-    // 3. Uncataloged Spontaneous Worship Song Detector
-    // If no song in the local library matched, but strong worship cues were sung
-    const worshipKeywords = ['hallelujah', 'glory', 'jesus', 'lord', 'god', 'worship', 'praise', 'holy', 'reign', 'savior', 'grace', 'worthy', 'majesty', 'mercy', 'hosanna', 'king', 'almighty'];
-    const hasWorshipCue = meaningfulInputWords.some(w => worshipKeywords.includes(w));
-    if (meaningfulInputWords.length >= 4 && hasWorshipCue) {
-      if (this.onSongDetected) {
-        this.onSongDetected({
-          songId: null,
-          title: 'Uncataloged Worship Song',
-          author: 'Spontaneous / Online',
-          songbook: 'Search',
-          stanzaIndex: 0,
-          stanzaType: 'Spoken / Sung Phrase',
-          fullStanzaText: text,
-          matchedSnippet: `"${text}"`,
-          confidence: 60,
-          isUncataloged: true,
-          query: text,
-          timestamp: Date.now()
-        });
-      }
-    }
+    // Worship vocabulary alone does not establish that a song is being sung.
   }
 
   // Fuzzy phrase word-overlap calculation
@@ -976,27 +1086,62 @@ class SpeechAiEngine {
     return matchCount / Math.min(inputWords.length, targetWords.length);
   }
 
-  // Parse semantic paraphrases and famous bible quotes
-  parseSemanticParaphrases(text) {
-    if (!text) return;
-    const lower = text.toLowerCase();
-
-    for (const item of this.paraphraseDatabase) {
-      const matchCount = item.keywords.filter(kw => lower.includes(kw.toLowerCase())).length;
-      if (matchCount > 0) {
-        const confidence = Math.min(99, 70 + (matchCount * 10));
-        if (this.onParaphraseDetected) {
-          this.onParaphraseDetected({
-            reference: item.reference,
-            text: item.text,
-            matchScore: matchCount,
-            confidence: confidence,
-            timestamp: Date.now()
-          });
-        }
-      }
-    }
+  async retrieveSemantic(text) {
+    if (!this.semanticSearch || !text || text.length > 2000) return;
+    const source = this.getQuotationSource?.();
+    if (source?.version !== 'KJV') return;
+    const id = ++this.semanticQueryId, session = this.sessionGeneration, context = this.quotationContextGeneration, at = Date.now();
+    try {
+      const result = await this.semanticSearch(text, source.version);
+      if (!result || id !== this.semanticQueryId || session !== this.sessionGeneration || context !== this.quotationContextGeneration || Date.now()-at > 15000) return;
+      const current = this.getQuotationSource?.();
+      if (current?.bible !== source.bible || current?.version !== source.version) return;
+      if (this.onParaphraseDetected) this.onParaphraseDetected({ ...result, autoProjectEligible: false, timestamp: Date.now() });
+    } catch (_) { this.onDiagnostic?.('semantic-failed', { reason: 'local-retrieval-unavailable' }); }
   }
+
+  // Worker results are suggestions only and cannot survive capture/session boundaries.
+  parseSemanticParaphrases(text) {
+    if (this.quotationMatcher) {
+      const match = this.quotationMatcher.match(text);
+      if (match && this.onParaphraseDetected) this.onParaphraseDetected({ ...match, timestamp: Date.now() });
+      return;
+    }
+    const source = this.getQuotationSource?.();
+    if (!source?.bible || typeof Worker === 'undefined') return;
+    if (this.quotationSource !== source.bible || this.quotationVersion !== source.version) {
+      this.quotationWorker?.terminate();
+      this.quotationSource = source.bible;
+      this.quotationVersion = source.version;
+      this.quotationGeneration++;
+      this.quotationReady = false;
+      this.quotationPending = new Map();
+      const generation = this.quotationGeneration;
+      let worker;
+      try { worker = this.quotationWorker = new Worker('js/quotation-worker.js'); }
+      catch (_) { this.quotationWorker = null; return; }
+      worker.onmessage = ({ data }) => {
+        if (generation !== this.quotationGeneration || data.generation !== generation) return;
+        if (data.type === 'ready') { this.quotationReady = true; return; }
+        if (data.type === 'error') { this.onDiagnostic?.('quotation-failed', { reason: 'index-error' }); this.quotationPending.clear(); return; }
+        const pending = this.quotationPending.get(data.id);
+        this.quotationPending.delete(data.id);
+        if (!pending || pending.session !== this.sessionGeneration || pending.context !== this.quotationContextGeneration || Date.now()-pending.at > 5000) return;
+        const current = this.getQuotationSource?.();
+        if (current?.bible !== this.quotationSource || current?.version !== this.quotationVersion) return;
+        if (data.match && this.onParaphraseDetected) this.onParaphraseDetected({ ...data.match, timestamp: Date.now() });
+        else if (!data.match) this.retrieveSemantic(pending.text);
+      };
+      worker.onerror = () => { this.onDiagnostic?.('quotation-failed', { reason: 'worker-error' }); this.quotationPending.clear(); worker.terminate(); if (this.quotationWorker === worker) this.quotationWorker = null; };
+      worker.postMessage({ type: 'build', bible: source.bible, version: source.version, generation });
+    }
+    if (!this.quotationWorker) return;
+    const id = ++this.quotationQueryId;
+    this.quotationPending.set(id, { session: this.sessionGeneration, context: this.quotationContextGeneration, at: Date.now(), text });
+    while (this.quotationPending.size > 8) this.quotationPending.delete(this.quotationPending.keys().next().value);
+    this.quotationWorker.postMessage({ type: 'query', text: text.slice(-4000), id, generation: this.quotationGeneration });
+  }
+
 }
 
 window.SpeechAiEngine = SpeechAiEngine;

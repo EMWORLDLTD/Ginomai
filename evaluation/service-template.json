@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "name": "Replace with reviewed service name",
+  "cases": [{
+    "id": "replace-service-id",
+    "provenance": {
+      "kind": "template-only-not-a-real-recording",
+      "recording": "replace-with-recording-path",
+      "speakerId": "replace-speaker-id",
+      "annotator": "replace-reviewer",
+      "reviewStatus": "unreviewed-example",
+      "split": "held-out"
+    },
+    "durationMs": 10000,
+    "events": [
+      {"at": 1000, "type": "partial", "text": "John three", "generation": 0},
+      {"at": 2000, "type": "final", "text": "John 3:16", "generation": 0},
+      {"at": 2400, "type": "projection", "reference": "John 3:16"}
+    ],
+    "labels": [{"id": "mention-1", "reference": "John 3:16", "evidenceAt": 1800, "until": 5000}]
+  }]
+}

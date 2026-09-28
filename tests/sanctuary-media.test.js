@@ -1,0 +1,64 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { once } = require('node:events');
+
+test('background uploads require the host, persist originals, and serve byte ranges to displays', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ginomia-media-test-'));
+  process.env.SF_MEDIA_DIR = directory;
+  const { server } = require('../server');
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await fs.rm(directory, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
+  const route = '/api/sanctuary-media?name=Square.png&width=1&height=1';
+  assert.equal((await fetch(base + route, { method: 'POST', body: png })).status, 403);
+  const cookie = (await fetch(base)).headers.get('set-cookie').split(';')[0];
+  assert.equal((await fetch(base + route, { method: 'POST', headers: { Cookie: cookie, Origin: 'https://example.com' }, body: png })).status, 403);
+  const upload = await fetch(base + route, { method: 'POST', headers: { Cookie: cookie }, body: png });
+  assert.equal(upload.status, 201);
+  const { item } = await upload.json();
+  assert.equal(item.width, 1);
+  assert.equal(item.height, 1);
+  assert.equal(item.type, 'image');
+  assert.match(item.imageUrl, /^\/media\/uploads\/upload_[\w-]+\.png$/);
+  const full = await fetch(base + item.imageUrl);
+  assert.equal(full.headers.get('content-type'), 'image/png');
+  assert.deepEqual(Buffer.from(await full.arrayBuffer()), png);
+  const range = await fetch(base + item.imageUrl, { headers: { Range: 'bytes=0-7' } });
+  assert.equal(range.status, 206);
+  assert.equal(range.headers.get('content-range'), `bytes 0-7/${png.length}`);
+  assert.deepEqual(Buffer.from(await range.arrayBuffer()), png.subarray(0, 8));
+  assert.equal((await fetch(base + item.imageUrl, { headers: { Range: 'bytes=99999-' } })).status, 416);
+  const restored = await require('../lib/sanctuary-media')(directory).list();
+  assert.equal(restored[0].id, item.id);
+  const catalog = await (await fetch(base + '/api/sanctuary-media', { headers: { Cookie: cookie } })).json();
+  assert.equal(catalog.items[0].name, 'Square.png');
+  assert.equal((await fetch(base + '/api/sanctuary-media?name=bad.html&width=1&height=1', { method: 'POST', headers: { Cookie: cookie }, body: 'bad' })).status, 400);
+  assert.equal((await fetch(base + route, { method: 'POST', headers: { Cookie: cookie }, body: '' })).status, 400);
+  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  const gifResponse = await fetch(base + '/api/sanctuary-media?name=Animation.gif&width=1&height=1', { method: 'POST', headers: { Cookie: cookie }, body: gif });
+  const gifItem = (await gifResponse.json()).item;
+  assert.equal(gifItem.category, 'motion');
+  assert.deepEqual(Buffer.from(await (await fetch(base + gifItem.imageUrl)).arrayBuffer()), gif);
+  const webm = await fs.readFile(path.join(__dirname, '../Themes/celestial_worship_loop.webm'));
+  const videoResponse = await fetch(base + '/api/sanctuary-media?name=Loop.webm&width=1920&height=1080', { method: 'POST', headers: { Cookie: cookie }, body: webm });
+  const videoItem = (await videoResponse.json()).item;
+  assert.equal(videoItem.type, 'video');
+  const tail = await fetch(base + videoItem.videoUrl, { headers: { Range: 'bytes=-64' } });
+  assert.equal(tail.status, 206);
+  assert.deepEqual(Buffer.from(await tail.arrayBuffer()), webm.subarray(-64));
+  assert.equal((await fs.readdir(directory)).some(file => file.endsWith('.part')), false);
+
+  // Test DELETE endpoint
+  const deleteRes = await fetch(base + `/api/sanctuary-media?id=${item.id}`, { method: 'DELETE', headers: { Cookie: cookie } });
+  assert.equal(deleteRes.status, 200);
+  assert.equal((await fetch(base + item.imageUrl)).status, 404);
+  const catalogAfter = await (await fetch(base + '/api/sanctuary-media', { headers: { Cookie: cookie } })).json();
+  assert.equal(catalogAfter.items.some(x => x.id === item.id), false);
+});
+

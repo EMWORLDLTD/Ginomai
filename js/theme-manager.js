@@ -1,4 +1,4 @@
-// Ginomia Pro - Theme & Display Customizer Engine
+// Ginomia - Theme & Display Customizer Engine
 'use strict';
 
 // Early Theme Hydration (Prevents Layout Stacking and Flash of Unstyled Theme on Refresh)
@@ -272,7 +272,7 @@ const THEME_LAYOUT_SPECS = {
         storageKey: 'sf_bento_sidebar_width',
         defaultVal: 260,
         min: 180,
-        max: 600,
+        max: 900,
         direction: 'start'
       },
       {
@@ -624,27 +624,78 @@ class ThemeManager {
 
     // Restore Sanctuary Theme Settings
     this.activeSanctuaryTheme = localStorage.getItem('sf_sanctuary_theme') || 'celestial_motion';
-    if (!SANCTUARY_THEMES[this.activeSanctuaryTheme]) {
+    if (!SANCTUARY_THEMES[this.activeSanctuaryTheme] && !this.activeSanctuaryTheme.startsWith('upload_')) {
       this.activeSanctuaryTheme = 'celestial_motion';
     }
     this.sanctuaryDimmer = parseInt(localStorage.getItem('sf_sanctuary_dimmer') || '30', 10);
     this.sanctuaryFont = localStorage.getItem('sf_sanctuary_font') || 'Outfit';
     this.obsModeRule = localStorage.getItem('sf_obs_mode_rule') || 'follow';
+    try { this.sanctuaryFits = JSON.parse(localStorage.getItem('sf_sanctuary_fits') || '{}') || {}; } catch { this.sanctuaryFits = {}; }
 
     this.applyUiTheme();
     ThemeResizerEngine.applySavedThemeDimensions(this.currentStyle);
   }
 
+  beginSanctuaryDraft() {
+    this.sanctuaryDraft = {
+      activeSanctuaryTheme: this.activeSanctuaryTheme,
+      sanctuaryFits: { ...this.sanctuaryFits },
+      sanctuaryDimmer: this.sanctuaryDimmer,
+      sanctuaryFont: this.sanctuaryFont,
+      obsModeRule: this.obsModeRule
+    };
+  }
+
+  hasSanctuaryDraftChanges() {
+    const draft = this.sanctuaryDraft;
+    if (!draft) return false;
+    return ['activeSanctuaryTheme', 'sanctuaryDimmer', 'sanctuaryFont', 'obsModeRule'].some(key => draft[key] !== this[key]) ||
+      Object.keys(draft.sanctuaryFits).some(key => (draft.sanctuaryFits[key] || 'cover') !== (this.sanctuaryFits[key] || 'cover'));
+  }
+
+  cancelSanctuaryDraft() {
+    this.sanctuaryDraft = null;
+    this.updateSanctuaryUi();
+  }
+
+  applySanctuaryDraft() {
+    if (!this.hasSanctuaryDraftChanges()) return;
+    const draft = this.sanctuaryDraft;
+    Object.assign(this, draft);
+    const saved = {
+      sf_sanctuary_theme: this.activeSanctuaryTheme,
+      sf_sanctuary_fits: JSON.stringify(this.sanctuaryFits),
+      sf_sanctuary_dimmer: this.sanctuaryDimmer,
+      sf_sanctuary_font: this.sanctuaryFont,
+      sf_obs_mode_rule: this.obsModeRule
+    };
+    try { Object.entries(saved).forEach(([key, value]) => localStorage.setItem(key, value)); } catch (_) {}
+    this.beginSanctuaryDraft();
+    this.updateSanctuaryUi();
+    this.broadcastSanctuaryTheme();
+  }
+
   setSanctuaryTheme(themeId) {
     if (!SANCTUARY_THEMES[themeId]) return;
+    if (this.sanctuaryDraft) { this.sanctuaryDraft.activeSanctuaryTheme = themeId; this.updateSanctuaryUi(); return; }
     this.activeSanctuaryTheme = themeId;
     try { localStorage.setItem('sf_sanctuary_theme', themeId); } catch(e) {}
     this.broadcastSanctuaryTheme();
     this.updateSanctuaryUi();
   }
 
+  setSanctuaryFit(value) {
+    if (!['cover', 'contain', 'fill'].includes(value)) return;
+    if (this.sanctuaryDraft) { this.sanctuaryDraft.sanctuaryFits[this.sanctuaryDraft.activeSanctuaryTheme] = value; this.updateSanctuaryUi(); return; }
+    this.sanctuaryFits[this.activeSanctuaryTheme] = value;
+    try { localStorage.setItem('sf_sanctuary_fits', JSON.stringify(this.sanctuaryFits)); } catch (_) {}
+    this.updateSanctuaryUi();
+    this.broadcastSanctuaryTheme();
+  }
+
   setSanctuaryDimmer(dimmerVal) {
     const val = Math.max(0, Math.min(80, parseInt(dimmerVal, 10) || 0));
+    if (this.sanctuaryDraft) { this.sanctuaryDraft.sanctuaryDimmer = val; this.updateSanctuaryUi(); return; }
     this.sanctuaryDimmer = val;
     try { localStorage.setItem('sf_sanctuary_dimmer', val); } catch(e) {}
     this.broadcastSanctuaryTheme();
@@ -652,6 +703,7 @@ class ThemeManager {
   }
 
   setSanctuaryFont(fontFamily) {
+    if (this.sanctuaryDraft) { this.sanctuaryDraft.sanctuaryFont = fontFamily; this.updateSanctuaryUi(); return; }
     this.sanctuaryFont = fontFamily;
     try { localStorage.setItem('sf_sanctuary_font', fontFamily); } catch(e) {}
     this.broadcastSanctuaryTheme();
@@ -660,6 +712,7 @@ class ThemeManager {
 
   setObsModeRule(rule) {
     const valid = ['follow', 'always_full', 'always_lt'];
+    if (this.sanctuaryDraft) { this.sanctuaryDraft.obsModeRule = valid.includes(rule) ? rule : 'follow'; this.updateSanctuaryUi(); return; }
     this.obsModeRule = valid.includes(rule) ? rule : 'follow';
     try { localStorage.setItem('sf_obs_mode_rule', this.obsModeRule); } catch(e) {}
     this.broadcastSanctuaryTheme();
@@ -668,23 +721,26 @@ class ThemeManager {
     }
   }
 
-  getSanctuaryPayload() {
-    const theme = SANCTUARY_THEMES[this.activeSanctuaryTheme] || SANCTUARY_THEMES.celestial_motion || SANCTUARY_THEMES.deep_celestial;
+  getSanctuaryPayload(settings = this) {
+    const theme = SANCTUARY_THEMES[settings.activeSanctuaryTheme] || SANCTUARY_THEMES.celestial_motion || SANCTUARY_THEMES.deep_celestial;
     return {
-      id: this.activeSanctuaryTheme,
+      id: settings.activeSanctuaryTheme,
       name: theme.name,
       type: theme.type || 'gradient',
       badge: theme.badge || '',
       category: theme.category,
+      fit: ['cover', 'contain', 'fill'].includes(settings.sanctuaryFits[settings.activeSanctuaryTheme]) ? settings.sanctuaryFits[settings.activeSanctuaryTheme] : 'cover',
+      width: theme.width || null,
+      height: theme.height || null,
       videoUrl: theme.videoUrl || '',
       imageUrl: theme.imageUrl || '',
       bgCss: theme.bgCss || '',
       textColor: theme.textColor,
       textShadow: theme.textShadow,
       headerColor: theme.headerColor,
-      font: this.sanctuaryFont || theme.font,
-      dimmer: this.sanctuaryDimmer,
-      obsModeRule: this.obsModeRule || 'follow'
+      font: settings.sanctuaryFont || theme.font,
+      dimmer: settings.sanctuaryDimmer,
+      obsModeRule: settings.obsModeRule || 'follow'
     };
   }
 
@@ -707,6 +763,8 @@ class ThemeManager {
   }
 
   updateSanctuaryUi() {
+    const settings = this.sanctuaryDraft || this;
+    if (typeof window.updateSanctuaryFramingPreview === 'function') window.updateSanctuaryFramingPreview();
     const curTheme = SANCTUARY_THEMES[this.activeSanctuaryTheme] || SANCTUARY_THEMES.deep_celestial;
     const btnLabel = document.getElementById('bento-sanctuary-theme-name');
     if (btnLabel) {
@@ -714,29 +772,33 @@ class ThemeManager {
     }
     const dimmerLabel = document.getElementById('sanctuary-dimmer-val');
     if (dimmerLabel) {
-      dimmerLabel.textContent = `${this.sanctuaryDimmer}%`;
+      dimmerLabel.textContent = `${settings.sanctuaryDimmer}%`;
     }
     const dimmerSlider = document.getElementById('sanctuary-dimmer-slider');
     if (dimmerSlider) {
-      dimmerSlider.value = this.sanctuaryDimmer;
+      dimmerSlider.value = settings.sanctuaryDimmer;
     }
 
     // Update active highlight in theme popover cards
     document.querySelectorAll('.sanctuary-theme-card').forEach(card => {
       const tid = card.getAttribute('data-theme-id');
-      card.classList.toggle('active', tid === this.activeSanctuaryTheme);
+      const selected = tid === settings.activeSanctuaryTheme || (settings.activeSanctuaryTheme === 'deep_celestial' && tid === 'celestial_motion');
+      card.classList.toggle('active', selected);
+      card.classList.toggle('is-applied', tid === this.activeSanctuaryTheme || (this.activeSanctuaryTheme === 'deep_celestial' && tid === 'celestial_motion'));
+      card.setAttribute('aria-pressed', String(selected));
     });
 
     // Update font buttons in popover
     document.querySelectorAll('.sanctuary-font-btn').forEach(btn => {
       const font = btn.getAttribute('data-font');
-      btn.classList.toggle('active', font === this.sanctuaryFont);
+      btn.classList.toggle('active', font === settings.sanctuaryFont);
+      btn.setAttribute('aria-pressed', String(font === settings.sanctuaryFont));
     });
 
     // Update OBS mode rule select
     const obsRuleSelect = document.getElementById('obs-mode-rule-select');
     if (obsRuleSelect) {
-      obsRuleSelect.value = this.obsModeRule || 'follow';
+      obsRuleSelect.value = settings.obsModeRule || 'follow';
     }
   }
 

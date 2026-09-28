@@ -1,0 +1,36 @@
+/* Broadcast destinations share the Library Manager's restrained surfaces. */
+#links-modal-backdrop { --hub-surface:#15151a; --hub-card:#1a1a21; --hub-line:#ffffff14; --hub-ink:#eeeef2; --hub-muted:#9999a6; backdrop-filter:none; -webkit-backdrop-filter:none; }
+:root[data-theme-mode="light"] #links-modal-backdrop,
+body[data-theme-mode="light"] #links-modal-backdrop { --hub-surface:#fff; --hub-card:#f6f6f8; --hub-line:#e3e3eb; --hub-ink:#252530; --hub-muted:#696976; }
+#links-modal-backdrop .links-modal { width:94vw !important; max-width:780px !important; max-height:88dvh; overflow:auto; padding:0 !important; border-radius:12px !important; background:var(--hub-surface) !important; border:1px solid var(--hub-line) !important; box-shadow:0 24px 80px #0006 !important; }
+#links-modal-backdrop .links-modal-header { padding:18px 22px !important; margin:0 !important; border-bottom:1px solid var(--hub-line) !important; gap:16px; flex-wrap:wrap; }
+#links-modal-backdrop .links-modal-header > div:first-child > svg { display:none; }
+#links-modal-backdrop .links-modal-title { font-size:15px !important; font-weight:600 !important; text-transform:none !important; letter-spacing:-.02em !important; color:var(--hub-ink) !important; }
+#links-modal-backdrop .links-modal-ip-pill { background:var(--hub-card) !important; border:1px solid var(--hub-line) !important; border-radius:6px !important; padding:5px 8px !important; }
+#links-modal-backdrop .links-modal-ip-input { color:var(--hub-ink) !important; }
+#links-modal-backdrop .hub-section-heading { padding:24px 22px 16px; }
+#links-modal-backdrop .hub-section-heading h2 { margin:0 0 6px; font-size:17px; font-weight:600; letter-spacing:-.025em; color:var(--hub-ink); }
+#links-modal-backdrop .hub-section-heading p { margin:0; font-size:11px; line-height:1.6; color:var(--hub-muted); }
+#links-modal-backdrop .hub-output-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding:0 22px; }
+#links-modal-backdrop .links-row { flex-direction:column; align-items:stretch !important; justify-content:space-between !important; gap:20px !important; padding:16px !important; border:1px solid var(--hub-line) !important; border-radius:8px; background:var(--hub-card); min-width:0; }
+#links-modal-backdrop .links-row > div:first-child { align-items:flex-start !important; gap:10px !important; }
+#links-modal-backdrop .links-row > div:first-child > svg { width:16px; height:16px; stroke:var(--hub-muted); margin-top:2px; }
+#links-modal-backdrop .links-row-title { color:var(--hub-ink) !important; font-size:12px !important; font-weight:600 !important; }
+#links-modal-backdrop .links-row-desc { white-space:normal !important; overflow:visible !important; font-size:11px !important; line-height:1.6 !important; margin-top:6px; color:var(--hub-muted) !important; }
+#links-modal-backdrop .hub-action-btn { font-size:11px !important; font-weight:500; min-height:30px; padding:6px 11px; border:1px solid var(--hub-line) !important; border-radius:6px !important; color:var(--hub-ink) !important; background:var(--hub-surface) !important; box-shadow:none !important; transition:none !important; }
+#links-modal-backdrop .hub-action-btn:hover { background:#8a6dff18 !important; border-color:#8a6dff60 !important; }
+#links-modal-backdrop .links-row:not(#hub-remote-row) > div:last-child > button:first-child { flex:1; justify-content:center; }
+#links-modal-backdrop #hub-remote-row { grid-column:1 / -1; margin-top:8px; flex-direction:row; align-items:center !important; background:transparent; }
+#links-modal-backdrop #hub-remote-actions { flex-wrap:wrap; }
+#links-modal-backdrop #hub-toggle-session-btn { background:#795bea !important; color:#fff !important; border-color:#795bea !important; }
+#links-modal-backdrop .hub-remote-status-pill { font-size:9px !important; letter-spacing:0 !important; }
+#links-modal-backdrop .hub-output-grid > :not(.links-row) { grid-column:1 / -1; min-width:0; }
+#links-modal-backdrop .links-modal-tip { margin:20px 0 0 !important; padding:14px 22px; border-top:1px solid var(--hub-line); font-size:10px !important; color:var(--hub-muted) !important; text-align:left !important; }
+#links-modal-backdrop #desktop-monitor-card { margin:16px 22px 0 !important; }
+#links-modal-backdrop button:focus-visible,
+#links-modal-backdrop input:focus-visible { outline:2px solid #a88aff !important; outline-offset:2px; }
+@media(max-width:650px) {
+  #links-modal-backdrop .hub-output-grid { grid-template-columns:minmax(0,1fr); }
+  #links-modal-backdrop .links-row { gap:14px !important; }
+  #links-modal-backdrop #hub-remote-row { flex-direction:column; align-items:stretch !important; }
+}

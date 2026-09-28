@@ -47,7 +47,11 @@
       syncBackground();
       const origin = origins.get(modal);
       if (origin?.isConnected && !origin.closest('[inert]')) origin.focus({ preventScroll: true });
-      else if (top()) (controls(top())[0] || top()).focus({ preventScroll: true });
+      else if (top()) {
+        const topControls = controls(top());
+        const safeTarget = topControls.find(el => !/close|cancel/i.test(el.className + ' ' + (el.getAttribute('aria-label') || ''))) || topControls[0] || top();
+        safeTarget.focus({ preventScroll: true });
+      }
     }
   }
 
@@ -109,7 +113,11 @@
 
   document.addEventListener('focusin', event => {
     const modal = top();
-    if (modal && !modal.contains(event.target) && !event.target.closest('#session-save-warning,.app-toast-container')) (controls(modal)[0] || modal).focus({ preventScroll: true });
+    if (modal && !modal.contains(event.target) && !event.target.closest('#session-save-warning,.app-toast-container')) {
+      const topControls = controls(modal);
+      const safeTarget = topControls.find(el => !/close|cancel/i.test(el.className + ' ' + (el.getAttribute('aria-label') || ''))) || topControls[0] || modal;
+      safeTarget.focus({ preventScroll: true });
+    }
   });
 
   document.addEventListener('DOMContentLoaded', () => {

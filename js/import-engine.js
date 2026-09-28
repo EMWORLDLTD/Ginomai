@@ -1,4 +1,4 @@
-// Import Engine & Online Repository Service for Ginomia Pro
+// Import Engine & Online Repository Service for Ginomia
 
 // Canonical Bible Books & Aliases Map
 const CANONICAL_BIBLE_BOOKS = [
@@ -102,6 +102,18 @@ class LibraryImportEngine {
     if (typeof BIBLE_DATABASE !== 'undefined') {
       Object.assign(BIBLE_DATABASE, this.customBibles);
     }
+    // Restore installed translation stubs so version selectors know about them immediately
+    try {
+      const installed = JSON.parse(localStorage.getItem('sf_installed_bibles') || '[]');
+      if (Array.isArray(installed)) {
+        installed.forEach(code => {
+          const upper = (code || '').toUpperCase().trim();
+          if (upper && !this.customBibles[upper]) {
+            this.customBibles[upper] = this.customBibles[upper] || {};
+          }
+        });
+      }
+    } catch (e) {}
     // Merge custom songs into runtime SONGS_DATABASE
     if (typeof SONGS_DATABASE !== 'undefined') {
       this.customSongs.forEach(song => {
@@ -126,6 +138,7 @@ class LibraryImportEngine {
     this.customSongs = [];
     this.customSongbooks = [];
     localStorage.removeItem('sf_custom_bibles');
+    localStorage.removeItem('sf_installed_bibles');
     localStorage.removeItem('sf_custom_songs');
     localStorage.removeItem('sf_custom_songbooks');
     localStorage.setItem('sf_system_formatted', 'true');
@@ -194,12 +207,21 @@ class LibraryImportEngine {
 
       biblesStore.getAll().onsuccess = (e) => {
         const bibles = e.target.result || [];
+        const installedList = [];
         bibles.forEach(b => {
           this.customBibles[b.code] = b.data;
           if (typeof BIBLE_DATABASE !== 'undefined') {
             BIBLE_DATABASE[b.code] = b.data;
           }
+          installedList.push(b.code);
         });
+        if (installedList.length > 0) {
+          try {
+            const curInstalled = JSON.parse(localStorage.getItem('sf_installed_bibles') || '[]');
+            const merged = Array.from(new Set([...curInstalled, ...installedList]));
+            localStorage.setItem('sf_installed_bibles', JSON.stringify(merged));
+          } catch (err) {}
+        }
         biblesDone = true;
         notifyCompletion();
       };
@@ -254,12 +276,18 @@ class LibraryImportEngine {
   cleanMarkup(text) {
     if (!text || typeof text !== 'string') return '';
     return text
+      .replace(/\\'/g, "'")
+      .replace(/\\"/g, '"')
       .replace(/<[^>]+>/g, '')
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&#x27;/g, "'")
       .trim();
   }
 
@@ -274,7 +302,8 @@ class LibraryImportEngine {
   isMetadataHeader(line) {
     if (!line) return false;
     const clean = line.trim();
-    return /^(title|author|artist|composer|by|copyright|ccli|songbook|key|capo|tempo|tags|theme|topic|hymn\s*number|number|hymn|admin)\s*:/i.test(clean);
+    return /^(title|author|artist|composer|by|copyright|ccli|songbook|hymnal|source|tune|words and music|words by|music by|written by|published by|recorded by|meter|key|capo|tempo|tags|theme|topic|hymn\s*number|number|hymn|admin|scripture)\s*:/i.test(clean)
+      || /^(copyright|all rights reserved|public domain|used by permission|©)/i.test(clean);
   }
 
   // Clean raw titles from converter artifacts
@@ -362,6 +391,14 @@ class LibraryImportEngine {
     if (!content) return 'unknown';
 
     const trimmed = typeof content === 'string' ? content.trim() : '';
+
+    // 0. Check archives and VideoPsalm signatures
+    if (fileName && (fileName.endsWith('.vpagd') || fileName.endsWith('.ewsx'))) {
+      return 'migration_archive';
+    }
+    if (typeof content === 'string' && (content.includes('Songs:[') || /[{,]\s*Songs\s*:/i.test(content))) {
+      return 'song';
+    }
 
     // 1. Check JSON content
     if (trimmed.startsWith('{') || trimmed.startsWith('[') || typeof content === 'object') {
@@ -487,10 +524,11 @@ class LibraryImportEngine {
     if (Array.isArray(json)) {
       return json.length > 0 && json[0] && (json[0].stanzas || (json[0].title && json[0].lyrics));
     }
+    if (json.Songs && Array.isArray(json.Songs)) return true;
     return Boolean(json.title && (json.stanzas || json.lyrics || json.author));
   }
 
-  // Universal Bible Parser: parses JSON, XML, USFM, CSV, or Text into normalized Ginomia Pro Bible object
+  // Universal Bible Parser: parses JSON, XML, USFM, CSV, or Text into normalized Ginomia Bible object
   parseBibleContent(content, fileName = 'Imported Bible') {
     const rawTrimmed = typeof content === 'string' ? content.trim() : '';
     const defaultCode = (fileName || 'BIBLE').replace(/\.[^/.]+$/, "").toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 10) || 'CUSTOM';
@@ -927,6 +965,22 @@ class LibraryImportEngine {
 
     // Default: Song
     try {
+      const rawText = typeof content === 'string' ? content : '';
+      if (rawText && (rawText.includes('Songs:[') || /[{,]\s*Songs\s*:/i.test(rawText))) {
+        const vpData = this.parseVideoPsalmRelaxedJson(rawText);
+        if (vpData && Array.isArray(vpData.Songs)) {
+          const bookTitle = vpData.Text || vpData.Abbreviation || fileName.replace(/\.[^/.]+$/, "") || 'VideoPsalm Songbook';
+          const convertedSongs = vpData.Songs.map(s => this.convertVideoPsalmSong(s, bookTitle));
+          const res = this.importSongsData(convertedSongs, overwrite, skipNotify);
+          return {
+            type: 'song',
+            success: true,
+            importedCount: res.importedCount,
+            message: `Imported ${res.importedCount} song(s) from "${bookTitle}" into Songbook`
+          };
+        }
+      }
+
       if (typeof content === 'object' || (typeof content === 'string' && (content.trim().startsWith('{') || content.trim().startsWith('[')))) {
         const songJson = typeof content === 'object' ? content : JSON.parse(content);
         const res = this.importSongsData(songJson, overwrite, skipNotify);
@@ -996,6 +1050,9 @@ class LibraryImportEngine {
       } else if (/^(author|artist|composer|by)\s*:\s*(.+)$/i.test(rawTrimmed)) {
         extractedAuthor = this.cleanMarkup(rawTrimmed.replace(/^(author|artist|composer|by)\s*:\s*/i, ''));
         return;
+      } else if (/^(?:source|hymnal|songbook)\s*:\s*(.+)$/i.test(rawTrimmed)) {
+        songbook = this.cleanMarkup(rawTrimmed.replace(/^(?:source|hymnal|songbook)\s*:\s*/i, ''));
+        return;
       } else if (this.isMetadataHeader(rawTrimmed)) {
         return;
       }
@@ -1011,8 +1068,27 @@ class LibraryImportEngine {
         return;
       }
 
+      // 4b. Match numbered hymn stanzas e.g. "1 He paid a debt...", "2 He paid that debt..."
+      let lyricLineToProcess = rawTrimmed;
+      const hymnNumMatch = rawTrimmed.match(/^(\d+)[\.\)\:\s]+(.*)$/);
+      if (hymnNumMatch) {
+        const vNum = parseInt(hymnNumMatch[1], 10);
+        const restOfLine = hymnNumMatch[2].trim();
+        if (vNum >= 1 && vNum <= 25) {
+          if (currentLines.length === 0) {
+            currentType = `Verse ${vNum}`;
+            lyricLineToProcess = restOfLine;
+          } else if (vNum > 1) {
+            stanzas.push({ type: currentType, text: currentLines.join('\n') });
+            currentLines = [];
+            currentType = `Verse ${vNum}`;
+            lyricLineToProcess = restOfLine;
+          }
+        }
+      }
+
       // 5. Clean lyric line from embedded formatting tags
-      const cleanedLyricLine = this.cleanMarkup(rawTrimmed);
+      const cleanedLyricLine = this.cleanMarkup(lyricLineToProcess);
       if (cleanedLyricLine && !this.isDividerLine(cleanedLyricLine)) {
         currentLines.push(cleanedLyricLine);
       }
@@ -1247,6 +1323,12 @@ class LibraryImportEngine {
       localStorage.setItem('sf_custom_bibles', JSON.stringify(this.customBibles));
     } catch (e) {}
 
+    try {
+      const installed = JSON.parse(localStorage.getItem('sf_installed_bibles') || '[]');
+      const filtered = installed.filter(c => c !== upperCode);
+      localStorage.setItem('sf_installed_bibles', JSON.stringify(filtered));
+    } catch (e) {}
+
     if (this.db) {
       try {
         const tx = this.db.transaction(['bibles'], 'readwrite');
@@ -1264,6 +1346,7 @@ class LibraryImportEngine {
   clearBiblesOnly() {
     this.customBibles = {};
     localStorage.removeItem('sf_custom_bibles');
+    localStorage.removeItem('sf_installed_bibles');
     if (typeof BIBLE_DATABASE !== 'undefined') {
       for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k];
     }
@@ -1334,7 +1417,7 @@ class LibraryImportEngine {
     try {
       const directUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(qTerm)}`;
       const resp = await fetch(directUrl, {
-        headers: { 'User-Agent': 'GinomaiPro/1.0' },
+        headers: { 'User-Agent': 'Ginomia/1.0' },
         signal: AbortSignal.timeout(5000)
       });
       if (resp.ok) {
@@ -1355,6 +1438,7 @@ class LibraryImportEngine {
                 album: item.albumName || '',
                 duration: item.duration || 0,
                 songbook: 'Cloud Worship',
+                source: item.source || 'LRCLIB',
                 previewText: preview,
                 stanzas: parsed.stanzas
               };
@@ -1369,7 +1453,57 @@ class LibraryImportEngine {
       // lrclib 503 or network failure
     }
 
-    // 3. Client-side fallback 2: Direct lyrics.ovh
+    // 3. Client-side fallback 2: Direct Genius Open Search
+    try {
+      const geniusUrl = `https://genius.com/api/search/multi?q=${encodeURIComponent(qTerm)}`;
+      const gRes = await fetch(geniusUrl, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(4500)
+      });
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        const sections = gData?.response?.sections || [];
+        const hits = [];
+        const seenHitIds = new Set();
+        for (const sec of sections) {
+          if ((sec.type === 'song' || sec.type === 'top_hit') && Array.isArray(sec.hits)) {
+            for (const hit of sec.hits) {
+              const res = hit.result;
+              if (res && res.title && (res.artist_names || res.primary_artist?.name) && !seenHitIds.has(res.id)) {
+                seenHitIds.add(res.id);
+                hits.push(res);
+              }
+            }
+          }
+        }
+
+        if (hits.length > 0) {
+          const formattedGenius = hits.slice(0, 4).map(h => {
+            const trackTitle = this.cleanSongTitle(h.title || 'Untitled');
+            const trackArtist = this.cleanMarkup(h.artist_names || h.primary_artist?.name || 'Unknown Artist');
+            return {
+              id: `genius_${h.id || Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              title: trackTitle,
+              author: trackArtist,
+              album: h.album?.name || '',
+              duration: 0,
+              songbook: 'Cloud Worship',
+              source: 'Genius',
+              previewText: `${trackTitle} by ${trackArtist}`,
+              stanzas: [{ type: 'Verse 1', text: `${trackTitle}\nBy ${trackArtist}` }]
+            };
+          });
+          if (formattedGenius.length > 0) {
+            this._lyricsSearchCache.set(cacheKey, { results: formattedGenius, timestamp: Date.now() });
+            return formattedGenius;
+          }
+        }
+      }
+    } catch (gErr) {
+      // Genius fallback failed
+    }
+
+    // 4. Client-side fallback 3: Direct lyrics.ovh
     try {
       const suggestUrl = `https://api.lyrics.ovh/suggest/${encodeURIComponent(qTerm)}`;
       const suggestRes = await fetch(suggestUrl, { signal: AbortSignal.timeout(4500) });
@@ -1395,6 +1529,7 @@ class LibraryImportEngine {
               album: t.album?.title || '',
               duration: t.duration || 0,
               songbook: 'Cloud Worship',
+              source: 'lyrics.ovh',
               previewText: preview,
               stanzas: parsed.stanzas
             };
@@ -1459,6 +1594,11 @@ class LibraryImportEngine {
     };
   }
 
+  // Alias for downloadCloudBible
+  async installCloudBible(code, name = '') {
+    return this.downloadCloudBible(code, name);
+  }
+
   // Import Bible Data into database
   importBibleData(translationCode, bibleData, translationName) {
     if (!translationCode || !bibleData || typeof bibleData !== 'object') {
@@ -1480,6 +1620,15 @@ class LibraryImportEngine {
         tx.objectStore('bibles').put({ code: code, data: bibleData, name: translationName || code });
       } catch (e) {}
     }
+
+    // Persist installed translation codes safely without overflowing 5MB localStorage
+    try {
+      const installed = JSON.parse(localStorage.getItem('sf_installed_bibles') || '[]');
+      if (!installed.includes(code)) {
+        installed.push(code);
+        localStorage.setItem('sf_installed_bibles', JSON.stringify(installed));
+      }
+    } catch (e) {}
 
     try {
       localStorage.removeItem('sf_system_formatted');
@@ -1507,9 +1656,208 @@ class LibraryImportEngine {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ginomai_pro_library_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `ginomia_library_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // Parse VideoPsalm relaxed JSON (unquoted keys, multiline string literals, BOM)
+  parseVideoPsalmRelaxedJson(text) {
+    if (!text || typeof text !== 'string') return null;
+    text = text.replace(/^\uFEFF/, '').trim();
+    if (!text) return null;
+
+    let inString = false;
+    let escapeNext = false;
+    const out = [];
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escapeNext) {
+          out.push(ch);
+          escapeNext = false;
+        } else if (ch === '\\') {
+          out.push(ch);
+          escapeNext = true;
+        } else if (ch === '"') {
+          out.push(ch);
+          inString = false;
+        } else if (ch === '\n') {
+          out.push('\\n');
+        } else if (ch === '\r') {
+          out.push('\\r');
+        } else if (ch === '\t') {
+          out.push('\\t');
+        } else {
+          out.push(ch);
+        }
+      } else {
+        if (ch === '"') {
+          inString = true;
+          out.push(ch);
+        } else {
+          out.push(ch);
+        }
+      }
+    }
+
+    let sanitized = out.join('');
+    sanitized = sanitized.replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
+    sanitized = sanitized.replace(/,\s*([}\]])/g, '$1');
+
+    try {
+      return JSON.parse(sanitized);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Clean chords and formatting tags from lyric lines
+  cleanLyricsText(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text
+      .replace(/\[[A-Ga-g][b#]?[^\]]*\]/g, '') // remove chords e.g. [G/B], [C#m7]
+      .replace(/<[^>]+>/g, '')                 // remove tags
+      .replace(/\r/g, '')
+      .trim();
+  }
+
+  // Convert VideoPsalm song object into Ginomia song format
+  convertVideoPsalmSong(vpSong, songbookName = 'VideoPsalm Import', mediaMap = {}) {
+    const rawTitle = (vpSong.Text || (vpSong.Verses && vpSong.Verses[0] && vpSong.Verses[0].Text) || 'Untitled Song').trim();
+    const title = rawTitle.split('\n')[0].replace(/\[.*?\]/g, '').trim() || 'Untitled Song';
+    const author = (vpSong.Author || 'Unknown').trim();
+    const stanzas = [];
+
+    if (Array.isArray(vpSong.Verses)) {
+      let verseIdx = 1;
+      let chorusIdx = 1;
+      let bridgeIdx = 1;
+
+      vpSong.Verses.forEach((v) => {
+        const lyricText = this.cleanLyricsText(v.Text);
+        if (!lyricText) return;
+
+        let type = 'Verse ' + verseIdx;
+        if (v.Tag === 1) {
+          type = chorusIdx === 1 ? 'Chorus' : 'Chorus ' + chorusIdx;
+          chorusIdx++;
+        } else if (v.Tag === 2) {
+          type = 'Pre-Chorus';
+        } else if (v.Tag === 3) {
+          type = bridgeIdx === 1 ? 'Bridge' : 'Bridge ' + bridgeIdx;
+          bridgeIdx++;
+        } else if (v.Tag === 4) {
+          type = 'Intro';
+        } else if (v.Tag === 5) {
+          type = 'Outro';
+        } else if (v.Tag === 8) {
+          type = 'Ending';
+        } else {
+          verseIdx++;
+        }
+
+        stanzas.push({ type, text: lyricText });
+      });
+    }
+
+    if (stanzas.length === 0) {
+      stanzas.push({ type: 'Verse 1', text: title });
+    }
+
+    let theme = null;
+    const bgStyle = vpSong.Style && vpSong.Style.Background;
+    if (bgStyle) {
+      const rawMedia = bgStyle.Video || bgStyle.Image;
+      if (rawMedia && mediaMap[rawMedia]) {
+        theme = mediaMap[rawMedia];
+      } else if (rawMedia) {
+        theme = rawMedia;
+      }
+    }
+
+    return {
+      id: 'song_custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+      title: this.cleanSongTitle(title),
+      author: this.cleanMarkup(author) || 'Unknown',
+      songbook: songbookName || 'VideoPsalm Import',
+      stanzas,
+      theme: theme || null
+    };
+  }
+
+  // Scan folder for software migration via server API
+  async scanMigrationFolder(folderPath) {
+    const res = await fetch('/api/migrate/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderPath: folderPath.trim() })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Server responded with ${res.status}`);
+    }
+    return await res.json();
+  }
+
+  // Execute software migration via server API
+  async executeMigration(options = {}) {
+    const res = await fetch('/api/migrate/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Server responded with ${res.status}`);
+    }
+    const result = await res.json();
+
+    // 1. Ingest imported songs into client memory & IndexedDB
+    if (result.songs && result.songs.length > 0) {
+      this.importSongsData(result.songs, true, true);
+    }
+
+    // 2. Refresh custom backgrounds / sanctuary media
+    if (result.mediaItems && result.mediaItems.length > 0) {
+      if (typeof window.loadSanctuaryUploads === 'function') {
+        window.loadSanctuaryUploads();
+      }
+    }
+
+    // 3. Activate/install detected Bibles into memory and storage
+    if (result.bibles && result.bibles.length > 0) {
+      for (const b of result.bibles) {
+        try {
+          if (b.data && typeof b.data === 'object' && Object.keys(b.data).length > 0) {
+            this.importBibleData(b.code, b.data, b.name);
+          } else {
+            await this.downloadCloudBible(b.code, b.name);
+          }
+        } catch (e) {
+          console.warn(`Could not auto-install Bible ${b.code}:`, e.message);
+        }
+      }
+    }
+
+    // 4. Save any extracted agendas
+    if (result.agendas && result.agendas.length > 0) {
+      try {
+        const existingAgendas = JSON.parse(localStorage.getItem('sf_custom_agendas') || '[]');
+        result.agendas.forEach(ag => {
+          if (!existingAgendas.some(x => x.name === ag.name)) {
+            existingAgendas.push(ag);
+          }
+        });
+        localStorage.setItem('sf_custom_agendas', JSON.stringify(existingAgendas));
+      } catch (e) {}
+    }
+
+    // 5. Finalize batch import and notify UI
+    this.finishBatchImport();
+
+    return result;
   }
 }
 

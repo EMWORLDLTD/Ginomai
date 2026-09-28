@@ -1,4 +1,4 @@
-// Ginomia Pro - Live Sermon Audio Transcription & Multi-Session Engine
+// Ginomia - Live Sermon Audio Transcription & Multi-Session Engine
 'use strict';
 
 class SermonTranscriptManager {
@@ -271,12 +271,13 @@ class SermonTranscriptManager {
       this.isRecordingSermon = true;
 
       // Auto start AI mic if recording was activated while AI mic was off
-      if (window.state && !window.state.aiListening) {
+      if (window.state && !window.state.aiListening && !window.state.aiSpeechRequested) {
         if (typeof window.toggleSpeechAi === 'function') {
           window.toggleSpeechAi();
         }
       }
 
+      if (!this.isRecordingSermon) return; // A synchronous startup failure already paused it.
       this.saveSession();
       this.notifyUpdate(true);
 
@@ -285,15 +286,8 @@ class SermonTranscriptManager {
       }
     } else {
       // 2. Stop active moment, commit in-flight speech, and keep active session intact!
+      this.flushPendingUtterance();
       this.isRecordingSermon = false;
-
-      if (this.currentInterimText) {
-        clearTimeout(this.interimCommitTimer);
-        const pending = this.currentInterimText;
-        this.currentInterimText = '';
-        this.commitFinalUtterance(pending);
-      }
-
       this.stopCurrentRecordingMoment();
       this.saveSession();
       this.notifyUpdate(true);
@@ -309,15 +303,18 @@ class SermonTranscriptManager {
     }
   }
 
+  flushPendingUtterance() {
+    clearTimeout(this.interimCommitTimer);
+    if (!this.isRecordingSermon || !this.currentInterimText) return;
+    const pending = this.currentInterimText;
+    this.commitFinalUtterance(pending);
+    this.currentInterimText = '';
+  }
+
   setRecordingState(isListening) {
     // When microphone hardware is turned completely off, pause sermon recording and commit pending
     if (!isListening && this.isRecordingSermon) {
-      if (this.currentInterimText) {
-        clearTimeout(this.interimCommitTimer);
-        const pending = this.currentInterimText;
-        this.currentInterimText = '';
-        this.commitFinalUtterance(pending);
-      }
+      this.flushPendingUtterance();
       this.isRecordingSermon = false;
       this.stopCurrentRecordingMoment();
       this.saveSession();
@@ -331,6 +328,9 @@ class SermonTranscriptManager {
     const target = this.sessions.find(s => s.id === sessionId);
     if (!target) return;
 
+    this.setRecordingState(false);
+    if (typeof speechAi !== 'undefined') speechAi?.resetScriptureContext?.();
+    window.cancelPendingAutoProjection?.('service-changed');
     this.sessions.forEach(s => { s.isActive = (s.id === sessionId); });
     this.session = target;
     this.isRecordingSermon = false;
@@ -389,6 +389,9 @@ class SermonTranscriptManager {
   }
 
   startNewServiceSession(customTitle) {
+    this.setRecordingState(false);
+    if (typeof speechAi !== 'undefined') speechAi?.resetScriptureContext?.();
+    window.cancelPendingAutoProjection?.('service-changed');
     const now = new Date();
     const dateShort = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const defaultTitle = customTitle || `Sunday Service • ${dateShort}`;
@@ -492,19 +495,11 @@ class SermonTranscriptManager {
     const cleanText = this.cleanSpeechStutter(rawText);
     if (!cleanText) return;
 
-    // If interim (not finalized yet), update live speaking indicator & set auto-commit debounce
+    // Keep provisional text editable until the provider finalizes it. Pause/stop
+    // already flush pending text; a timer here duplicates delayed corrections.
     if (!isFinal) {
       this.currentInterimText = cleanText;
-      // Safety auto-commit: If speaker pauses for 1800ms without an explicit is_final flag,
-      // automatically commit and autosave the interim text so no speech is ever lost!
       clearTimeout(this.interimCommitTimer);
-      this.interimCommitTimer = setTimeout(() => {
-        if (this.currentInterimText && this.isRecordingSermon) {
-          const toCommit = this.currentInterimText;
-          this.currentInterimText = '';
-          this.commitFinalUtterance(toCommit);
-        }
-      }, 1800);
       return;
     }
 
@@ -763,7 +758,7 @@ class SermonTranscriptManager {
     const lines = [];
 
     lines.push(separator);
-    lines.push(` GINOMIA PRO — RECORDED MOMENT: ${moment.title.toUpperCase()} [${moment.type.toUpperCase()}]`);
+    lines.push(` GINOMIA — RECORDED MOMENT: ${moment.title.toUpperCase()} [${moment.type.toUpperCase()}]`);
     lines.push(separator);
     lines.push(` Service:     ${this.session.title || 'Sunday Service'}`);
     lines.push(` Speaker:     ${this.session.speaker || 'Pastor'}`);
@@ -804,7 +799,7 @@ class SermonTranscriptManager {
     }
 
     lines.push(separator);
-    lines.push(' Transcribed live via Ginomia Pro — The Word in Motion');
+    lines.push(' Transcribed live via Ginomia — The Word in Motion');
     lines.push(separator);
 
     return lines.join('\n');
@@ -870,7 +865,7 @@ class SermonTranscriptManager {
     const allScriptures = this.getAllScriptures();
 
     lines.push(separator);
-    lines.push(' GINOMIA PRO — SERVICE TRANSCRIPT & RECORDINGS');
+    lines.push(' GINOMIA — SERVICE TRANSCRIPT & RECORDINGS');
     lines.push(separator);
     lines.push(` Service:     ${this.session.title || 'Sunday Service'}`);
     lines.push(` Speaker:     ${this.session.speaker || 'Pastor'}`);
@@ -944,7 +939,7 @@ class SermonTranscriptManager {
     }
 
     lines.push(separator);
-    lines.push(' Transcribed live via Ginomia Pro — The Word in Motion');
+    lines.push(' Transcribed live via Ginomia — The Word in Motion');
     lines.push(separator);
 
     return lines.join('\n');
@@ -1364,9 +1359,7 @@ window.sermonManager = new SermonTranscriptManager();
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   window.addEventListener('beforeunload', () => {
     if (window.sermonManager) {
-      if (window.sermonManager.currentInterimText && window.sermonManager.isRecordingSermon) {
-        window.sermonManager.commitFinalUtterance(window.sermonManager.currentInterimText);
-      }
+      window.sermonManager.flushPendingUtterance();
       window.sermonManager.saveSession();
     }
   });

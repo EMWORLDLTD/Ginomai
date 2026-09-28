@@ -1,4 +1,4 @@
-# Ginomia Pro
+# Ginomia
 
 > **The Word in Motion**
 

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "name": "Pewbeam demo provisional screen-transcript excerpts",
+  "cases": [
+    {
+      "id": "demo-luke",
+      "provenance": {
+        "kind": "demo-screen-transcript",
+        "recording": "Pewbeam Analyse/Pewbeam Demo.mp4",
+        "approximateVideoSecond": 10,
+        "evidence": "Pewbeam Analyse/evidence/exact-010.jpg",
+        "reviewStatus": "provisional; visible transcript excerpt, not independently audio-labeled; replay timings synthetic"
+      },
+      "durationMs": 3000,
+      "events": [
+        {
+          "at": 1000,
+          "type": "final",
+          "text": "In Luke chapter one verse seventeen, part of the prophecies."
+        }
+      ],
+      "labels": [
+        {
+          "id": "demo-luke-0",
+          "reference": "Luke 1:17",
+          "evidenceAt": 1000,
+          "until": 3000
+        }
+      ]
+    },
+    {
+      "id": "demo-timothy",
+      "provenance": {
+        "kind": "demo-screen-transcript",
+        "recording": "Pewbeam Analyse/Pewbeam Demo.mp4",
+        "approximateVideoSecond": 55,
+        "evidence": "Pewbeam Analyse/evidence/exact-055.jpg",
+        "reviewStatus": "provisional; visible transcript excerpt, not independently audio-labeled; replay timings synthetic"
+      },
+      "durationMs": 3000,
+      "events": [
+        {
+          "at": 1000,
+          "type": "final",
+          "text": "From a child, you have known the holy scriptures able to make you wise."
+        }
+      ],
+      "labels": [
+        {
+          "id": "demo-timothy-0",
+          "reference": "2 Timothy 3:15",
+          "evidenceAt": 1000,
+          "until": 3000
+        }
+      ]
+    },
+    {
+      "id": "demo-philippians",
+      "provenance": {
+        "kind": "demo-screen-transcript",
+        "recording": "Pewbeam Analyse/Pewbeam Demo.mp4",
+        "approximateVideoSecond": 110,
+        "evidence": "Pewbeam Analyse/evidence/exact-110.jpg",
+        "reviewStatus": "provisional; visible transcript excerpt, not independently audio-labeled; replay timings synthetic"
+      },
+      "durationMs": 3000,
+      "events": [
+        {
+          "at": 1000,
+          "type": "final",
+          "text": "Let this mind be in you which was also in Christ Jesus."
+        }
+      ],
+      "labels": [
+        {
+          "id": "demo-philippians-0",
+          "reference": "Philippians 2:5",
+          "evidenceAt": 1000,
+          "until": 3000
+        }
+      ]
+    }
+  ]
+}

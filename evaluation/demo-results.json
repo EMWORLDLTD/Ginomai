@@ -1,0 +1,110 @@
+{
+  "scope": "Transcript replay, not STT accuracy or measured audio-to-screen latency. Auto-policy projections are simulated with loaded KJV; observed projections are separate.",
+  "dataset": "Pewbeam demo provisional screen-transcript excerpts",
+  "projectionMetrics": {
+    "auto-policy": {
+      "total": 1,
+      "wrong": 0,
+      "wrongPerHour": 0
+    },
+    "observed": {
+      "total": 0,
+      "wrong": 0,
+      "wrongPerHour": 0
+    }
+  },
+  "summary": {
+    "expected": 3,
+    "hits": 1,
+    "missed": 2,
+    "recall": 0.3333333333333333,
+    "candidateEvents": 1,
+    "falseCandidateEvents": 0,
+    "falseCandidatesPerMinute": 0,
+    "projections": 1,
+    "wrongProjections": 0,
+    "wrongProjectionsPerHour": 0,
+    "latencyP50Ms": 0,
+    "latencyP95Ms": 0
+  },
+  "cases": [
+    {
+      "id": "demo-luke",
+      "provenance": {
+        "kind": "demo-screen-transcript",
+        "recording": "Pewbeam Analyse/Pewbeam Demo.mp4",
+        "approximateVideoSecond": 10,
+        "evidence": "Pewbeam Analyse/evidence/exact-010.jpg",
+        "reviewStatus": "provisional; visible transcript excerpt, not independently audio-labeled; replay timings synthetic"
+      },
+      "durationMs": 3000,
+      "expected": 1,
+      "hits": 1,
+      "missed": [],
+      "latencyMs": [
+        0
+      ],
+      "candidates": [
+        {
+          "at": 1000,
+          "reference": "Luke 1:17",
+          "kind": "direct"
+        }
+      ],
+      "falseCandidates": [],
+      "projections": [
+        {
+          "at": 1000,
+          "reference": "Luke 1:17",
+          "source": "auto-policy"
+        }
+      ],
+      "wrongProjections": [],
+      "ignoredEvents": 0
+    },
+    {
+      "id": "demo-timothy",
+      "provenance": {
+        "kind": "demo-screen-transcript",
+        "recording": "Pewbeam Analyse/Pewbeam Demo.mp4",
+        "approximateVideoSecond": 55,
+        "evidence": "Pewbeam Analyse/evidence/exact-055.jpg",
+        "reviewStatus": "provisional; visible transcript excerpt, not independently audio-labeled; replay timings synthetic"
+      },
+      "durationMs": 3000,
+      "expected": 1,
+      "hits": 0,
+      "missed": [
+        "demo-timothy-0"
+      ],
+      "latencyMs": [],
+      "candidates": [],
+      "falseCandidates": [],
+      "projections": [],
+      "wrongProjections": [],
+      "ignoredEvents": 0
+    },
+    {
+      "id": "demo-philippians",
+      "provenance": {
+        "kind": "demo-screen-transcript",
+        "recording": "Pewbeam Analyse/Pewbeam Demo.mp4",
+        "approximateVideoSecond": 110,
+        "evidence": "Pewbeam Analyse/evidence/exact-110.jpg",
+        "reviewStatus": "provisional; visible transcript excerpt, not independently audio-labeled; replay timings synthetic"
+      },
+      "durationMs": 3000,
+      "expected": 1,
+      "hits": 0,
+      "missed": [
+        "demo-philippians-0"
+      ],
+      "latencyMs": [],
+      "candidates": [],
+      "falseCandidates": [],
+      "projections": [],
+      "wrongProjections": [],
+      "ignoredEvents": 0
+    }
+  ]
+}

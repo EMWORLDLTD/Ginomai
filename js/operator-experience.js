@@ -1,34 +1,226 @@
 'use strict';
 (() => {
   let prepared = null;
-  let workflow = 'instant';
-  try { workflow = localStorage.getItem('sf_projection_workflow') || 'instant'; } catch {}
+  let stagedCardEls = null;
+  let workflow = 'smart';
+  try { workflow = localStorage.getItem('sf_projection_workflow') || 'smart'; } catch {}
+
+  const HINTS = {
+    smart: 'Click a slide to cue, then take live. Subsequent slides follow automatically.',
+    preview: 'Select a slide to preview, then choose Take live.',
+    instant: 'Click any slide or AI suggestion to project live.'
+  };
+
+  // ─── Deck Engagement Detection ─────────────────────────────────
+  function isDeckEngaged(slideId) {
+    const deck = window.state?.liveEngagedDeck;
+    if (!deck || !window.state?.activeLiveSlideId) return false;
+    // In medley mode, the entire medley is one engaged unit
+    if (window.state.isMedleyMode) return true;
+    if (deck.type === 'bible') {
+      return window.state.activeBibleBook === deck.book
+          && window.state.activeBibleChapter === deck.chapter
+          && (slideId.startsWith('bible_') || slideId.startsWith('medley_bible_'));
+    }
+    if (deck.type === 'song') {
+      return window.state.activeSongId === deck.songId
+          && !slideId.startsWith('bible_') && !slideId.startsWith('medley_bible_');
+    }
+    return false;
+  }
+
+  // ─── Staged Card DOM Management ────────────────────────────────
+  function unstageCard() {
+    const cleanCard = (c) => {
+      c.classList.remove('staged');
+      if (typeof window.cleanupLiveCardObserver === 'function') {
+        window.cleanupLiveCardObserver(c);
+      }
+      c.querySelectorAll('.bento-live-shape-svg, .bento-corner-dock, .staged-pill, .bento-staged-badge, .card-take-live-btn').forEach(el => el.remove());
+    };
+
+    if (stagedCardEls) {
+      stagedCardEls.forEach(cleanCard);
+      stagedCardEls = null;
+    }
+    // Defensive: sweep any stale staged cards or orphaned staged decorations on non-live cards
+    if (typeof document.querySelectorAll === 'function') {
+      document.querySelectorAll('.staged').forEach(cleanCard);
+      document.querySelectorAll('.bento-single-card:not(.live) > .bento-live-shape-svg, .bento-single-card:not(.live) > .bento-corner-dock').forEach(el => {
+        const card = el.parentElement;
+        if (card && !card.classList.contains('live')) {
+          cleanCard(card);
+        }
+      });
+    }
+  }
+
+  function injectCardTakeLiveButton(card) {
+    if (!card) return;
+
+    if (card.classList.contains('bento-single-card')) {
+      // 1. Remove any pre-existing SVG shape or dock to guarantee a clean slate
+      card.querySelectorAll('.bento-live-shape-svg, .bento-corner-dock').forEach(el => el.remove());
+
+      // 2. Bespoke scalloped SVG corner cutout matching live card geometry (with staged styling)
+      card.insertAdjacentHTML('afterbegin', '<svg class="bento-live-shape-svg bento-staged-shape-svg" aria-hidden="true"><path d=""></path></svg>');
+
+      // 3. High-contrast, sleek CUE indicator pill
+      const headTag = card.querySelector('.head-tag-row');
+      if (headTag && !headTag.querySelector('.staged-pill')) {
+        headTag.insertAdjacentHTML('beforeend', '<div class="staged-pill" title="Staged / Cue">CUE</div>');
+      }
+
+      // 4. Bespoke Inverted Cutout Corner Dock with circular trigger
+      card.insertAdjacentHTML('beforeend',
+        '<div class="bento-corner-dock staged-dock" title="Take Live to Sanctuary Display (Click / Enter / Space)">' +
+        '<button type="button" class="play-circle-btn staged-trigger-btn" onclick="event.stopPropagation(); window.takePreparedSlide();" aria-label="Take Live">' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>' +
+        '</button></div>'
+      );
+
+      if (typeof window.setupLiveCardObserver === 'function') {
+        window.setupLiveCardObserver(card);
+      } else if (typeof window.updateBentoLiveCardShape === 'function') {
+        window.updateBentoLiveCardShape(card);
+      }
+    } else if (card.classList.contains('bento-slide-card')) {
+      const tag = card.querySelector('.tag');
+      if (tag && !tag.querySelector('.bento-staged-badge')) {
+        const b = document.createElement('span');
+        b.className = 'bento-staged-badge';
+        tag.appendChild(b);
+      }
+      if (tag && !tag.querySelector('.staged-pill')) {
+        tag.insertAdjacentHTML('beforeend', '<span class="staged-pill">CUE</span>');
+      }
+    } else {
+      // Classic theme cards
+      const targetHeader = card.querySelector('.slide-header') || card.querySelector('.song-stanza-label')?.parentElement;
+      if (targetHeader && !targetHeader.querySelector('.staged-pill')) {
+        targetHeader.insertAdjacentHTML('beforeend', '<span class="staged-pill classic">CUE · ENTER</span>');
+      }
+    }
+  }
+
+  function stageSlide(slideId, text, reference, extra) {
+    unstageCard();
+    prepared = { slideId, text, reference, extra };
+    const refEl = document.getElementById('prepared-reference');
+    if (refEl) refEl.textContent = reference || 'Prepared slide';
+    const textEl = document.getElementById('prepared-text');
+    if (textEl) textEl.textContent = text;
+    const prepEl = document.getElementById('prepared-slide');
+    if (prepEl) prepEl.hidden = false;
+
+    // Apply .staged class and inject the on-card Take Live action button
+    if (typeof document.querySelectorAll === 'function') {
+      const cards = document.querySelectorAll(
+        `[data-slide-id="${slideId}"], #bento_card_${slideId}, #card_${slideId}`
+      );
+      cards.forEach(c => {
+        c.classList.add('staged');
+        injectCardTakeLiveButton(c);
+      });
+      stagedCardEls = cards;
+    }
+  }
+
+  function syncStagedCardVisuals() {
+    if (!prepared?.slideId || typeof document.querySelectorAll !== 'function') return;
+    const cards = document.querySelectorAll(
+      `[data-slide-id="${prepared.slideId}"], #bento_card_${prepared.slideId}, #card_${prepared.slideId}`
+    );
+    cards.forEach(c => {
+      if (!c.classList.contains('staged')) c.classList.add('staged');
+      injectCardTakeLiveButton(c);
+    });
+    stagedCardEls = cards;
+  }
+
+  // ─── Public API ────────────────────────────────────────────────
   window.getProjectionWorkflow = () => workflow;
+  window.getPreparedSlide = () => prepared;
+  window.syncStagedCardVisuals = syncStagedCardVisuals;
+
   window.setProjectionWorkflow = value => {
-    workflow = value === 'preview' ? 'preview' : 'instant';
+    workflow = ['smart', 'preview', 'instant'].includes(value) ? value : 'smart';
     try { localStorage.setItem('sf_projection_workflow', workflow); } catch {}
     window.cancelPreparedSlide();
     const hint = document.querySelector('#bento-prev-idle-hint .empty-desc');
-    if (hint) hint.textContent = workflow === 'preview' ? 'Select a slide to preview, then choose Take live.' : 'Click any slide or AI suggestion to project live.';
+    if (hint) hint.textContent = HINTS[workflow] || HINTS.smart;
   };
+
   window.prepareSlideIfNeeded = (slideId, text, reference, extra) => {
-    if (workflow !== 'preview' || extra.takeLive || window.state?.autoProject) return false;
-    prepared = { slideId, text, reference, extra };
-    document.getElementById('prepared-reference').textContent = reference || 'Prepared slide';
-    document.getElementById('prepared-text').textContent = text;
-    document.getElementById('prepared-slide').hidden = false;
-    return true;
+    // Always bypass staging for these conditions
+    if (extra.takeLive || window.state?.autoProject) return false;
+    if (workflow === 'instant') return false;
+
+    // Preview mode: always stage (legacy behavior)
+    if (workflow === 'preview') {
+      if (prepared && prepared.slideId === slideId) {
+        window.takePreparedSlide();
+        return true;
+      }
+      stageSlide(slideId, text, reference, extra);
+      return true;
+    }
+
+    // Smart mode: stage only if deck is NOT engaged
+    if (workflow === 'smart') {
+      if (isDeckEngaged(slideId)) return false; // follow-suit → project instantly
+      // Clicking the currently staged card a second time immediately takes it live
+      if (prepared && prepared.slideId === slideId) {
+        window.takePreparedSlide();
+        return true;
+      }
+      stageSlide(slideId, text, reference, extra);
+      return true;
+    }
+
+    return false;
   };
+
   window.cancelPreparedSlide = () => {
+    unstageCard();
     prepared = null;
-    document.getElementById('prepared-slide').hidden = true;
+    const prepEl = document.getElementById('prepared-slide');
+    if (prepEl) prepEl.hidden = true;
   };
+
   window.takePreparedSlide = () => {
     if (!prepared) return;
     if (window.state?.isHoldLive) { window.showToast('Live output is held. Release Hold live before taking this slide.', 'warning'); return; }
     const slide = prepared;
     window.cancelPreparedSlide();
     window.projectSlide(slide.slideId, slide.text, slide.reference, { ...slide.extra, takeLive: true });
+  };
+
+  window.disengageLiveToCue = function(slideId) {
+    if (!slideId) slideId = window.state?.activeLiveSlideId;
+    if (!slideId) return;
+
+    // 1. Disengage follow-suit so subsequent clicks will stage, not project live
+    if (window.state) {
+      window.state.liveEngagedDeck = null;
+    }
+
+    // 2. Remove live state from the active card
+    const card = document.querySelector(`[data-slide-id="${slideId}"], #bento_card_${slideId}, #card_${slideId}`);
+    const text = card?.querySelector('.card-body-text, .ln, .slide-body')?.textContent || window.state?.activeLiveText || '';
+    const ref = card?.querySelector('.tag-title, .tag span, .slide-header span')?.textContent || window.state?.activeLiveRef || '';
+
+    if (card) {
+      card.classList.remove('live');
+      if (typeof window.cleanupLiveCardObserver === 'function') {
+        window.cleanupLiveCardObserver(card);
+      }
+      card.querySelectorAll('.bento-live-shape-svg, .bento-corner-dock, .live-pill, .bento-live-badge').forEach(el => el.remove());
+    }
+
+    // 3. Stage this slide in CUE position (solid fill CUE pill + blue cutout trigger)
+    // Note: Sanctuary screen remains live and untouched!
+    stageSlide(slideId, text, ref, {});
   };
 
   function addEmptyActions(root) {
@@ -109,7 +301,7 @@
   function setup() {
     document.getElementById('projection-workflow').value = workflow;
     const hint = document.querySelector('#bento-prev-idle-hint .empty-desc');
-    if (hint && workflow === 'preview') hint.textContent = 'Select a slide to preview, then choose Take live.';
+    if (hint && workflow !== 'instant') hint.textContent = HINTS[workflow] || HINTS.smart;
     window.sessionManager?.updateTopBarUi();
     addEmptyActions(document.body);
     const observer = new MutationObserver(records => {

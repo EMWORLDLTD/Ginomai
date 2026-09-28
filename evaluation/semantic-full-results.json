@@ -1,0 +1,335 @@
+{
+  "scope": "Full KJV retrieval; authored development queries, not independent service evaluation",
+  "model": {
+    "id": "Xenova/bge-small-en-v1.5",
+    "prefix": "Represent this sentence for searching relevant passages: ",
+    "pooling": "mean"
+  },
+  "buildMs": 1410539.362151,
+  "results": [
+    {
+      "text": "God loved humanity so much he gave his only son so believers could live forever",
+      "reference": "John 3:16",
+      "top": [
+        {
+          "reference": "John 3:16",
+          "score": 0.8429799973737286
+        },
+        {
+          "reference": "1 John 4:9",
+          "score": 0.7328206537202812
+        },
+        {
+          "reference": "1 John 5:11",
+          "score": 0.6859077657154761
+        },
+        {
+          "reference": "Mark 12:6",
+          "score": 0.6759385608239324
+        },
+        {
+          "reference": "Genesis 6:9",
+          "score": 0.6627584099879983
+        }
+      ],
+      "latencyMs": 89.34769600001164
+    },
+    {
+      "text": "Scripture has guided you since childhood and can give you wisdom for salvation",
+      "reference": "2 Timothy 3:15",
+      "top": [
+        {
+          "reference": "2 Timothy 3:15",
+          "score": 0.7248666234851664
+        },
+        {
+          "reference": "Psalms 111:10",
+          "score": 0.6543365996332994
+        },
+        {
+          "reference": "Romans 16:27",
+          "score": 0.6519411071744974
+        },
+        {
+          "reference": "Ephesians 5:1",
+          "score": 0.6405207368039462
+        },
+        {
+          "reference": "Ephesians 6:1",
+          "score": 0.6374068496687373
+        }
+      ],
+      "latencyMs": 121.77463399991393
+    },
+    {
+      "text": "Adopt the same attitude that Jesus Christ had",
+      "reference": "Philippians 2:5",
+      "top": [
+        {
+          "reference": "Romans 15:5",
+          "score": 0.6958101531458752
+        },
+        {
+          "reference": "Philippians 2:5",
+          "score": 0.6611493076490624
+        },
+        {
+          "reference": "Romans 16:27",
+          "score": 0.6566554666561016
+        },
+        {
+          "reference": "Ephesians 3:6",
+          "score": 0.6538528413680637
+        },
+        {
+          "reference": "Philippians 1:15",
+          "score": 0.6479710959788608
+        }
+      ],
+      "latencyMs": 70.96429899986833
+    },
+    {
+      "text": "God's words illuminate the path where I walk",
+      "reference": "Psalms 119:105",
+      "top": [
+        {
+          "reference": "Psalms 119:105",
+          "score": 0.7441559285862394
+        },
+        {
+          "reference": "Ephesians 5:8",
+          "score": 0.6917315148663943
+        },
+        {
+          "reference": "2 Kings 20:3",
+          "score": 0.6682589874153068
+        },
+        {
+          "reference": "John 12:35",
+          "score": 0.6667310531971885
+        },
+        {
+          "reference": "Habakkuk 3:19",
+          "score": 0.6655183147882596
+        }
+      ],
+      "latencyMs": 80.52851700014435
+    },
+    {
+      "text": "A gentle reply calms anger but harsh speech makes it worse",
+      "reference": "Proverbs 15:1",
+      "top": [
+        {
+          "reference": "Proverbs 15:1",
+          "score": 0.7170245930097633
+        },
+        {
+          "reference": "Jonah 4:4",
+          "score": 0.5993676952912962
+        },
+        {
+          "reference": "Proverbs 15:18",
+          "score": 0.587884221238876
+        },
+        {
+          "reference": "Psalms 75:5",
+          "score": 0.5837743300797326
+        },
+        {
+          "reference": "Mark 9:6",
+          "score": 0.5821797552714408
+        }
+      ],
+      "latencyMs": 153.54943099990487
+    },
+    {
+      "text": "Don't worry about tomorrow because tomorrow has its own troubles",
+      "reference": "Matthew 6:34",
+      "top": [
+        {
+          "reference": "Deuteronomy 28:66",
+          "score": 0.6242764872586462
+        },
+        {
+          "reference": "2 Kings 7:9",
+          "score": 0.6053398167953287
+        },
+        {
+          "reference": "1 Chronicles 16:30",
+          "score": 0.5990948315744955
+        },
+        {
+          "reference": "2 Corinthians 4:8",
+          "score": 0.594239726939185
+        },
+        {
+          "reference": "Job 38:23",
+          "score": 0.5891682633313746
+        }
+      ],
+      "latencyMs": 110.98743099998683
+    },
+    {
+      "text": "Nothing can separate us from the love of God",
+      "reference": "Romans 8:39",
+      "top": [
+        {
+          "reference": "Romans 8:39",
+          "score": 0.8178711605705654
+        },
+        {
+          "reference": "1 John 4:12",
+          "score": 0.7045438417898887
+        },
+        {
+          "reference": "1 John 5:3",
+          "score": 0.7021965358362435
+        },
+        {
+          "reference": "1 John 4:7",
+          "score": 0.6903605820287687
+        },
+        {
+          "reference": "1 Chronicles 17:20",
+          "score": 0.6786198065359306
+        }
+      ],
+      "latencyMs": 121.553917999845
+    },
+    {
+      "text": "Faith without corresponding actions is dead",
+      "reference": "James 2:26",
+      "top": [
+        {
+          "reference": "James 2:26",
+          "score": 0.8232053070626811
+        },
+        {
+          "reference": "James 2:20",
+          "score": 0.7637682713304813
+        },
+        {
+          "reference": "James 2:17",
+          "score": 0.7523453078715069
+        },
+        {
+          "reference": "1 Corinthians 15:13",
+          "score": 0.6662565974224103
+        },
+        {
+          "reference": "Romans 6:7",
+          "score": 0.6489606390975221
+        }
+      ],
+      "latencyMs": 72.90109699987806
+    },
+    {
+      "text": "Please move your car from the entrance after the service",
+      "reference": null,
+      "top": [
+        {
+          "reference": "Proverbs 9:15",
+          "score": 0.5812298965907989
+        },
+        {
+          "reference": "2 Samuel 12:23",
+          "score": 0.5473283848830475
+        },
+        {
+          "reference": "Deuteronomy 15:17",
+          "score": 0.5384045871518081
+        },
+        {
+          "reference": "Job 29:7",
+          "score": 0.5363544332256865
+        },
+        {
+          "reference": "Exodus 12:26",
+          "score": 0.5362693990050406
+        }
+      ],
+      "latencyMs": 80.76071100006811
+    },
+    {
+      "text": "The choir rehearsal will begin at seven on Wednesday",
+      "reference": null,
+      "top": [
+        {
+          "reference": "Exodus 29:30",
+          "score": 0.634245875959895
+        },
+        {
+          "reference": "Leviticus 23:34",
+          "score": 0.6286949879397733
+        },
+        {
+          "reference": "Leviticus 23:39",
+          "score": 0.6106310943432497
+        },
+        {
+          "reference": "Numbers 28:17",
+          "score": 0.6046989018532039
+        },
+        {
+          "reference": "Numbers 29:12",
+          "score": 0.6002350652649472
+        }
+      ],
+      "latencyMs": 78.011829999974
+    },
+    {
+      "text": "The microphone battery needs replacing before the next speaker",
+      "reference": null,
+      "top": [
+        {
+          "reference": "Isaiah 65:24",
+          "score": 0.5570466272165828
+        },
+        {
+          "reference": "Isaiah 65:6",
+          "score": 0.5370344213205709
+        },
+        {
+          "reference": "Job 37:4",
+          "score": 0.5246121883980674
+        },
+        {
+          "reference": "Nehemiah 11:23",
+          "score": 0.5178550473867912
+        },
+        {
+          "reference": "Job 33:5",
+          "score": 0.5163867146814297
+        }
+      ],
+      "latencyMs": 61.24427999998443
+    },
+    {
+      "text": "We are discussing love and faith and hope in our community",
+      "reference": null,
+      "top": [
+        {
+          "reference": "Galatians 5:5",
+          "score": 0.6332809438600939
+        },
+        {
+          "reference": "Romans 5:2",
+          "score": 0.6302469485220831
+        },
+        {
+          "reference": "1 John 4:16",
+          "score": 0.6083755494163202
+        },
+        {
+          "reference": "Romans 5:5",
+          "score": 0.6047939487681291
+        },
+        {
+          "reference": "1 Timothy 1:14",
+          "score": 0.599593541142191
+        }
+      ],
+      "latencyMs": 110.71172200003639
+    }
+  ]
+}

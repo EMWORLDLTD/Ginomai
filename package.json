@@ -1,7 +1,7 @@
 {
-  "name": "ginomia-pro",
+  "name": "ginomia",
   "version": "2.4.0",
-  "description": "Ginomia Pro — The Word in Motion",
+  "description": "Ginomia — The Word in Motion",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
@@ -13,12 +13,14 @@
     "dist": "node scripts/build-desktop.js",
     "dist:win": "node scripts/build-desktop.js",
     "dist:publish": "node scripts/build-desktop.js --publish",
-    "build:desktop": "node scripts/build-desktop.js"
+    "build:desktop": "node scripts/build-desktop.js",
+    "eval:detection": "node scripts/evaluate-detection.cjs",
+    "build:semantic": "node scripts/semantic-build.mjs"
   },
   "build": {
     "appId": "com.ginomai.pro",
-    "productName": "Ginomia Pro",
-    "copyright": "Copyright © 2026 Ginomia Pro",
+    "productName": "Ginomia",
+    "copyright": "Copyright © 2026 Ginomia",
     "publish": [
       {
         "provider": "github",
@@ -33,7 +35,8 @@
       "!installers/*",
       "!scratch/*",
       "!archive/*",
-      "!.git/*"
+      "!.git/*",
+      "!assets/semantic/models/Xenova/all-MiniLM-L6-v2/**"
     ],
     "win": {
       "target": [
@@ -69,13 +72,19 @@
     "electron",
     "desktop"
   ],
-  "author": "Ginomia Pro Team",
+  "author": "Ginomia Team",
   "license": "MIT",
   "devDependencies": {
     "electron": "^43.4.0",
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "electron-updater": "^6.8.9"
+  },
+  "overrides": {
+    "@huggingface/transformers": {
+      "sharp": "0.35.4"
+    }
   }
 }

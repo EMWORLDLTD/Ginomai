@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "name": "Synthetic lifecycle and detection baseline",
+  "cases": [
+    {
+      "id": "partial-correction",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "events": [
+        {
+          "at": 1000,
+          "type": "partial",
+          "text": "John 3:16"
+        },
+        {
+          "at": 2000,
+          "type": "final",
+          "text": "John 3:17"
+        }
+      ],
+      "labels": [
+        {
+          "id": "partial-correction-0",
+          "reference": "John 3:17",
+          "evidenceAt": 1500,
+          "until": 12000
+        }
+      ]
+    },
+    {
+      "id": "ordinary-numbers",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "events": [
+        {
+          "at": 1000,
+          "type": "final",
+          "text": "John three sixteen year olds arrived"
+        }
+      ],
+      "labels": []
+    },
+    {
+      "id": "split-reference",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "events": [
+        {
+          "at": 1000,
+          "type": "final",
+          "text": "Luke chapter one"
+        },
+        {
+          "at": 2000,
+          "type": "pause"
+        },
+        {
+          "at": 3000,
+          "type": "final",
+          "text": "verse seventeen"
+        }
+      ],
+      "labels": [
+        {
+          "id": "split-reference-0",
+          "reference": "Luke 1:17",
+          "evidenceAt": 2500,
+          "until": 12000
+        }
+      ]
+    },
+    {
+      "id": "reconnect-stale-result",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "events": [
+        {
+          "at": 500,
+          "type": "disconnect"
+        },
+        {
+          "at": 600,
+          "type": "final",
+          "text": "John 3:16"
+        },
+        {
+          "at": 1500,
+          "type": "reconnect"
+        },
+        {
+          "at": 1600,
+          "type": "final",
+          "text": "John 3:16",
+          "generation": 0
+        },
+        {
+          "at": 2000,
+          "type": "final",
+          "text": "Romans 8:28",
+          "generation": 1
+        }
+      ],
+      "labels": [
+        {
+          "id": "reconnect-stale-result-0",
+          "reference": "Romans 8:28",
+          "evidenceAt": 1800,
+          "until": 12000
+        }
+      ]
+    },
+    {
+      "id": "silence",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "events": [
+        {
+          "at": 10000,
+          "type": "pause"
+        }
+      ],
+      "labels": []
+    },
+    {
+      "id": "invalid-verse",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "events": [
+        {
+          "at": 1000,
+          "type": "final",
+          "text": "John 3:99"
+        }
+      ],
+      "labels": []
+    },
+    {
+      "id": "duplicate-final",
+      "provenance": "synthetic regression",
+      "durationMs": 12000,
+      "events": [
+        {
+          "at": 1000,
+          "type": "final",
+          "text": "John 3:16"
+        },
+        {
+          "at": 1100,
+          "type": "final",
+          "text": "John 3:16"
+        }
+      ],
+      "labels": [
+        {
+          "id": "duplicate-final-0",
+          "reference": "John 3:16",
+          "evidenceAt": 900,
+          "until": 12000
+        }
+      ]
+    }
+  ]
+}
