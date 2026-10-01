@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="js/shared-events.js"></script>
   <meta charset="UTF-8">
   <title>Ginomia — The Word in Motion</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -887,6 +888,277 @@
       font-size: 15px;
       color: #64748B;
     }
+
+    /* ─── Live Alert & Announcement Overlay (Highest Layer z-index 99999, Non-GPU Blur) ─── */
+    #live-alert-container {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      pointer-events: none;
+      display: none;
+      opacity: 0;
+      transition: opacity 0.04s ease;
+    }
+    #live-alert-container.active {
+      display: flex !important;
+      opacity: 1 !important;
+    }
+    #live-alert-container.alert-upper-third {
+      align-items: flex-start;
+      justify-content: center;
+      padding: clamp(16px, 3vh, 36px) clamp(24px, 4vw, 64px);
+    }
+    #live-alert-container.alert-lower-third {
+      align-items: flex-end;
+      justify-content: center;
+      padding: clamp(16px, 3vh, 36px) clamp(24px, 4vw, 64px);
+    }
+    #live-alert-container.alert-fullscreen {
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.88);
+      padding: 40px;
+    }
+    .alert-banner-box {
+      position: relative;
+      width: 100%;
+      max-width: 1680px;
+      background: #0f172a;
+      background-color: rgba(15, 23, 42, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 16px;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      color: #ffffff;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .alert-urgent .alert-banner-box {
+      border-color: #ef4444;
+      background: #18090a;
+      background-color: rgba(24, 9, 10, 0.96);
+    }
+    .alert-tag-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #2563eb;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: clamp(14px, 1.4vw, 18px);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+    .alert-urgent .alert-tag-pill {
+      background: #ef4444;
+    }
+    .alert-text-wrap {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      font-size: clamp(20px, 2.2vw, 32px);
+      font-weight: 600;
+      line-height: 1.3;
+      color: #f8fafc;
+      white-space: normal;
+    }
+    .alert-fullscreen .alert-banner-box {
+      max-width: 1100px;
+      flex-direction: column;
+      text-align: center;
+      padding: clamp(36px, 6vh, 64px) clamp(32px, 5vw, 60px);
+      border-radius: 28px;
+      gap: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .alert-fullscreen .alert-text-wrap {
+      font-size: clamp(28px, 3.5vw, 54px);
+      font-weight: 700;
+    }
+    .alert-marquee .alert-text-wrap {
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .alert-marquee .alert-text-content {
+      display: inline-block;
+      padding-left: 100%;
+      animation: alertMarqueeAnim 20s linear infinite;
+    }
+    @keyframes alertMarqueeAnim {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-100%); }
+    }
+
+    /* Edge tickers reserve their own space outside the slide canvas. */
+    :root { --ticker-height: clamp(36px, 5.5vh, 64px); }
+    #live-alert-container { transition: none; z-index: 100000; }
+    #live-alert-container:is(.alert-upper-third, .alert-lower-third) { padding: 0; }
+    #live-alert-container:not(.alert-fullscreen) .alert-banner-box {
+      max-width: none; height: var(--ticker-height); border-radius: 0;
+      padding: 0 24px; border: 0; box-shadow: none; background: #10131b;
+    }
+    #live-alert-container:not(.alert-fullscreen) .alert-tag-pill { display: none; }
+    #live-alert-container:not(.alert-fullscreen) .alert-text-wrap {
+      min-width: 0; font-size: clamp(18px, 2.2vh, 28px); font-weight: 500;
+    }
+    .alert-marquee .alert-text-content { animation-duration: var(--ticker-duration, 20s); }
+    body:has(#live-alert-container.active.alert-upper-third) :is(#display-container, #stage-confidence-container) { top: var(--ticker-height); }
+    body:has(#live-alert-container.active.alert-lower-third) :is(#display-container, #stage-confidence-container) { bottom: var(--ticker-height); }
+
+    /* ─── Stage Confidence Display Styles (Pure High-Contrast Solid Surfaces) ─── */
+    #stage-confidence-container {
+      position: absolute;
+      inset: 0;
+      z-index: 80;
+      background: #000000 !important;
+      color: #ffffff;
+      display: none;
+      flex-direction: column;
+      padding: clamp(20px, 3vh, 40px) clamp(28px, 4vw, 60px);
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    body.is-stage #stage-confidence-container {
+      display: flex !important;
+    }
+    body.is-stage #display-container,
+    body.is-stage #bg-layer,
+    body.is-stage #standby-container {
+      display: none !important;
+    }
+    .stage-header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 16px;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+      margin-bottom: 16px;
+      flex-shrink: 0;
+    }
+    .stage-header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .stage-mode-tag {
+      background: #2563eb;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: clamp(14px, 1.4vw, 20px);
+      padding: 6px 16px;
+      border-radius: 8px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .stage-ref-tag {
+      font-size: clamp(18px, 2vw, 28px);
+      font-weight: 700;
+      color: #93c5fd;
+    }
+    .stage-header-right {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .stage-clock {
+      font-size: clamp(26px, 3vw, 44px);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: #ffffff;
+      letter-spacing: -0.02em;
+    }
+    .stage-main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      min-height: 0;
+      padding: 16px 0;
+    }
+    .stage-current-text {
+      white-space: pre-wrap;
+      font-size: clamp(38px, 5.2vw, 76px);
+      font-weight: 800;
+      line-height: 1.22;
+      letter-spacing: -0.01em;
+      color: #ffffff;
+      max-width: 1700px;
+      word-break: break-word;
+    }
+    body.is-choir .stage-current-text {
+      font-size: clamp(34px, 4.6vw, 68px);
+      font-weight: 700;
+      line-height: 1.28;
+    }
+    body.is-pastor .stage-current-text {
+      font-size: clamp(36px, 4.8vw, 72px);
+      font-weight: 600;
+      text-align: left;
+      width: 100%;
+    }
+    .stage-footer-bar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding-top: 16px;
+      border-top: 2px solid rgba(255, 255, 255, 0.15);
+      margin-top: auto;
+      flex-shrink: 0;
+    }
+    .stage-next-card {
+      flex: 1;
+      background: #111827;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      overflow: hidden;
+    }
+    .stage-next-pill {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fbbf24;
+      font-weight: 800;
+      font-size: clamp(12px, 1.2vw, 16px);
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+    .stage-next-text {
+      font-size: clamp(18px, 1.8vw, 26px);
+      font-weight: 600;
+      color: #d1d5db;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .stage-private-note {
+      background: #7c2d12;
+      border: 1px solid #ea580c;
+      color: #ffedd5;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: clamp(16px, 1.6vw, 22px);
+      font-weight: 700;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .stage-private-note.visible {
+      display: flex;
+    }
   </style>
 </head>
 <body>
@@ -918,6 +1190,43 @@
     </div>
   </div>
 
+  <!-- Dedicated Stage Confidence Display Layout (Choir / Pastors) -->
+  <div id="stage-confidence-container">
+    <div class="stage-header-bar">
+      <div class="stage-header-left">
+        <span class="stage-mode-tag" id="stage-mode-badge">Confidence</span>
+        <span class="stage-ref-tag" id="stage-reference-label"></span>
+      </div>
+      <div class="stage-header-right">
+        <span class="stage-clock" id="stage-service-timer" aria-label="Service elapsed time">SERVICE 00:00:00</span>
+        <span class="stage-clock" id="stage-digital-clock">--:--:--</span>
+      </div>
+    </div>
+    <div class="stage-private-note" id="stage-private-note">
+      <span id="stage-private-note-text"></span>
+    </div>
+    <div class="stage-main-area">
+      <div class="stage-current-text" id="stage-current-slide-text">Output idle</div>
+    </div>
+    <div class="stage-footer-bar">
+      <div class="stage-next-card" id="stage-next-card">
+        <span class="stage-next-pill">NEXT</span>
+        <span class="stage-next-text" id="stage-next-slide-text">End of slide sequence</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Alert & Urgent Announcement Overlay (z-index 99999) -->
+  <div id="live-alert-container">
+    <div class="alert-banner-box" id="live-alert-box">
+      <div class="alert-tag-pill" id="live-alert-tag">Alert</div>
+      <div class="alert-text-wrap" id="live-alert-text-wrap">
+        <div class="alert-text-content" id="live-alert-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/output-fit.js"></script>
   <script>
     'use strict';
 
@@ -926,13 +1235,40 @@
     const rawTarget = (urlParams.get('target') || urlParams.get('mode') || '').toLowerCase();
     const rawLayout = (urlParams.get('layout') || '').toLowerCase();
 
-    const isSanctuary = rawTarget === 'sanctuary' || rawTarget === 'full' || rawTarget === 'projector' || rawTarget === 'hdmi';
+    let stageServiceTimer = { running: false, elapsed: 0, startedAt: null };
+    const isStage = rawTarget === 'stage' || rawTarget === 'choir' || rawTarget === 'pastor' || rawTarget === 'confidence';
+    const stageMode = rawTarget === 'choir' ? 'choir' : (rawTarget === 'pastor' ? 'pastor' : 'stage');
+    const isSanctuary = !isStage && (rawTarget === 'sanctuary' || rawTarget === 'full' || rawTarget === 'projector' || rawTarget === 'hdmi');
     const isExplicitLt = rawLayout === 'lt' || rawLayout === 'lowerthird';
     const isExplicitFull = rawLayout === 'full';
-    const isObs = rawTarget === 'obs' || rawTarget === 'livestream' || rawTarget === 'broadcast';
-    const targetType = isSanctuary ? 'sanctuary' : (isObs ? 'obs' : (isExplicitLt ? 'livestream' : 'auto'));
+    const isObs = !isStage && (rawTarget === 'obs' || rawTarget === 'livestream' || rawTarget === 'broadcast');
+    const targetType = isStage ? 'stage' : (isSanctuary ? 'sanctuary' : (isObs ? 'obs' : (isExplicitLt ? 'livestream' : 'auto')));
+
+    if (isStage) {
+      document.body.classList.add('is-stage');
+      if (stageMode === 'choir') document.body.classList.add('is-choir');
+      if (stageMode === 'pastor') document.body.classList.add('is-pastor');
+      const badge = document.getElementById('stage-mode-badge');
+      if (badge) badge.textContent = stageMode.toUpperCase();
+
+      const updateStageClock = () => {
+        const timerEl = document.getElementById('stage-service-timer');
+        const elapsed = Math.max(0, (stageServiceTimer.elapsed || 0) +
+          (stageServiceTimer.running ? Date.now() - stageServiceTimer.startedAt : 0));
+        const seconds = Math.floor(elapsed / 1000);
+        if (timerEl) timerEl.textContent = 'SERVICE ' + [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map(v => String(v).padStart(2, '0')).join(':');
+        const clockEl = document.getElementById('stage-digital-clock');
+        if (clockEl) {
+          const now = new Date();
+          clockEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+      };
+      updateStageClock();
+      setInterval(updateStageClock, 1000);
+    }
 
     function isLowerThirdLayout(data) {
+      if (isStage) return false;
       if (!data) data = window.LATEST_STATE || {};
       if (isExplicitLt) return true;
       if (isExplicitFull || isSanctuary) return false;
@@ -947,6 +1283,14 @@
 
       return Boolean(data.mode === 'lt' || data.mode === 'lowerthird');
     }
+
+    const viewportChannel = new BroadcastChannel('ginomia_output_viewports');
+    const reportViewport = () => {
+      if (!urlParams.has('embedded')) viewportChannel.postMessage({ target: isSanctuary ? 'sanctuary' : isStage ? 'stage' : 'livestream', width: innerWidth, height: innerHeight });
+    };
+    viewportChannel.onmessage = event => { if (event.data?.request) reportViewport(); };
+    addEventListener('resize', reportViewport);
+    reportViewport();
 
     // Try BroadcastChannel (works for same-origin tabs, NOT for OBS)
     let syncChannel = null;
@@ -1063,13 +1407,13 @@
     function acknowledgeOutput() {
       if (!outputConnectionId) return;
       fetch('/api/output-ack', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: outputConnectionId, revision: outputReceivedRevision }) }).catch(() => {});
+        body: JSON.stringify({ id: outputConnectionId, revision: outputReceivedRevision, viewport: { width: innerWidth, height: innerHeight } }) }).catch(() => {});
     }
     setInterval(acknowledgeOutput, 3000);
     function connectSSE() {
       const apiBase = window.location.origin;
       const outputTarget = new URLSearchParams(location.search).get('target') || 'dynamic';
-      const evtSource = new EventSource(apiBase + '/api/events?target=' + encodeURIComponent(outputTarget));
+      const evtSource = new (window.AppEventSource || EventSource)(apiBase + '/api/events?target=' + encodeURIComponent(outputTarget));
       evtSource.onopen = () => { outputStreamConnected = true; };
       evtSource.addEventListener('output-session', event => { outputConnectionId = JSON.parse(event.data).id; });
 
@@ -1093,8 +1437,8 @@
       };
     }
 
-    if (window.location.protocol !== 'file:') {
-      connectSSE();
+    if (window.location.protocol !== 'file:' && !isPreview) {
+      if (!urlParams.has('embedded')) connectSSE();
     }
 
     function applySanctuaryTheme(theme) {
@@ -1201,9 +1545,6 @@
       try { syncChannel.postMessage({ type: 'REQUEST_STATE' }); } catch (e) {}
       syncChannel.onmessage = (event) => {
         if (event.data && event.data.type === 'REQUEST_STATE') return;
-        if (event.data && (event.data.type === 'sanctuary_theme_sync' || event.data.sanctuaryTheme)) {
-          applySanctuaryTheme(event.data.sanctuaryTheme);
-        }
         applyState(event.data);
       };
     }
@@ -1451,14 +1792,110 @@
 
       const textLen = (data.text || '').length;
 
-      if (data.textAutoScale !== false) {
-        let basePx = effectiveBasePx;
-        if (textLen > 240) basePx = Math.round(basePx * 0.72);
-        else if (textLen > 140) basePx = Math.round(basePx * 0.82);
-        else if (textLen < 60) basePx = Math.round(basePx * 1.12);
-        slot.content.style.fontSize = `${Math.round(basePx * scale)}px`;
-      } else {
-        slot.content.style.fontSize = `${Math.round(effectiveBasePx * scale)}px`;
+      slot.content.style.fontSize = `${effectiveBasePx * scale}px`;
+      slot.content.dataset.preferredSize = String(effectiveBasePx * scale);
+      slot.content.dataset.fitBaseSize = String(effectiveBasePx * (isBibleRef ? 1 : isLt ? 1.4 : 2.2));
+      if (typeof window !== 'undefined') window.scheduleOutputFit?.();
+    }
+
+    // =====================================================
+    // Live Alert & Urgent Announcement Renderer
+    // =====================================================
+    let liveAlertExpiryTimer = null;
+    function applyLiveAlert(alert) {
+      if (liveAlertExpiryTimer) clearTimeout(liveAlertExpiryTimer);
+      const alertContainer = document.getElementById('live-alert-container');
+      const contentEl = document.getElementById('live-alert-content');
+      const tagEl = document.getElementById('live-alert-tag');
+      if (!alertContainer || !contentEl) return;
+
+      if (!alert || !alert.active || !alert.text || !alert.text.trim() || (alert.expiresAt && alert.expiresAt <= Date.now())) {
+        alertContainer.className = '';
+        contentEl.textContent = '';
+        return;
+      }
+
+      if (alert.expiresAt) {
+        liveAlertExpiryTimer = setTimeout(() => applyLiveAlert(null), Math.max(0, alert.expiresAt - Date.now()));
+      }
+
+      // Check destination routing
+      if (alert.destinations && typeof alert.destinations === 'object') {
+        let isAllowed = false;
+        if (isSanctuary && alert.destinations.sanctuary) isAllowed = true;
+        if (isObs && alert.destinations.livestream) isAllowed = true;
+        if (isStage && alert.destinations.stage) isAllowed = true;
+        if (!isSanctuary && !isObs && !isStage) {
+          if (alert.destinations.sanctuary || alert.destinations.livestream) isAllowed = true;
+        }
+        if (!isAllowed) {
+          alertContainer.className = '';
+          contentEl.textContent = '';
+          return;
+        }
+      }
+
+      const pos = alert.position || 'upperthird';
+      let posClass = 'alert-lower-third';
+      if (pos === 'upperthird' || pos === 'upper-third') posClass = 'alert-upper-third';
+      else if (pos === 'fullscreen') posClass = 'alert-fullscreen';
+
+      const isMarquee = pos !== 'fullscreen';
+      const isUrgent = alert.urgency === 'urgent';
+
+      alertContainer.className = `active ${posClass}${isMarquee ? ' alert-marquee' : ''}${isUrgent ? ' alert-urgent' : ''}`;
+      if (tagEl) {
+        tagEl.textContent = alert.tag || (isUrgent ? 'Urgent Notice' : 'Announcement');
+      }
+      if (contentEl.textContent !== alert.text) contentEl.textContent = alert.text;
+      if (isMarquee) {
+        const speed = { slow: 55, normal: 85, fast: 120 }[alert.speed] || 85;
+        const duration = Math.max(8, contentEl.scrollWidth / speed);
+        alertContainer.style.setProperty('--ticker-duration', `${duration}s`);
+      }
+    }
+
+    // =====================================================
+    // Stage Confidence Monitor Layout Renderer
+    // =====================================================
+    function applyStageState(data) {
+      if (!isStage) return;
+      const refEl = document.getElementById('stage-reference-label');
+      const textEl = document.getElementById('stage-current-slide-text');
+      const nextEl = document.getElementById('stage-next-slide-text');
+      const noteEl = document.getElementById('stage-private-note');
+      const noteText = document.getElementById('stage-private-note-text');
+
+      if (refEl) refEl.textContent = data.reference || '';
+
+      if (textEl) {
+        if (data.clear || data.blackout || (!data.text && !data.reference && !data.isLexicon)) {
+          textEl.innerHTML = '<span style="opacity:0.4; font-size:0.7em;">(Slide output idle / clear)</span>';
+        } else {
+          textEl.textContent = data.text || '';
+        }
+      }
+
+      if (nextEl) {
+        if (data.nextSlide && (data.nextSlide.text || data.nextSlide.reference)) {
+          const nextRef = data.nextSlide.reference ? `[${data.nextSlide.reference}] ` : '';
+          const nextPreview = (data.nextSlide.text || '').split('\n')[0];
+          nextEl.textContent = `${nextRef}${nextPreview}`;
+        } else {
+          nextEl.textContent = 'End of slide sequence';
+        }
+      }
+
+      // Check private stage message or stage-targeted alert
+      if (noteEl && noteText) {
+        const msg = data.stageMessage || null;
+        if (msg) {
+          noteText.textContent = msg;
+          noteEl.classList.add('visible');
+        } else {
+          noteText.textContent = '';
+          noteEl.classList.remove('visible');
+        }
       }
     }
 
@@ -1467,7 +1904,23 @@
     // =====================================================
     function applyState(raw) {
       if (!raw) return;
+      if (raw._timestamp && raw._timestamp < lastProcessedTimestamp) return;
+      if (raw.type === 'sanctuary_theme_sync') {
+        if (raw.sanctuaryTheme) applySanctuaryTheme(raw.sanctuaryTheme);
+        return;
+      }
+      if (raw.sanctuaryTheme) applySanctuaryTheme(raw.sanctuaryTheme);
+      if (raw.serviceTimer) stageServiceTimer = raw.serviceTimer;
       let data = raw;
+
+      // Always update Live Alert (Independent from slide content / clear state)
+      applyLiveAlert(data.alert || null);
+      if (typeof window !== 'undefined') window.scheduleOutputFit?.();
+
+      // Always update Stage Confidence layout
+      if (isStage) {
+        applyStageState(data);
+      }
 
       // Automatically unwrap dashboard snapshots if received
       if (data.dashboard && (!data.text && !data.reference && !data.isLexicon)) {

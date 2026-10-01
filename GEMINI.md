@@ -24,3 +24,7 @@
 - **Accidental Projection & Action Prevention**: Live slide projections, button clicks, and tool actions beneath an open overlay are strictly prohibited from firing during a dismissal click.
 - **Instant Overlay Dismissal**: Overlays and their dismissal shields must dismiss in `<= 0.04s` or instantly (`0s`) on dismissal click or `Escape` keypress.
 
+## 6. Surgical & Direct Execution Mandate (No Over-Analysis)
+- **Straight to the Point**: For UI fixes, text changes, or targeted bugs, locate the exact lines and make the minimal edit immediately.
+- **Zero Unnecessary Scanning**: Do not read unrelated files, do not run broad `git diff` commands, and do not run full-repo test suites for small, localized fixes.
+- **Protect Code by Touching Less**: Ensure no existing code is broken by keeping edits small and strictly scoped to the requested target, rather than doing heavy analysis.

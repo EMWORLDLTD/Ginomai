@@ -1286,7 +1286,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 14px;
-  scroll-behavior: auto;
+  scroll-behavior: smooth;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   contain: layout style;
@@ -3705,7 +3705,7 @@ input:checked+.settings-slider:before {
    ========================================================================== */
 .global-app-tooltip {
   position: fixed;
-  z-index: 99999;
+  z-index: 2147483646;
   pointer-events: none;
   background: #0F172A;
   border: 1px solid rgba(255, 255, 255, 0.18);

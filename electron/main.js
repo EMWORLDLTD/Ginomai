@@ -20,6 +20,8 @@ process.on('unhandledRejection', (reason, promise) => {
 
 let mainWindow = null;
 let projectorWindow = null;
+let stageWindow = null;
+let currentStageMode = 'stage';
 let serverPort = Number(process.env.PORT) || 8500;
 
 // Single instance lock to prevent duplicate apps
@@ -109,6 +111,9 @@ function createMainWindow(port) {
     if (projectorWindow && !projectorWindow.isDestroyed()) {
       projectorWindow.close();
     }
+    if (stageWindow && !stageWindow.isDestroyed()) {
+      stageWindow.close();
+    }
   });
 
   setupAppMenu();
@@ -194,6 +199,104 @@ function notifyProjectorStatus() {
       displayId: projectorWindow ? projectorWindow.getBounds() : null
     };
     mainWindow.webContents.send('desktop:projector-status-changed', status);
+  }
+}
+
+// ─── Stage Confidence Monitor Window (Choir / Pastors) ────────────────────────
+function launchStageWindow(targetDisplayId = null, stageMode = 'stage') {
+  currentStageMode = stageMode || 'stage';
+  const displays = screen.getAllDisplays();
+  let targetDisplay = null;
+
+  if (targetDisplayId) {
+    targetDisplay = displays.find((d) => String(d.id) === String(targetDisplayId));
+  }
+
+  // If no target specified or not found, prefer a secondary display not currently occupied by the projector
+  if (!targetDisplay) {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    let projectorDisplayId = null;
+    if (projectorWindow) {
+      try {
+        projectorDisplayId = screen.getDisplayMatching(projectorWindow.getBounds()).id;
+      } catch (e) {}
+    }
+
+    targetDisplay = displays.find((d) => d.id !== primaryDisplay.id && d.id !== projectorDisplayId) ||
+                    displays.find((d) => d.id !== primaryDisplay.id) ||
+                    primaryDisplay;
+  }
+
+  const { x, y, width, height } = targetDisplay.bounds;
+
+  if (stageWindow) {
+    stageWindow.setPosition(x, y);
+    stageWindow.setSize(width, height);
+    stageWindow.setFullScreen(true);
+    const stageUrl = `http://localhost:${serverPort}/display.html?target=${stageMode}`;
+    stageWindow.loadURL(stageUrl).catch(() => {
+      stageWindow.loadFile(path.join(__dirname, '..', 'display.html'), {
+        query: { target: stageMode }
+      });
+    });
+    stageWindow.show();
+    stageWindow.focus();
+    notifyStageStatus();
+    return { success: true, displayId: targetDisplay.id, mode: stageMode };
+  }
+
+  stageWindow = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
+    frame: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#000000',
+    title: 'Ginomia — Stage Confidence Monitor (Choir / Pastors)',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  const stageUrl = `http://localhost:${serverPort}/display.html?target=${stageMode}`;
+  stageWindow.loadURL(stageUrl).catch(() => {
+    stageWindow.loadFile(path.join(__dirname, '..', 'display.html'), {
+      query: { target: stageMode }
+    });
+  });
+
+  stageWindow.setFullScreen(true);
+
+  stageWindow.on('closed', () => {
+    stageWindow = null;
+    notifyStageStatus();
+  });
+
+  notifyStageStatus();
+  return { success: true, displayId: targetDisplay.id, mode: stageMode };
+}
+
+function closeStageWindow() {
+  if (stageWindow) {
+    stageWindow.close();
+    stageWindow = null;
+    notifyStageStatus();
+    return { success: true };
+  }
+  return { success: false, message: 'Stage monitor window not open' };
+}
+
+function notifyStageStatus() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const status = {
+      isOpen: !!stageWindow,
+      displayBounds: stageWindow ? stageWindow.getBounds() : null,
+      mode: currentStageMode
+    };
+    mainWindow.webContents.send('desktop:stage-status-changed', status);
   }
 }
 
@@ -411,6 +514,22 @@ ipcMain.handle('desktop:get-projector-status', () => {
   };
 });
 
+ipcMain.handle('desktop:launch-stage-monitor', (event, options = {}) => {
+  return launchStageWindow(options.displayId, options.targetMode || options.mode || 'stage');
+});
+
+ipcMain.handle('desktop:close-stage-monitor', () => {
+  return closeStageWindow();
+});
+
+ipcMain.handle('desktop:get-stage-status', () => {
+  return {
+    isOpen: !!stageWindow,
+    displayBounds: stageWindow ? stageWindow.getBounds() : null,
+    mode: currentStageMode
+  };
+});
+
 ipcMain.handle('desktop:get-server-info', () => {
   const lanIps = getLanAddresses();
   const primaryLanIp = lanIps[0] || 'localhost';
@@ -421,7 +540,10 @@ ipcMain.handle('desktop:get-server-info', () => {
       hostConsole: `http://localhost:${serverPort}`,
       remoteOperator: `http://${primaryLanIp}:${serverPort}/operator.html`,
       sanctuaryDisplay: `http://${primaryLanIp}:${serverPort}/display.html?target=sanctuary`,
-      livestreamDisplay: `http://${primaryLanIp}:${serverPort}/display.html?target=livestream`
+      livestreamDisplay: `http://${primaryLanIp}:${serverPort}/display.html?target=livestream`,
+      stageDisplay: `http://${primaryLanIp}:${serverPort}/display.html?target=stage`,
+      choirDisplay: `http://${primaryLanIp}:${serverPort}/display.html?target=choir`,
+      pastorDisplay: `http://${primaryLanIp}:${serverPort}/display.html?target=pastor`
     }
   };
 });

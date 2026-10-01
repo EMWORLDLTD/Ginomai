@@ -17,7 +17,7 @@
     if (document.body) {
       document.body.setAttribute('data-theme-style', savedStyle);
       document.body.setAttribute('data-theme-mode', savedMode);
-    } else {
+    } else if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
       document.addEventListener('DOMContentLoaded', () => {
         if (document.body) {
           document.body.setAttribute('data-theme-style', savedStyle);
@@ -479,7 +479,7 @@ class ThemeResizerEngine {
       });
     });
 
-    if (!this._resizeListenerAttached && typeof window !== 'undefined') {
+    if (!this._resizeListenerAttached && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       this._resizeListenerAttached = true;
       let resizeTimeout = null;
       window.addEventListener('resize', () => {
@@ -600,9 +600,11 @@ class ThemeResizerEngine {
         if (typeof window.syncBentoStagePreview === 'function') window.syncBentoStagePreview();
       };
 
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-      window.addEventListener('pointercancel', onUp);
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+      }
     };
   }
 }
@@ -675,12 +677,12 @@ class ThemeManager {
     this.broadcastSanctuaryTheme();
   }
 
-  setSanctuaryTheme(themeId) {
+  setSanctuaryTheme(themeId, broadcast = true) {
     if (!SANCTUARY_THEMES[themeId]) return;
     if (this.sanctuaryDraft) { this.sanctuaryDraft.activeSanctuaryTheme = themeId; this.updateSanctuaryUi(); return; }
     this.activeSanctuaryTheme = themeId;
     try { localStorage.setItem('sf_sanctuary_theme', themeId); } catch(e) {}
-    this.broadcastSanctuaryTheme();
+    if (broadcast) this.broadcastSanctuaryTheme();
     this.updateSanctuaryUi();
   }
 
@@ -930,9 +932,129 @@ window.ThemeManager = ThemeManager;
 
 // Auto-bind resizers on DOMContentLoaded or immediate execution
 if (typeof document !== 'undefined') {
-  if (document.readyState === 'loading') {
+  if (document.readyState === 'loading' && typeof document.addEventListener === 'function') {
     document.addEventListener('DOMContentLoaded', () => ThemeResizerEngine.init());
-  } else {
+  } else if (document.body) {
     ThemeResizerEngine.init();
   }
 }
+
+// ─── Song Theme Binding Functions ─────────────────────────────────────────
+function getSongBoundTheme(songId) {
+  if (!songId) return null;
+  const song = (window.SONGS_DATABASE || []).find(s => s.id === songId);
+  if (song && song.themeId) return song.themeId;
+  try {
+    const bindings = JSON.parse(localStorage.getItem('sf_song_theme_bindings') || '{}');
+    return bindings[songId] || null;
+  } catch (e) {
+    return null;
+  }
+}
+window.getSongBoundTheme = getSongBoundTheme;
+
+function setSongBoundTheme(songId, themeId) {
+  if (!songId) return;
+  const song = (window.SONGS_DATABASE || []).find(s => s.id === songId);
+  if (song) {
+    song.themeId = themeId || null;
+  }
+  try {
+    const bindings = JSON.parse(localStorage.getItem('sf_song_theme_bindings') || '{}');
+    if (themeId) {
+      bindings[songId] = themeId;
+    } else {
+      delete bindings[songId];
+    }
+    localStorage.setItem('sf_song_theme_bindings', JSON.stringify(bindings));
+  } catch (e) {}
+
+  if (themeId && window.themeManager) {
+    window.themeManager.setSanctuaryTheme(themeId);
+  }
+  const themeName = (themeId && SANCTUARY_THEMES[themeId]) ? SANCTUARY_THEMES[themeId].name : 'Default';
+  if (typeof window.showToast === 'function') {
+    window.showToast(`Bound "${themeName}" theme to "${song ? song.title : 'song'}"`, 'success');
+  }
+}
+window.setSongBoundTheme = setSongBoundTheme;
+
+function openSongThemeBindingModal(songId) {
+  const song = (window.SONGS_DATABASE || []).find(s => s.id === songId);
+  if (!song) return;
+  const modal = document.getElementById('song-theme-picker-modal-backdrop');
+  const targetIdInput = document.getElementById('song-theme-target-song-id');
+  const heading = document.getElementById('song-theme-picker-heading');
+  const grid = document.getElementById('song-theme-picker-grid');
+  if (!modal || !grid) return;
+
+  if (targetIdInput) targetIdInput.value = songId;
+  if (heading) heading.textContent = `Attach Theme to "${song.title}"`;
+
+  const boundTheme = getSongBoundTheme(songId);
+
+  const themeKeys = Object.keys(SANCTUARY_THEMES);
+  const escapeStr = (s) => (s ? String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '');
+
+  grid.innerHTML = themeKeys.map(k => {
+    const t = SANCTUARY_THEMES[k];
+    const isSelected = (boundTheme === k);
+    const bgStyle = t.previewGradient || '#1e293b';
+    const preview = t.imageUrl
+      ? `<img class="song-theme-preview-media" src="${escapeStr(t.imageUrl)}" alt="" loading="lazy" decoding="async">`
+      : t.videoUrl
+        ? `<video class="song-theme-preview-media" src="${escapeStr(t.videoUrl)}" muted playsinline preload="metadata" aria-hidden="true"></video>`
+        : '';
+    return `
+      <div class="song-theme-option-card ${isSelected ? 'active' : ''}" onclick="window.selectSongThemeFromModal('${k}')">
+        <div class="song-theme-option-thumb" style="background: ${escapeStr(bgStyle)}; background-size: cover;">
+          ${preview}
+          <span class="song-theme-thumb-badge">${escapeStr(t.badge || t.category || 'THEME')}</span>
+        </div>
+        <div class="song-theme-option-title">${escapeStr(t.name)}</div>
+      </div>
+    `;
+  }).join('');
+
+  modal.style.display = 'flex';
+}
+window.openSongThemeBindingModal = openSongThemeBindingModal;
+
+function closeSongThemeBindingModal() {
+  const modal = document.getElementById('song-theme-picker-modal-backdrop');
+  if (modal) modal.style.display = 'none';
+}
+window.closeSongThemeBindingModal = closeSongThemeBindingModal;
+
+function selectSongThemeFromModal(themeId) {
+  const targetIdInput = document.getElementById('song-theme-target-song-id');
+  const songId = targetIdInput ? targetIdInput.value : null;
+  if (songId) {
+    setSongBoundTheme(songId, themeId);
+  }
+  closeSongThemeBindingModal();
+}
+window.selectSongThemeFromModal = selectSongThemeFromModal;
+
+function detachSongTheme(targetSongId = null) {
+  const targetIdInput = document.getElementById('song-theme-target-song-id');
+  const songId = targetSongId || (targetIdInput ? targetIdInput.value : null);
+  if (songId) {
+    setSongBoundTheme(songId, null);
+    if (typeof window.showToast === 'function') {
+      window.showToast('Reset to global sanctuary theme', 'info');
+    }
+  }
+  closeSongThemeBindingModal();
+}
+window.detachSongTheme = detachSongTheme;
+
+ThemeManager.prototype.getSongBoundTheme = function(songId) {
+  return getSongBoundTheme(songId);
+};
+ThemeManager.prototype.setSongBoundTheme = function(songId, themeId) {
+  return setSongBoundTheme(songId, themeId);
+};
+ThemeManager.prototype.detachSongTheme = function(songId) {
+  return detachSongTheme(songId);
+};

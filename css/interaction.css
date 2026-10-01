@@ -28,6 +28,15 @@ body:not(.sf-keyboard-nav) :is(button, [role="button"], [role="tab"], .bento-tab
   outline: none !important;
   box-shadow: none !important;
 }
+/* Split editor inputs and textareas: clean unified border stroke, strictly no detached offset outline */
+:is(.bento-split-input, .bento-split-textarea, #bento-split-title, #bento-split-author, #bento-split-lyrics) {
+  outline: none !important;
+}
+:is(.bento-split-input, .bento-split-textarea, #bento-split-title, #bento-split-author, #bento-split-lyrics):focus,
+:is(.bento-split-input, .bento-split-textarea, #bento-split-title, #bento-split-author, #bento-split-lyrics):focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+}
 body :is(button,[role="button"],input,select,textarea,.modal-backdrop,.sf-modal-backdrop,.sf-dialog-card) {
   transition-duration: 0.04s !important;
 }
@@ -41,6 +50,23 @@ body * { backdrop-filter: none !important; -webkit-backdrop-filter: none !import
 .app-toast { background: #161522; transition-duration: .04s !important; }
 body .bento-deck-toolbar { flex-wrap: wrap; height: auto; gap: 8px; }
 body .bento-deck-title-wrap { min-width: 0; flex: 1 0 100%; margin-bottom: 2px; }
+body .bento-deck-title-wrap .t { line-height: 1.35; }
+body .bento-deck-title-wrap .s { line-height: 1.25; }
+body .bento-deck-card.in-split-editor .bento-deck-toolbar,
+body .bento-deck-card:has(.in-split-editor) .bento-deck-toolbar {
+  flex-wrap: nowrap !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  align-items: center !important;
+  margin-bottom: 8px !important;
+  overflow: hidden !important;
+}
+body .bento-deck-card.in-split-editor .bento-deck-title-wrap,
+body .bento-deck-card:has(.in-split-editor) .bento-deck-title-wrap {
+  flex: 1 1 auto !important;
+  margin-bottom: 0 !important;
+  min-width: 0 !important;
+}
 body .bento-deck-toolbar > :is(.bento-tbtn,.bento-seg,.bento-zoom) { height: 32px; box-sizing: border-box; border-radius: 8px; }
 body .bento-deck-toolbar .bento-seg > span { display: inline-flex; align-items: center; justify-content: center; min-height: 0; height: 26px; padding: 0 8px; box-sizing: border-box; }
 body .bento-deck-toolbar .bento-zoom { padding: 0 4px; gap: 4px; }
@@ -153,7 +179,7 @@ body[data-theme-mode="light"] .sf-prepared {
 body[data-theme-mode="light"] .sf-prepared strong {
   color: #3730a3;
 }
-body .bento-autoproj[aria-pressed="true"] { border: 1px solid #d8a654; background: #493217; color: #ffe8b7; }
+body .bento-autoproj[aria-pressed="true"] { border: 0; background: transparent; color: var(--dim); }
 .sf-tools-menu { position: relative; }
 .sf-tools-menu[open] { z-index: 100100; }
 .sf-tools-menu > summary.bento-icon-btn {
@@ -285,7 +311,7 @@ body #bento-transcript-open-btn { color: var(--purple-text) !important; backgrou
 body #bento-transcript-open-btn:hover { border-color: var(--purple) !important; }
 @media (max-width: 1100px) { body .bento-topbar .bento-tb-center { order: 3; flex-basis: 100%; } }
 @media (pointer: coarse) { body :is(button,[role="button"],summary) { min-height: 44px; min-width: 44px; } }
-@media (prefers-reduced-motion: reduce) { body *, body *::before, body *::after { animation-duration: 0s !important; transition-duration: 0s !important; } }
+@media (prefers-reduced-motion: reduce) { body *:not(.ann-preview-scroll-text), body *::before, body *::after { animation-duration: 0s !important; transition-duration: 0s !important; } }
 
 /* Secondary detection actions must not inherit native button fills or stretch. */
 button.ai-diagnostics-btn {
@@ -399,3 +425,38 @@ body .song-workspace-empty .song-empty-link:hover { text-decoration:underline; }
 body .song-workspace-empty button:focus-visible { outline:2px solid #a88aff; outline-offset:3px; }
 :is(:root[data-theme-mode="light"],body[data-theme-mode="light"]) .song-workspace-empty .song-empty-secondary { color:#34303f; border-color:#dcd9e5; }
 :is(:root[data-theme-mode="light"],body[data-theme-mode="light"]) .song-workspace-empty .song-empty-link { color:#676373; }
+
+/* Compact, consistent rows in the search palette. */
+body #omni-search-palette .omni-search-input-wrap:focus-within { box-shadow:none; }
+body #omni-search-palette :is(.bento-omni-hero-card,.bento-omni-grid-card) {
+  display:flex; flex-direction:row; align-items:center; gap:16px;
+  min-height:0; padding:14px; margin:0; border-radius:8px;
+}
+body #omni-search-palette .bento-omni-icon-box { display:none; }
+body #omni-search-palette :is(.bento-omni-hero-info,.bento-omni-grid-card > div:first-child) { flex:1; min-width:0; }
+body #omni-search-palette :is(.bento-omni-hero-title,.bento-omni-card-title) { font-size:14px; font-weight:600; }
+body #omni-search-palette .bento-omni-card-header { justify-content:flex-start; gap:8px; }
+body #omni-search-palette :is(.bento-omni-card-snippet,.bento-omni-hero-sub) { font-size:12px; line-height:1.5; margin:4px 0 0; color:var(--dim); }
+body #omni-search-palette .scripture-card .bento-omni-card-author,
+body #omni-search-palette .bento-omni-hero-card:has(.scripture) .bento-omni-hero-sub:has(> span) { display:none; }
+body #omni-search-palette :is(.bento-omni-hero-actions,.bento-omni-card-actions) {
+  display:flex; flex-direction:row; align-items:center; flex:0 0 auto; min-width:0; gap:6px; margin:0;
+}
+body #omni-search-palette :is(.bento-omni-btn-main,.bento-omni-btn-plus,.omni-action-btn) {
+  flex:0 0 auto; height:30px; min-height:30px; padding:0 10px; border-radius:6px;
+  background:var(--card); color:var(--text); border:1px solid var(--border-strong); font-size:11px;
+}
+body #omni-search-palette .bento-omni-btn-main { color:var(--purple-text, #bba9ff); }
+body #omni-search-palette .bento-omni-grid { margin:0; gap:8px; }
+@media(max-width:640px) {
+  body #omni-search-palette :is(.bento-omni-hero-card,.bento-omni-grid-card) { flex-wrap:wrap; gap:10px; }
+  body #omni-search-palette :is(.bento-omni-hero-info,.bento-omni-grid-card > div:first-child) { flex-basis:100%; }
+}
+
+/* Result rows keep their content height when the list overflows. */
+body #omni-search-palette .omni-results-container > * { flex-shrink:0; }
+body #omni-search-palette :is(.bento-omni-hero-card,.bento-omni-grid-card,.omni-card) { flex-shrink:0; height:auto; }
+body #omni-search-palette .bento-omni-hero-title-row { flex-wrap:wrap; row-gap:4px; }
+.uses-output-renderer { overflow:hidden; background:#000; }
+.uses-output-renderer > :not(.actual-output-preview) { visibility:hidden !important; }
+.actual-output-preview { position:absolute; border:0; transform-origin:top left; pointer-events:none; max-width:none; max-height:none; z-index:100001; }

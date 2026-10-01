@@ -374,7 +374,7 @@ const server = http.createServer((req, res) => {
   }
   if (pathname === '/api/output-ack' && req.method === 'POST') {
     readBody((err, payload) => {
-      if (err || !outputs.acknowledge(payload.id, payload.revision)) return json(403, { error: 'Unknown display connection' });
+      if (err || !outputs.acknowledge(payload.id, payload.revision, payload.viewport)) return json(403, { error: 'Unknown display connection' });
       json(200, { success: true });
     });
     return;
@@ -952,6 +952,13 @@ const server = http.createServer((req, res) => {
           _timestamp: Date.now()
         };
         publishState();
+      } else if (command.type === 'ALERT_UPDATE') {
+        currentState = {
+          ...currentState,
+          alert: command.alert || null,
+          _timestamp: Date.now()
+        };
+        publishState();
       }
 
       // Concurrently forward command to host studio
@@ -1038,12 +1045,42 @@ const server = http.createServer((req, res) => {
       if (cleaned.length > 30 && !cleaned.includes('do not have the lyrics for this song')) return cleaned;
     }
 
-    // 3. Genius data-lyrics-container signature
-    const geniusContainers = [...html.matchAll(/<div[^>]*data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/gi)].map(m => m[1]);
-    if (geniusContainers.length > 0) {
-      const combined = geniusContainers.join('\n\n');
-      const cleaned = cleanGeniusText(cleanHtmlToPlainText(combined));
-      if (cleaned.length > 30) return cleaned;
+    // 3. Genius data-lyrics-container signature (balanced container parsing to preserve inner nested tags)
+    if (html.includes('data-lyrics-container="true"')) {
+      const geniusBlocks = [];
+      let idx = 0;
+      while ((idx = html.indexOf('data-lyrics-container="true"', idx)) !== -1) {
+        const startTagEnd = html.indexOf('>', idx);
+        if (startTagEnd === -1) break;
+        let depth = 1;
+        let pos = startTagEnd + 1;
+        while (depth > 0 && pos < html.length) {
+          const nextOpen = html.indexOf('<div', pos);
+          const nextClose = html.indexOf('</div>', pos);
+          if (nextClose === -1) break;
+          if (nextOpen !== -1 && nextOpen < nextClose) {
+            depth++;
+            pos = nextOpen + 4;
+          } else {
+            depth--;
+            if (depth === 0) {
+              geniusBlocks.push(html.slice(startTagEnd + 1, nextClose));
+              pos = nextClose + 6;
+              idx = pos;
+              break;
+            }
+            pos = nextClose + 6;
+          }
+        }
+        if (pos >= html.length || depth > 0) {
+          idx = startTagEnd + 1;
+        }
+      }
+      if (geniusBlocks.length > 0) {
+        const combined = geniusBlocks.join('\n\n');
+        const cleaned = cleanGeniusText(cleanHtmlToPlainText(combined));
+        if (cleaned.length > 30) return cleaned;
+      }
     }
 
     // 4. Hymnary columns (authority_columns, text_columns, hymn-text)
@@ -1053,8 +1090,8 @@ const server = http.createServer((req, res) => {
       if (cleaned.length > 30) return cleaned;
     }
 
-    // 5. Common lyrics classes / ids (GospelLyrics, WalkOfGrace, NameThatHymn, PraiseCharts, WorshipTogether, etc.)
-    const genericMatch = /<(?:div|article|section|p)[^>]*(?:id|class)="[^"]*(?:entry-content|post-content|song-content|lyrics-body|lyric-body|lyrics-content|lyrics-text)[^"]*"[^>]*>([\s\S]*?)<\/(?:div|article|section|p)>/i.exec(html);
+    // 5. Common lyrics classes / ids (GospelLyrics, ZionLyrics, WalkOfGrace, PraiseCharts, WorshipTogether, etc.)
+    const genericMatch = /<(?:div|article|section|p)[^>]*(?:id|class)="[^"]*(?:entry-content|post-content|song-content|lyrics-body|lyric-body|lyrics-content|lyrics-text|song-lyrics|lyricbox|lyrics-box|lyrics|song-panel|song-main)[^"]*"[^>]*>([\s\S]*?)<\/(?:div|article|section|p)>/i.exec(html);
     if (genericMatch && genericMatch[1]) {
       const cleaned = cleanHtmlToPlainText(genericMatch[1]);
       if (cleaned.length > 30) return cleaned;
@@ -1367,55 +1404,81 @@ const server = http.createServer((req, res) => {
       });
   }
 
-  // Engine 2: Genius Open Search (Massive contemporary worship, gospel & world catalog)
+  // Engine 2: Genius Open Search & Dedicated Lyrics Search (Massive contemporary worship, gospel & world catalog)
   async function fetchFromGenius(queryTerm, artist = '') {
     const browserUa = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-    const geniusUrl = `https://genius.com/api/search/multi?q=${encodeURIComponent(queryTerm)}`;
-    const searchRes = await fetch(geniusUrl, {
-      headers: { 'User-Agent': browserUa, 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(4500)
-    });
-
-    if (!searchRes.ok) return [];
-    const data = await searchRes.json();
-    const sections = data?.response?.sections || [];
     const hitMap = new Map();
-    for (const sec of sections) {
-      if ((sec.type === 'song' || sec.type === 'top_hit') && Array.isArray(sec.hits)) {
-        for (const hit of sec.hits) {
+
+    const [multiRes, lyricRes] = await Promise.allSettled([
+      fetch(`https://genius.com/api/search/multi?q=${encodeURIComponent(queryTerm)}`, {
+        headers: { 'User-Agent': browserUa, 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(3500)
+      }),
+      fetch(`https://genius.com/api/search/lyric?q=${encodeURIComponent(queryTerm)}`, {
+        headers: { 'User-Agent': browserUa, 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(3500)
+      })
+    ]);
+
+    // Prioritize top_hit first, then dedicated lyrics hits, then general song hits
+    const topHits = [];
+    const lyricHits = [];
+    const otherHits = [];
+
+    if (multiRes.status === 'fulfilled' && multiRes.value.ok) {
+      try {
+        const data = await multiRes.value.json();
+        const sections = data?.response?.sections || [];
+        for (const sec of sections) {
+          if (Array.isArray(sec.hits)) {
+            for (const hit of sec.hits) {
+              const res = hit.result;
+              if (res && res.url && !res.url.includes('/artists/') && !hitMap.has(res.id)) {
+                hitMap.set(res.id, res);
+                if (sec.type === 'top_hit') topHits.push(res);
+                else if (sec.type === 'lyric') lyricHits.push(res);
+                else if (sec.type === 'song') otherHits.push(res);
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (lyricRes.status === 'fulfilled' && lyricRes.value.ok) {
+      try {
+        const data = await lyricRes.value.json();
+        const hits = data?.response?.sections?.[0]?.hits || data?.response?.hits || [];
+        for (const hit of hits) {
           const res = hit.result;
           if (res && res.url && !res.url.includes('/artists/') && !hitMap.has(res.id)) {
             hitMap.set(res.id, res);
+            lyricHits.push(res);
           }
         }
-      }
-    }
-    const allHits = Array.from(hitMap.values());
-
-    // Balance candidate pool: include direct title matches AND in-line lyric matches
-    const qClean = queryTerm.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').trim();
-    const titleMatches = [];
-    const lyricMatches = [];
-
-    for (const hit of allHits) {
-      const hTitle = (hit.title || '').toLowerCase();
-      if (hTitle.includes(qClean) || qClean.includes(hTitle)) {
-        titleMatches.push(hit);
-      } else {
-        lyricMatches.push(hit);
-      }
+      } catch (e) {}
     }
 
-    // Blend: up to 3 title matches and up to 3 lyric/in-line matches
-    const candidateHits = [
-      ...titleMatches.slice(0, 3),
-      ...lyricMatches.slice(0, 3)
-    ].slice(0, 5);
+    // Sort candidate hits: top_hits and gospel/worship/relevant artists first
+    const isWorshipHit = h => {
+      const txt = `${h.title || ''} ${h.artist_names || h.primary_artist?.name || ''}`.toLowerCase();
+      return /worship|praise|houghton|greene|hillsong|bethel|salem|dunsin|maverick|gospel|jesus|god|lord|pastor|pst|brewster|planetboom/i.test(txt);
+    };
+
+    const prioritizedHits = [
+      ...topHits,
+      ...lyricHits.filter(isWorshipHit),
+      ...lyricHits.filter(h => !isWorshipHit(h)),
+      ...otherHits
+    ];
+
+    const candidateHits = prioritizedHits.slice(0, 5);
+
     const fetched = await Promise.allSettled(
       candidateHits.map(async song => {
         const pageRes = await fetch(song.url, {
           headers: { 'User-Agent': browserUa },
-          signal: AbortSignal.timeout(4000)
+          signal: AbortSignal.timeout(3200)
         });
         if (!pageRes.ok) return null;
         const pageHtml = await pageRes.text();
@@ -1689,6 +1752,7 @@ const server = http.createServer((req, res) => {
 
           // Parse artist and title from CeeNaija post title
           let cleanTitle = item.title
+            .replace(/^(?:download|download\s+mp3|audio|video|lyrics)\s*:\s*/i, '')
             .replace(/\s*\((?:lyrics|mp3|download|audio|video|official|album).*?\)/gi, '')
             .replace(/\s*\[(?:lyrics|mp3|download|audio|video|official|album).*?\]/gi, '')
             .replace(/\s*-\s*Lyrics.*$/i, '')
@@ -1773,7 +1837,8 @@ const server = http.createServer((req, res) => {
       try {
         const decoded = decodeURIComponent(m[1]);
         const finalUrl = decoded.startsWith('http') ? decoded : `https://${decoded}`;
-        if (!candidateUrls.includes(finalUrl) && /lyrics|song|hymn|praise|worship|namethathymn|walkofgrace|mysongbooks|gospel/i.test(finalUrl)) {
+        const cleanUrl = finalUrl.split('?')[0].replace(/\/+$/, '');
+        if (!candidateUrls.some(u => u.split('?')[0].replace(/\/+$/, '') === cleanUrl) && /lyrics|song|hymn|praise|worship|namethathymn|walkofgrace|mysongbooks|gospel|zionlyrics/i.test(finalUrl)) {
           candidateUrls.push(finalUrl);
         }
       } catch (e) {}
@@ -1788,7 +1853,7 @@ const server = http.createServer((req, res) => {
             'User-Agent': browserUa,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
           },
-          signal: AbortSignal.timeout(4000)
+          signal: AbortSignal.timeout(3200)
         });
         if (!pageRes.ok) return null;
         const pageHtml = await pageRes.text();

@@ -274,14 +274,30 @@
 
       row.onclick = () => {
         if (item.type === 'song') {
+          const isDifferent = (window.state.activeSongId !== item.id);
           window.state.activeSongId = item.id;
+          window.state.activeDeckType = 'song';
+          if (isDifferent && window.state) {
+            window.state.liveEngagedDeck = null;
+            if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
+          }
+          if (typeof window.applySongBoundTheme === 'function') window.applySongBoundTheme(item.id);
           window.state.currentTab = 'songs';
           syncBentoTabsUI();
           if (typeof window.renderLibrary === 'function') window.renderLibrary();
           if (typeof window.renderDeck === 'function') window.renderDeck(true);
           if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
         } else if (item.type === 'bible') {
-          window.state.activeBibleBook = item.book || item.id;
+          const book = item.book || item.id;
+          const ch = item.chapter || 1;
+          const isDifferent = (window.state.activeBibleBook !== book || window.state.activeBibleChapter !== ch);
+          window.state.activeBibleBook = book;
+          window.state.activeBibleChapter = ch;
+          window.state.activeDeckType = 'bible';
+          if (isDifferent && window.state) {
+            window.state.liveEngagedDeck = null;
+            if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
+          }
           window.state.currentTab = 'bible';
           syncBentoTabsUI();
           if (typeof window.renderLibrary === 'function') window.renderLibrary();
@@ -361,9 +377,9 @@
 
         const slotBtnsHtml = showBibleMedleyBtns ? `
           <div class="bento-slotbtns">
-            <span class="${isS1 ? 'active' : ''}" title="Assign ${escapeHtml(book)} to Slot S1" onclick="event.stopPropagation(); window.assignBibleBookToSlot('${book}', 0)">1</span>
-            <span class="${isS2 ? 'active' : ''}" title="Assign ${escapeHtml(book)} to Slot S2" onclick="event.stopPropagation(); window.assignBibleBookToSlot('${book}', 1)">2</span>
-            <span class="${isS3 ? 'active' : ''}" title="Assign ${escapeHtml(book)} to Slot S3" onclick="event.stopPropagation(); window.assignBibleBookToSlot('${book}', 2)">3</span>
+            <span class="${isS1 ? 'active' : ''}" title="${isS1 ? `Remove ${escapeHtml(book)} from Slot S1` : `Assign ${escapeHtml(book)} to Slot S1`}" onclick="event.stopPropagation(); window.assignBibleBookToSlot('${book}', 0)">1</span>
+            <span class="${isS2 ? 'active' : ''}" title="${isS2 ? `Remove ${escapeHtml(book)} from Slot S2` : `Assign ${escapeHtml(book)} to Slot S2`}" onclick="event.stopPropagation(); window.assignBibleBookToSlot('${book}', 1)">2</span>
+            <span class="${isS3 ? 'active' : ''}" title="${isS3 ? `Remove ${escapeHtml(book)} from Slot S3` : `Assign ${escapeHtml(book)} to Slot S3`}" onclick="event.stopPropagation(); window.assignBibleBookToSlot('${book}', 2)">3</span>
           </div>
         ` : '';
 
@@ -402,14 +418,6 @@
             window.state.expandedBibleBook = null;
           } else {
             window.state.expandedBibleBook = book;
-          }
-          // Only initialize activeBibleBook if none was previously active
-          if (!window.state.activeBibleBook) {
-            window.state.activeBibleBook = book;
-            const chs = typeof window.getBibleChapters === 'function' ? window.getBibleChapters(book, ver) : [];
-            window.state.activeBibleChapter = chs.length > 0 ? parseInt(chs[0], 10) : 1;
-            if (typeof window.renderDeck === 'function') window.renderDeck(true);
-            if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
           }
           if (typeof window.renderLibrary === 'function') window.renderLibrary();
 
@@ -470,7 +478,7 @@
       // SONGS MODE
       const songs = window.SONGS_DATABASE || [];
       const filtered = q 
-        ? songs.filter(s => (typeof window.getSongSearchIndex === 'function' ? window.getSongSearchIndex(s) : (s.title + ' ' + (s.author || ''))).toLowerCase().includes(q))
+        ? songs.filter(s => (typeof window.matchSongQuery === 'function' ? window.matchSongQuery(s, q) : (typeof window.getSongSearchIndex === 'function' ? window.getSongSearchIndex(s) : (s.title + ' ' + (s.author || ''))).toLowerCase().includes(q)))
         : songs;
 
       if (filtered.length === 0) {
@@ -506,9 +514,9 @@
 
         const slotBtnsHtml = showSongsMedleyBtns ? `
           <div class="bento-slotbtns">
-            <span class="${isS1 ? 'active' : ''}" title="Assign to Slot S1" onclick="event.stopPropagation(); window.swapMedleySong(0, '${song.id}')">1</span>
-            <span class="${isS2 ? 'active' : ''}" title="Assign to Slot S2" onclick="event.stopPropagation(); window.swapMedleySong(1, '${song.id}')">2</span>
-            <span class="${isS3 ? 'active' : ''}" title="Assign to Slot S3" onclick="event.stopPropagation(); window.swapMedleySong(2, '${song.id}')">3</span>
+            <span class="${isS1 ? 'active' : ''}" title="${isS1 ? 'Remove from Slot S1' : 'Assign to Slot S1'}" onclick="event.stopPropagation(); window.swapMedleySong(0, '${song.id}')">1</span>
+            <span class="${isS2 ? 'active' : ''}" title="${isS2 ? 'Remove from Slot S2' : 'Assign to Slot S2'}" onclick="event.stopPropagation(); window.swapMedleySong(1, '${song.id}')">2</span>
+            <span class="${isS3 ? 'active' : ''}" title="${isS3 ? 'Remove from Slot S3' : 'Assign to Slot S3'}" onclick="event.stopPropagation(); window.swapMedleySong(2, '${song.id}')">3</span>
           </div>
         ` : '';
 
@@ -538,7 +546,15 @@
         };
 
         row.onclick = () => {
+          const isDifferentSong = (window.state.activeSongId !== song.id);
           window.state.activeSongId = song.id;
+          window.state.activeDeckType = 'song';
+          if (isDifferentSong && window.state) {
+            window.state.liveEngagedDeck = null;
+            window.state.isDeckEditingSong = null;
+            if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
+          }
+          if (typeof window.applySongBoundTheme === 'function') window.applySongBoundTheme(song.id);
           const list = row.parentElement;
           if (list) {
             list.querySelectorAll('.bento-song-row.active').forEach(el => el.classList.remove('active'));
@@ -641,6 +657,10 @@
 
     const song = (window.SONGS_DATABASE || []).find(s => s.id === songId);
 
+    const boundThemeId = window.getSongBoundTheme ? window.getSongBoundTheme(songId) : null;
+    const boundThemeObj = (boundThemeId && window.SANCTUARY_THEMES) ? window.SANCTUARY_THEMES[boundThemeId] : null;
+    const themeLabel = boundThemeObj ? `Theme: ${boundThemeObj.name}` : 'Set default theme...';
+
     menu.innerHTML = `
       <button type="button" class="sf-ctx-item" id="sf-ctx-inplace-btn">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
@@ -649,6 +669,10 @@
       <button type="button" class="sf-ctx-item" id="sf-ctx-sheet-btn">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span>Song sheet editor</span>
+      </button>
+      <button type="button" class="sf-ctx-item" id="sf-ctx-theme-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"/></svg>
+        <span>${escapeHtml(themeLabel)}</span>
       </button>
       <div class="sf-ctx-divider"></div>
       <button type="button" class="sf-ctx-item" id="sf-ctx-agenda-btn">
@@ -665,11 +689,25 @@
         if (window.state) window.state.activeSongId = songId;
         if (typeof window.renderDeck === 'function') window.renderDeck();
         setTimeout(() => {
-          const firstCard = document.querySelector(`.bento-single-card[data-slide-id^="song_${songId}_"]`);
+          const firstCard = document.querySelector(`.bento-single-card[data-slide-id*="${songId}"]`) ||
+                            document.querySelector('.bento-single-card');
           if (firstCard && firstCard.dataset && firstCard.dataset.slideId) {
             window.startInlineCardEdit(firstCard.dataset.slideId, songId, 0);
+          } else if (typeof window.openSongSheetModal === 'function') {
+            window.openSongSheetModal(songId, 0);
           }
-        }, 80);
+        }, 100);
+      };
+    }
+
+    const themeBtn = menu.querySelector('#sf-ctx-theme-btn');
+    if (themeBtn) {
+      themeBtn.onclick = (ev) => {
+        ev.stopPropagation();
+        window.closeSongContextMenu();
+        if (typeof window.openSongThemeBindingModal === 'function') {
+          window.openSongThemeBindingModal(songId);
+        }
       };
     }
 
@@ -871,7 +909,12 @@
 
     const state = window.state || {};
     const isMedley = !!state.isMedleyMode;
-    const currentTab = state.currentTab || 'songs';
+    const hasActiveItem = Boolean(state.activeLiveSlideId || state.liveEngagedDeck || (state.activeDeckType === 'song' && state.activeSongId) || (state.activeDeckType === 'bible' && state.activeBibleBook));
+    const deckType = hasActiveItem ? (state.activeDeckType || (state.currentTab === 'bible' ? 'bible' : 'song')) : (state.currentTab === 'bible' ? 'bible' : 'song');
+    const isBibleDeck = (deckType === 'bible');
+    if (isBibleDeck && state) {
+      state.isDeckEditingSong = null;
+    }
 
     // Topbar titles
     const titleEl = document.getElementById('bento-deck-title');
@@ -881,25 +924,84 @@
     const compareBtn = document.getElementById('bento-compare-btn');
     const strongsBtn = document.getElementById('bento-strongs-btn');
 
+    const isEditing = Boolean(!isBibleDeck && state.isDeckEditingSong && state.isDeckEditingSong === state.activeSongId);
+    const deckCard = document.getElementById('bento-deck-card');
+    if (deckCard) {
+      deckCard.classList.toggle('in-split-editor', isEditing);
+      deckCard.scrollTop = 0;
+    }
+
     if (editBtn) {
-      editBtn.style.display = currentTab === 'songs' ? 'inline-flex' : 'none';
+      editBtn.style.display = isBibleDeck ? 'none' : 'inline-flex';
+      editBtn.classList.toggle('active', isEditing);
+      if (isEditing) {
+        editBtn.onclick = () => saveBentoDeckSplitEditor();
+        editBtn.innerHTML = `
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Save &amp; close</span>
+        `;
+        editBtn.title = 'Save and return to standard deck view';
+      } else {
+        editBtn.onclick = () => window.openSongEditor(window.state.activeSongId);
+        editBtn.innerHTML = `
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+          <span>Edit song</span>
+        `;
+        editBtn.title = 'Edit lyrics in split view';
+      }
     }
     if (addSongBtn) {
-      addSongBtn.style.display = currentTab === 'songs' ? 'inline-flex' : 'none';
+      addSongBtn.style.display = (isBibleDeck || isEditing) ? 'none' : 'inline-flex';
     }
     if (compareBtn) {
-      compareBtn.style.display = currentTab === 'bible' ? 'inline-flex' : 'none';
+      compareBtn.style.display = isBibleDeck ? 'inline-flex' : 'none';
       compareBtn.classList.toggle('active', !!state.isCompareMode);
     }
     if (strongsBtn) {
-      strongsBtn.style.display = currentTab === 'bible' ? 'inline-flex' : 'none';
+      strongsBtn.style.display = isBibleDeck ? 'inline-flex' : 'none';
       strongsBtn.classList.toggle('active', Boolean(state.strongsMode));
+    }
+
+    // Return to Live tally button
+    const liveDeck = state.liveEngagedDeck || (state.activeLiveSlideId ? {
+      type: (state.activeLiveSlideId.startsWith('bible_') || state.activeLiveSlideId.startsWith('medley_bible_')) ? 'bible' : 'song',
+      songId: state.activeSongId,
+      book: state.activeBibleBook,
+      chapter: state.activeBibleChapter
+    } : null);
+
+    const isDeckViewingLive = Boolean(liveDeck && (
+      (isBibleDeck && liveDeck.type === 'bible' && (!liveDeck.book || liveDeck.book === state.activeBibleBook)) ||
+      (!isBibleDeck && liveDeck.type === 'song' && (!liveDeck.songId || liveDeck.songId === state.activeSongId))
+    ));
+
+    const showReturnToLive = Boolean(state.activeLiveSlideId && !isDeckViewingLive);
+    const returnLiveBtn = document.getElementById('bento-deck-return-live-btn');
+    if (returnLiveBtn) {
+      if (showReturnToLive) {
+        returnLiveBtn.style.display = 'inline-flex';
+        returnLiveBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (liveDeck) {
+            state.activeDeckType = liveDeck.type;
+            if (liveDeck.type === 'song' && liveDeck.songId) state.activeSongId = liveDeck.songId;
+            if (liveDeck.type === 'bible') {
+              if (liveDeck.book) state.activeBibleBook = liveDeck.book;
+              if (liveDeck.chapter) state.activeBibleChapter = liveDeck.chapter;
+            }
+            if (typeof window.renderDeck === 'function') window.renderDeck(true);
+            if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
+          }
+        };
+      } else {
+        returnLiveBtn.style.display = 'none';
+      }
     }
 
     // Single view columns segmented buttons (1 Col / 2 Col / 3 Col)
     const colsSeg = document.getElementById('bento-cols-seg');
     if (colsSeg) {
-      colsSeg.style.display = isMedley ? 'none' : 'inline-flex';
+      colsSeg.style.display = (isMedley || isEditing) ? 'none' : 'inline-flex';
       const activeCols = (state.bentoSingleCols !== undefined ? state.bentoSingleCols : 1);
       colsSeg.querySelectorAll('span').forEach(sp => {
         sp.classList.toggle('active', parseInt(sp.dataset.cols, 10) === activeCols);
@@ -909,6 +1011,7 @@
     // Lines per slide segmented buttons
     const linesSeg = document.getElementById('bento-lines-seg');
     if (linesSeg) {
+      linesSeg.style.display = (isBibleDeck || isEditing) ? 'none' : 'inline-flex';
       const maxL = state.maxLinesPerSlide !== undefined ? state.maxLinesPerSlide : 0;
       linesSeg.querySelectorAll('span').forEach(sp => {
         const val = parseInt(sp.dataset.lines, 10);
@@ -916,7 +1019,11 @@
       });
     }
 
-    // Zoom label
+    // Zoom label & zoom container
+    const zoomContainer = document.querySelector('#bento-deck-card .bento-zoom');
+    if (zoomContainer) {
+      zoomContainer.style.display = isEditing ? 'none' : 'inline-flex';
+    }
     const zoomLabel = document.getElementById('bento-zoom-label');
     if (zoomLabel) {
       const activeZoom = isMedley 
@@ -926,17 +1033,22 @@
     }
 
     // Medley mode segmented buttons
+    const modeSeg = document.getElementById('bento-mode-seg');
+    if (modeSeg) {
+      modeSeg.style.display = (isBibleDeck || isEditing) ? 'none' : 'inline-flex';
+    }
     const segSingle = document.getElementById('bento-seg-single');
     const segMedley = document.getElementById('bento-seg-medley');
     if (segSingle) segSingle.classList.toggle('active', !isMedley);
     if (segMedley) segMedley.classList.toggle('active', isMedley);
 
     container.innerHTML = '';
+    container.scrollTop = 0;
     container.className = isMedley ? 'bento-medley' : 'bento-single-deck';
 
     if (isMedley) {
       // MEDLEY 3-COLUMN DECK
-      if (currentTab === 'bible') {
+      if (isBibleDeck) {
         if (titleEl) {
           titleEl.textContent = 'Scripture Medley';
           if (titleEl.removeAttribute) titleEl.removeAttribute('title');
@@ -985,7 +1097,7 @@
               (window.sfDraggedItem && window.sfDraggedItem.type === 'bible' ? window.sfDraggedItem.id : null) ||
               (e.dataTransfer ? e.dataTransfer.getData('text/plain') : null);
             if (droppedBook && typeof window.assignBibleBookToSlot === 'function') {
-              window.assignBibleBookToSlot(droppedBook, idx);
+              window.assignBibleBookToSlot(droppedBook, idx, 1, false);
             }
           };
 
@@ -1064,13 +1176,14 @@
           if (titleEl.removeAttribute) titleEl.removeAttribute('title');
           titleEl.title = '';
         }
+        const songIds = state.medleySongIds || [];
+        const loadedSongsCount = [songIds[0], songIds[1], songIds[2]].filter(Boolean).length;
         if (subEl) {
-          subEl.textContent = '3 songs loaded · lyrics view';
+          subEl.textContent = `${loadedSongsCount} ${loadedSongsCount === 1 ? 'song' : 'songs'} loaded · lyrics view`;
           if (subEl.removeAttribute) subEl.removeAttribute('title');
           subEl.title = '';
         }
 
-        const songIds = state.medleySongIds || [];
         for (let idx = 0; idx < 3; idx++) {
           const songId = songIds[idx];
           const song = (window.SONGS_DATABASE || []).find(s => s.id === songId);
@@ -1102,7 +1215,7 @@
               (window.sfDraggedItem && window.sfDraggedItem.type === 'song' ? window.sfDraggedItem.id : null) ||
               (e.dataTransfer ? e.dataTransfer.getData('text/plain') : null);
             if (droppedSongId && typeof window.swapMedleySong === 'function') {
-              window.swapMedleySong(idx, droppedSongId);
+              window.swapMedleySong(idx, droppedSongId, false);
             }
           };
 
@@ -1191,6 +1304,7 @@
 
         if (songId) {
           window.state.activeSongId = songId;
+          if (typeof window.applySongBoundTheme === 'function') window.applySongBoundTheme(songId);
           window.state.currentTab = 'songs';
           syncBentoTabsUI();
           if (typeof window.renderLibrary === 'function') window.renderLibrary();
@@ -1206,29 +1320,47 @@
         }
       };
 
-      if (currentTab === 'bible') {
+      if (isBibleDeck) {
         const book = state.activeBibleBook;
         const ch = state.activeBibleChapter || 1;
         const ver = state.bibleVersion || 'KJV';
+        const books = typeof window.getBibleBooks === 'function' ? window.getBibleBooks(ver) : [];
 
-        if (!book) {
+        if (!book || books.length === 0) {
           if (titleEl) {
-            titleEl.textContent = 'No Scripture Selected';
+            titleEl.textContent = books.length === 0 ? 'No Bible Installed' : 'No Scripture Selected';
             titleEl.removeAttribute('title');
           }
           if (subEl) {
-            subEl.textContent = `Select a book from the library · ${ver} Translation`;
+            subEl.textContent = books.length === 0
+              ? 'Import a translation from toolbar'
+              : `Select a book from the library · ${ver} Translation`;
             subEl.removeAttribute('title');
           }
-          container.innerHTML = `
-            <div class="bento-empty-unit hero">
-              <div class="empty-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          if (books.length === 0) {
+            container.innerHTML = `
+              <div class="bento-empty-unit hero">
+                <div class="empty-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </div>
+                <div class="empty-title">No Bible translations installed</div>
+                <div class="empty-desc">Import your Bible JSON files or download translations from Cloud Repository.</div>
+                <div class="sf-empty-actions">
+                  <button type="button" class="song-empty-primary" onclick="openImportModal(); switchImportSubTab('bibles');">Import Bible</button>
+                </div>
               </div>
-              <div class="empty-title">No scripture selected</div>
-              <div class="empty-desc">Choose a Bible book from the library on the left to display verses.</div>
-            </div>
-          `;
+            `;
+          } else {
+            container.innerHTML = `
+              <div class="bento-empty-unit hero">
+                <div class="empty-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </div>
+                <div class="empty-title">No scripture selected</div>
+                <div class="empty-desc">Choose a Bible book from the library on the left to display verses.</div>
+              </div>
+            `;
+          }
         } else {
           const verses = typeof window.getBibleVerses === 'function' ? window.getBibleVerses(book, ch, ver) : [];
           const allChapters = typeof window.getBibleChapters === 'function' ? window.getBibleChapters(book, ver) : [];
@@ -1239,6 +1371,7 @@
 
           if (titleEl) {
             const navStyle = (window.state && window.state.scriptureNavStyle) || localStorage.getItem('sf_scripture_nav_style') || 'option1';
+            const curV = (window.state && window.state.activeBibleVerse) ? parseInt(window.state.activeBibleVerse, 10) || 1 : 1;
             let navHtml = '';
 
             if (navStyle === 'option1') {
@@ -1249,7 +1382,7 @@
                   <span class="dot-sep">·</span>
                   <button type="button" class="bento-text-trigger" onclick="event.stopPropagation(); window.toggleBentoChapterPopover(event)" title="Jump to Chapter">Ch ${chNum} ▾</button>
                   <span class="colon-sep">:</span>
-                  <button type="button" class="bento-text-trigger" id="bento-active-verse-badge" onclick="event.stopPropagation(); window.toggleBentoVersePopover(event)" title="Jump to Verse">Vs 1 ▾</button>
+                  <button type="button" class="bento-text-trigger" id="bento-active-verse-badge" onclick="event.stopPropagation(); window.toggleBentoVersePopover(event)" title="Jump to Verse">Vs ${curV} ▾</button>
                 </div>
               `;
             } else if (navStyle === 'option2') {
@@ -1258,13 +1391,13 @@
                 <div class="bento-scripture-sibling-nav">
                   <span class="book-title">${escapeHtml(book)}</span>
                   <button type="button" class="bento-sibling-btn" onclick="event.stopPropagation(); window.toggleBentoChapterPopover(event)" title="Jump to Chapter">Ch ${chNum} ▾</button>
-                  <button type="button" class="bento-sibling-btn" id="bento-active-verse-badge" onclick="event.stopPropagation(); window.toggleBentoVersePopover(event)" title="Jump to Verse">Vs 1 ▾</button>
+                  <button type="button" class="bento-sibling-btn" id="bento-active-verse-badge" onclick="event.stopPropagation(); window.toggleBentoVersePopover(event)" title="Jump to Verse">Vs ${curV} ▾</button>
                 </div>
               `;
             } else {
               // Option 3: Unified Single Reference Button
               navHtml = `
-                <button type="button" class="bento-unified-ref-btn" id="bento-active-verse-badge" onclick="event.stopPropagation(); window.toggleBentoChapterPopover(event)" title="Jump to Chapter / Verse">${escapeHtml(book)} ${chNum}:1 ▾</button>
+                <button type="button" class="bento-unified-ref-btn" id="bento-active-verse-badge" onclick="event.stopPropagation(); window.toggleBentoChapterPopover(event)" title="Jump to Chapter / Verse">${escapeHtml(book)} ${chNum}:${curV} ▾</button>
               `;
             }
 
@@ -1353,10 +1486,14 @@
         }
 
       } else {
-        const song = (window.SONGS_DATABASE || []).find(s => s.id === state.activeSongId);
+        const songs = window.SONGS_DATABASE || [];
+        const song = songs.find(s => s.id === state.activeSongId);
         const stanzas = song ? (song.stanzas || []) : [];
-        const songTitle = song ? song.title : 'No Song Selected';
-        const songSub = song ? `${song.author || 'Unknown Author'} · ${stanzas.length} verses` : 'Select a song from the library to populate slides';
+        const songTitle = song ? song.title : (songs.length === 0 ? 'No Songs in Library' : 'No Song Selected');
+        const songSub = song 
+          ? `${song.author || 'Unknown Author'} · ${stanzas.length} verses` 
+          : (songs.length === 0 ? 'Import song files via the top toolbar to start' : 'Select a song from the library to populate slides');
+
         if (titleEl) {
           titleEl.textContent = songTitle;
           titleEl.removeAttribute('title');
@@ -1367,20 +1504,46 @@
         }
 
         if (!song || stanzas.length === 0) {
-          container.innerHTML = `
-            <div class="bento-empty-unit hero song-workspace-empty">
-              <div class="empty-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          if (state.isDeckEditingSong) state.isDeckEditingSong = null;
+          if (songs.length === 0) {
+            container.innerHTML = `
+              <div class="bento-empty-unit hero song-workspace-empty">
+                <div class="empty-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                </div>
+                <div class="empty-title">No songs in library</div>
+                <div class="empty-desc">Import song files (.txt, .xml, .json) or create a new song to start.</div>
+                <div class="sf-empty-actions">
+                  <button type="button" class="song-empty-primary" onclick="openImportModal(); switchImportSubTab('songs');">Import songs</button>
+                  <button type="button" class="song-empty-secondary" onclick="openNewSongModal()">New song</button>
+                </div>
               </div>
-              <div class="empty-title">No song selected</div>
-              <div class="empty-desc">Select a song from the library on the left or press Ctrl+K to search.</div>
-              <div class="sf-empty-actions">
-                <button type="button" class="song-empty-primary" onclick="openOmniSearchPalette('songs')">Search songs</button>
-                <button type="button" class="song-empty-secondary" onclick="openNewSongModal()">New song</button>
+            `;
+          } else {
+            container.innerHTML = `
+              <div class="bento-empty-unit hero song-workspace-empty">
+                <div class="empty-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                </div>
+                <div class="empty-title">No song selected</div>
+                <div class="empty-desc">Select a song from the library on the left or press Ctrl+K to search.</div>
+                <div class="sf-empty-actions">
+                  <button type="button" class="song-empty-primary" onclick="openOmniSearchPalette('songs')">Search songs</button>
+                  <button type="button" class="song-empty-secondary" onclick="openNewSongModal()">New song</button>
+                </div>
+                <button type="button" class="song-empty-link" onclick="switchBentoTab('bible')">Browse Bible</button>
               </div>
-              <button type="button" class="song-empty-link" onclick="switchBentoTab('bible')">Browse Bible</button>
-            </div>
-          `;
+            `;
+          }
+        } else if (state.isDeckEditingSong && state.isDeckEditingSong === song.id) {
+          if (titleEl) {
+            titleEl.textContent = `Editing: ${song.title}`;
+          }
+          if (subEl) {
+            subEl.textContent = song.author || 'Song editor';
+          }
+          container.className = 'bento-single-deck in-split-editor';
+          renderBentoDeckSplitEditor(container, song);
         } else {
           const maxLines = state.maxLinesPerSlide || 0;
           stanzas.forEach((stanza, sIdx) => {
@@ -1686,6 +1849,856 @@
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // IN-DECK SPLIT SONG LYRICS EDITOR (Tactile, Real-time, 0ms latency)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  let splitSession = null;
+
+  function activeSplitSession() {
+    return splitSession && window.state?.isDeckEditingSong === splitSession.songId &&
+      window.state.activeSongId === splitSession.songId && document.getElementById('bento-deck-split-editor') ? splitSession : null;
+  }
+
+  // Preserve section identity using source offsets outside the changed text span.
+  // Labels are not identifiers: a song may contain several identical choruses.
+  function reconcileSplitSections(session, text, stanzas, ranges) {
+    const previous = session.sections;
+    const oldText = session.text;
+    let start = 0;
+    while (start < oldText.length && start < text.length && oldText[start] === text[start]) start++;
+    let oldEnd = oldText.length;
+    let newEnd = text.length;
+    while (oldEnd > start && newEnd > start && oldText[oldEnd - 1] === text[newEnd - 1]) {
+      oldEnd--;
+      newEnd--;
+    }
+    const used = new Set();
+    const sections = stanzas.map((stanza, index) => ({ ...stanza, range: ranges[index], slides: [] }));
+    previous.forEach(section => {
+      const expected = section.range.start >= oldEnd ? section.range.start + newEnd - oldEnd : section.range.start;
+      const matches = sections.filter(item => !item.previous && item.type === section.type && item.text === section.text);
+      matches.sort((a, b) => Math.abs(a.range.start - expected) - Math.abs(b.range.start - expected));
+      if (matches[0]) {
+        matches[0].previous = section;
+        used.add(section);
+      }
+    });
+    previous.forEach(section => {
+      if (used.has(section)) return;
+      const matches = sections.filter(item => !item.previous && item.type === section.type);
+      const oldMatches = previous.filter(item => !used.has(item) && item.type === section.type);
+      if (matches.length === 1 && oldMatches.length === 1) {
+        matches[0].previous = section;
+        used.add(section);
+      }
+    });
+    previous.forEach(section => {
+      if (used.has(section)) return;
+      if (section.range.start >= start && section.range.end <= oldEnd && oldEnd > start) return;
+      let position = section.range.start;
+      if (position >= oldEnd) position += newEnd - oldEnd;
+      else if (position > start) return;
+      const index = ranges.findIndex(range => range.start === position);
+      if (index >= 0 && !sections[index].previous) {
+        sections[index].previous = section;
+        used.add(section);
+      }
+    });
+    const unmatchedOld = previous.filter(section => !used.has(section));
+    const unmatchedNew = sections.filter(section => !section.previous);
+    // A single edited heading/section retains its identity, but bulk replacements do not.
+    if (unmatchedOld.length === 1 && unmatchedNew.length === 1) {
+      unmatchedNew[0].previous = unmatchedOld[0];
+    }
+    return sections;
+  }
+
+  window.resolveBentoSplitSlide = function(slideId) {
+    const session = activeSplitSession();
+    if (!session) return null;
+    const slide = session.slides.find(item => item.slideId === slideId);
+    if (slide) return slide.text.trim() ? slide : false;
+    return session.knownIds.has(slideId) ? false : null;
+  };
+
+  function splitNavigationTarget(dir, liveOnly = false) {
+    const session = activeSplitSession();
+    if (!session) return null;
+    const prepared = liveOnly ? null : window.getPreparedSlide?.();
+    const anchorId = prepared?.slideId || window.state.activeLiveSlideId;
+    if (liveOnly && anchorId && !session.knownIds.has(anchorId)) return null;
+    const index = session.slides.findIndex(slide => slide.slideId === anchorId);
+    if (index >= 0) {
+      for (let i = index + dir; i >= 0 && i < session.slides.length; i += dir) {
+        if (session.slides[i].text.trim()) return session.slides[i];
+      }
+      return null;
+    }
+    const removed = session.removed.get(anchorId);
+    if (removed) {
+      const candidates = dir > 0 ? removed.after : removed.before;
+      return candidates.map(id => session.slides.find(slide => slide.slideId === id)).find(slide => slide?.text.trim()) || null;
+    }
+    return session.slides.find(slide => slide.text.trim()) || null;
+  }
+
+  window.navigateBentoSplitDraft = function(dir, liveOnly = false) {
+    if (!activeSplitSession()) return false;
+    if (window.state?.isHoldLive) return true;
+    const target = splitNavigationTarget(dir, liveOnly);
+    if (target) {
+      window.projectSlide(target.slideId, target.text, target.reference, liveOnly ? { takeLive: true } : {});
+      if (!liveOnly && document.activeElement?.closest?.('#bento-split-cards-stream')) {
+        splitSession.cards.get(target.slideId)?.focus({ preventScroll: true });
+      }
+    }
+    return true;
+  };
+
+  window.setBentoSplitFollow = function(mode) {
+    const session = activeSplitSession();
+    if (!session || !['off', 'live', 'edit'].includes(mode)) return;
+    session.follow = mode;
+    document.getElementById('bento-split-follow').value = mode;
+    if (mode === 'live') window.locateBentoSplitCard('live', 'start');
+    if (mode === 'edit') syncBentoSplitEditorScroll();
+  };
+
+  window.locateBentoSplitCard = function(kind, alignment = 'nearest') {
+    const stream = document.getElementById('bento-split-cards-stream');
+    const session = activeSplitSession();
+    if (!stream || !session) return;
+    const card = kind === 'live'
+      ? session.cards.get(window.state.activeLiveSlideId)
+      : Array.from(session.cards.values()).find(item => item.classList.contains('editing-focused'));
+    if (card) scrollStreamCardIntoView(stream, card, alignment, 'instant');
+  };
+
+  window.refreshBentoSplitLive = function(follow = false) {
+    const session = activeSplitSession();
+    if (!session) return;
+    const state = window.state;
+    const live = session.slides.find(slide => slide.slideId === state.activeLiveSlideId);
+    const ref = document.getElementById('bento-split-live-ref');
+    const text = document.getElementById('bento-split-live-text');
+    if (ref) ref.textContent = state.activeLiveSlideId ? state.activeLiveRef || 'Live output' : 'Nothing live';
+    if (text) text.textContent = state.activeLiveSlideId ? state.activeLiveText || '' : '';
+    const update = document.getElementById('bento-split-update-live');
+    const changed = !!live?.text.trim() && (live.text !== state.activeLiveText || live.reference !== state.activeLiveRef);
+    if (update) {
+      update.hidden = !changed;
+      update.disabled = !!state.isHoldLive;
+    }
+    const status = document.getElementById('bento-split-live-status');
+    if (status) status.textContent = state.isHoldLive ? 'Held' : live && !live.text.trim() ? 'Empty in draft' : changed ? 'Draft changed' : session.removed.has(state.activeLiveSlideId) ? 'Removed from draft' : '';
+    const locate = document.getElementById('bento-split-locate-live');
+    if (locate) locate.disabled = !live;
+    for (const [id, dir] of [['bento-split-prev', -1], ['bento-split-next', 1]]) {
+      const button = document.getElementById(id);
+      if (button) button.disabled = !!state.isHoldLive || !splitNavigationTarget(dir, true);
+    }
+    if (follow && session.follow === 'live') {
+      window.locateBentoSplitCard('live', session.followedLiveId === state.activeLiveSlideId ? 'nearest' : 'start');
+      session.followedLiveId = state.activeLiveSlideId;
+    }
+    return true;
+  };
+
+  window.updateBentoSplitLive = function() {
+    const slide = window.resolveBentoSplitSlide(window.state?.activeLiveSlideId);
+    if (slide) window.projectSlide(slide.slideId, slide.text, slide.reference, { takeLive: true });
+  };
+
+  window.finishBentoSplitSession = function(saved) {
+    const session = splitSession;
+    if (!session) return;
+    // Rebind UI identities without broadcasting or altering the audience's snapshot.
+    const targetSlides = saved ? session.slides : session.originalSlides;
+    const liveId = window.state?.activeLiveSlideId;
+    if (session.knownIds.has(liveId)) {
+      const target = targetSlides.find(slide => slide.slideId === liveId);
+      window.state.activeLiveSlideId = target?.canonicalId || `${session.songId}_removed_${session.sequence++}`;
+    }
+    const prepared = window.getPreparedSlide?.();
+    if (prepared && session.knownIds.has(prepared.slideId)) window.cancelPreparedSlide?.();
+    splitSession = null;
+  };
+
+  function renderBentoDeckSplitEditor(container, song) {
+    if (!container || !song) return;
+    if (splitSession && splitSession.songId !== song.id) window.finishBentoSplitSession(false);
+    const existing = splitSession;
+    const formattedText = existing ? existing.text : (song.stanzas || []).map(s => `[${s.type}]\n${s.text}`).join('\n\n');
+    splitSession = existing || {
+      songId: song.id, text: '', sections: [], slides: [], originalSlides: [],
+      cards: new Map(), knownIds: new Set(), removed: new Map(), sequence: 0,
+      follow: window.state?.activeLiveSlideId?.startsWith(song.id + '_') ? 'live' : 'edit'
+    };
+    splitSession.cards.forEach(card => window.cleanupLiveCardObserver?.(card));
+    splitSession.cards = new Map();
+
+    container.innerHTML = `
+      <div class="bento-deck-split-editor" id="bento-deck-split-editor">
+        <!-- LEFT COLUMN: Lyrics & Metadata Editor -->
+        <div class="bento-deck-editor-left">
+          <div class="bento-split-editor-header">
+            <div class="bento-split-field-group">
+              <label for="bento-split-title">Song Title</label>
+              <input type="text" id="bento-split-title" class="bento-split-input" value="${escapeHtml(existing?.title ?? song.title)}" placeholder="Song Title" autocomplete="off" />
+            </div>
+            <div class="bento-split-field-group">
+              <label for="bento-split-author">Author / Artist</label>
+              <input type="text" id="bento-split-author" class="bento-split-input" value="${escapeHtml(existing?.author ?? song.author ?? '')}" placeholder="Author / Artist" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="bento-split-tags-bar">
+            <span class="bento-split-tag-label">Insert:</span>
+            <button type="button" class="bento-split-tag-btn" onclick="insertBentoSplitTag('Verse')">+ Verse</button>
+            <button type="button" class="bento-split-tag-btn" onclick="insertBentoSplitTag('Chorus')">+ Chorus</button>
+            <button type="button" class="bento-split-tag-btn" onclick="insertBentoSplitTag('Bridge')">+ Bridge</button>
+            <div style="flex:1;"></div>
+            <button type="button" class="bento-split-format-btn" onclick="autoFormatBentoSplitEditor()" title="Clean and balance line breaks">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
+              <span>Auto Format</span>
+            </button>
+          </div>
+
+          <div class="bento-split-textarea-wrap">
+            <textarea id="bento-split-lyrics" class="bento-split-textarea" placeholder="Type or paste lyrics here with tags like [Verse 1], [Chorus]...">${escapeHtml(formattedText)}</textarea>
+          </div>
+
+          <div class="bento-split-footer">
+            <div class="bento-split-slide-count" id="bento-split-slide-count">${(song.stanzas || []).length} slides</div>
+            <div class="bento-split-actions">
+              <button type="button" class="bento-split-btn-secondary" onclick="closeDeckSplitEditor(false)">Discard</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Interactive Slide Cards Stream -->
+        <div class="bento-deck-editor-right">
+          <div class="bento-split-preview-header">
+            <div class="bento-split-preview-title">
+              <span>Slides</span>
+            </div>
+            <label class="bento-split-follow-label">Follow
+              <select id="bento-split-follow" onchange="setBentoSplitFollow(this.value)" aria-label="Scroll follow mode">
+                <option value="off">Off</option><option value="live">Live</option><option value="edit">Edit</option>
+              </select>
+            </label>
+            <button type="button" class="bento-split-icon-btn" onclick="locateBentoSplitCard('edit')" title="Show edited section" aria-label="Show edited section">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H5v14h14v-4M16 3l5 5-9 9H7v-5z"/></svg>
+            </button>
+          </div>
+          <div class="bento-split-live-strip" aria-label="Current live output">
+            <div class="bento-split-live-heading"><span class="bento-split-on-air">LIVE</span><strong id="bento-split-live-ref"></strong></div>
+            <div id="bento-split-live-text" class="bento-split-live-text"></div>
+            <div class="bento-split-live-actions">
+              <button type="button" id="bento-split-locate-live" class="bento-split-icon-btn" onclick="locateBentoSplitCard('live')" title="Locate live slide" aria-label="Locate live slide"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg></button>
+              <button type="button" id="bento-split-prev" class="bento-split-icon-btn" onclick="navigateBentoSplitDraft(-1, true)" title="Previous live slide" aria-label="Previous live slide"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button>
+              <button type="button" id="bento-split-next" class="bento-split-icon-btn" onclick="navigateBentoSplitDraft(1, true)" title="Next live slide" aria-label="Next live slide"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
+            </div>
+            <div class="bento-split-live-status-row">
+              <span id="bento-split-live-status" role="status"></span>
+              <button type="button" id="bento-split-update-live" class="bento-split-btn-secondary" onclick="updateBentoSplitLive()" hidden>Update live</button>
+            </div>
+          </div>
+          <div class="bento-split-cards-stream" id="bento-split-cards-stream" tabindex="0" role="region" aria-label="Song slides"></div>
+          <details class="bento-split-keyboard-settings">
+          <summary>Keyboard</summary>
+          <label class="bento-split-shortcut-label">Live keys
+            <select id="bento-split-live-keys" aria-label="Live navigation shortcut">
+              <option value="function">F8 / F9</option><option value="modified">Ctrl+Alt+PageUp / PageDown</option><option value="off">Off</option>
+            </select>
+          </label>
+          </details>
+        </div>
+      </div>
+    `;
+
+    const lyricsInput = document.getElementById('bento-split-lyrics');
+    const titleInput = document.getElementById('bento-split-title');
+    const authorInput = document.getElementById('bento-split-author');
+    const splitWrap = document.getElementById('bento-deck-split-editor');
+    const stream = document.getElementById('bento-split-cards-stream');
+    const followSelect = document.getElementById('bento-split-follow');
+    if (followSelect) followSelect.value = splitSession.follow;
+    const keys = document.getElementById('bento-split-live-keys');
+    if (keys) {
+      try { keys.value = localStorage.getItem('sf_split_live_keys') || 'function'; } catch {}
+      keys.addEventListener('change', () => {
+        try { localStorage.setItem('sf_split_live_keys', keys.value); } catch {}
+      });
+    }
+    if (stream) {
+      stream.addEventListener('wheel', () => window.setBentoSplitFollow('off'), { passive: true });
+      stream.addEventListener('touchmove', () => window.setBentoSplitFollow('off'), { passive: true });
+      stream.addEventListener('pointerdown', e => {
+        if (e.target === stream) {
+          window.setBentoSplitFollow('off');
+          stream.focus({ preventScroll: true });
+        }
+      });
+      stream.addEventListener('keydown', e => {
+        if (['Home', 'End'].includes(e.key)) window.setBentoSplitFollow('off');
+      });
+    }
+
+    if (lyricsInput) {
+      lyricsInput.addEventListener('input', () => updateBentoSplitEditorPreview());
+      lyricsInput.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+          e.preventDefault();
+          saveBentoDeckSplitEditor();
+        }
+      });
+      const handleCursorSync = () => {
+        syncSplitActiveCardHighlight();
+      };
+      lyricsInput.addEventListener('keyup', handleCursorSync);
+      lyricsInput.addEventListener('click', handleCursorSync);
+      lyricsInput.addEventListener('select', handleCursorSync);
+      lyricsInput.addEventListener('scroll', syncBentoSplitEditorScroll, { passive: true });
+    }
+    if (titleInput) {
+      titleInput.addEventListener('input', () => updateBentoSplitEditorPreview());
+    }
+    if (authorInput) {
+      authorInput.addEventListener('input', () => updateBentoSplitEditorPreview());
+    }
+    if (splitWrap) {
+      splitWrap.querySelector('.bento-split-live-actions')?.addEventListener('pointerdown', e => {
+        if (e.target.closest('button')) e.preventDefault();
+      });
+      splitWrap.addEventListener('keydown', (e) => {
+        if (e.isComposing || e.defaultPrevented || window.sfActiveModal?.()) return;
+        const functionKey = keys?.value === 'function' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && ['F8', 'F9'].includes(e.key);
+        const modifiedKey = keys?.value === 'modified' && e.ctrlKey && e.altKey && !e.metaKey && !e.shiftKey && ['PageUp', 'PageDown'].includes(e.key);
+        if (functionKey || modifiedKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!e.repeat) window.navigateBentoSplitDraft(['F8', 'PageUp'].includes(e.key) ? -1 : 1, true);
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          // Leaving typing focus must never discard an unfinished draft or clear output.
+          stream?.focus({ preventScroll: true });
+        }
+      });
+    }
+
+    updateBentoSplitEditorPreview({ initialMount: true });
+  }
+
+  function getBentoSplitStanzaRanges(fullText, stanzas) {
+    const ranges = [];
+    if (!fullText || !stanzas || !stanzas.length) return ranges;
+    let searchPos = 0;
+
+    for (let i = 0; i < stanzas.length; i++) {
+      const stanza = stanzas[i];
+      let start = -1;
+
+      if (stanza.type) {
+        const escapedType = stanza.type.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const tagMatch = fullText.substring(searchPos).match(new RegExp('\\[' + escapedType + '\\]', 'i'));
+        if (tagMatch) {
+          start = searchPos + tagMatch.index;
+        }
+      }
+
+      if (start === -1) {
+        const anyTagMatch = fullText.substring(searchPos).match(/\[[^\]]+\]/);
+        if (anyTagMatch) {
+          start = searchPos + anyTagMatch.index;
+        }
+      }
+
+      if (start === -1) {
+        const firstLine = (stanza.text || '').split('\n')[0].trim();
+        if (firstLine) {
+          const idx = fullText.indexOf(firstLine, searchPos);
+          if (idx !== -1) start = idx;
+        }
+      }
+
+      if (start === -1) start = searchPos;
+      if (ranges.length > 0) {
+        ranges[ranges.length - 1].end = start;
+      }
+      ranges.push({ index: i, start, end: fullText.length });
+      searchPos = start + (stanza.text ? Math.max(1, stanza.text.length) : 1);
+    }
+    return ranges;
+  }
+
+  function getBentoActiveStanzaIndex(cursorPos, ranges) {
+    if (!ranges || !ranges.length) return 0;
+    for (let i = 0; i < ranges.length; i++) {
+      if (cursorPos >= ranges[i].start && cursorPos < ranges[i].end) {
+        return ranges[i].index;
+      }
+    }
+    return ranges.length - 1;
+  }
+
+  function syncBentoLyricsScrollToStanza(sIdx, stanzaRanges) {
+    const textarea = document.getElementById('bento-split-lyrics');
+    if (!textarea || !stanzaRanges || !stanzaRanges[sIdx]) return;
+    const range = stanzaRanges[sIdx];
+    const text = textarea.value || '';
+    const linesBefore = text.substring(0, range.start).split('\n').length;
+    const approxLineHeight = 19.5;
+    const clientH = (typeof textarea.clientHeight === 'number' && textarea.clientHeight > 0) ? textarea.clientHeight : 300;
+    const targetScrollTop = Math.max(0, Math.round(((linesBefore - 1) * approxLineHeight) - (clientH / 3)));
+    if (typeof textarea.scrollTo === 'function') {
+      textarea.scrollTo({ top: targetScrollTop, behavior: 'instant' });
+    } else {
+      textarea.scrollTop = targetScrollTop;
+    }
+    if (typeof textarea.setSelectionRange === 'function') {
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(range.start, range.start);
+    }
+  }
+
+  function splitCardScrollTop(stream, card) {
+    const streamRect = stream.getBoundingClientRect();
+    return card.getBoundingClientRect().top - streamRect.top - (stream.clientTop || 0) + stream.scrollTop;
+  }
+
+  function syncBentoSplitEditorScroll() {
+    if (activeSplitSession()?.follow !== 'edit') return;
+    const editor = document.getElementById('bento-split-lyrics');
+    if (editor) window.syncSongPreviewScroll?.(editor, 'bento-split-cards-stream');
+  }
+
+  function scrollStreamCardIntoView(streamEl, targetCard, alignment = 'nearest', behavior = 'smooth') {
+    if (!streamEl || !targetCard) return;
+    targetCard._scrolledIntoView = true;
+    const cardTop = splitCardScrollTop(streamEl, targetCard);
+    const cardHeight = targetCard.offsetHeight || 70;
+    const streamHeight = streamEl.clientHeight || 300;
+    const currentScroll = streamEl.scrollTop || 0;
+
+    if (alignment === 'start') {
+      streamEl.scrollTop = Math.max(0, cardTop - 8);
+      return;
+    }
+
+    if (alignment === 'center') {
+      const centerTarget = cardTop - (streamHeight / 2) + (cardHeight / 2);
+      const finalTop = Math.max(0, Math.round(centerTarget));
+      if (behavior === 'instant') {
+        streamEl.scrollTop = finalTop;
+      } else if (typeof streamEl.scrollTo === 'function') {
+        streamEl.scrollTo({ top: finalTop, behavior: 'smooth' });
+      } else {
+        streamEl.scrollTop = finalTop;
+      }
+    } else {
+      // nearest
+      if (cardTop <= currentScroll && cardTop + cardHeight >= currentScroll + streamHeight) return;
+      if (cardTop < currentScroll) {
+        if (behavior === 'instant') {
+          streamEl.scrollTop = cardTop;
+        } else if (typeof streamEl.scrollTo === 'function') {
+          streamEl.scrollTo({ top: cardTop, behavior: 'smooth' });
+        } else {
+          streamEl.scrollTop = cardTop;
+        }
+      } else if (cardTop + cardHeight > currentScroll + streamHeight) {
+        const targetScroll = cardTop + cardHeight - streamHeight;
+        if (behavior === 'instant') {
+          streamEl.scrollTop = targetScroll;
+        } else if (typeof streamEl.scrollTo === 'function') {
+          streamEl.scrollTo({ top: targetScroll, behavior: 'smooth' });
+        } else {
+          streamEl.scrollTop = targetScroll;
+        }
+      }
+    }
+  }
+
+  function syncSplitActiveCardHighlight() {
+    const lyricsInput = document.getElementById('bento-split-lyrics');
+    const streamEl = document.getElementById('bento-split-cards-stream');
+    if (!lyricsInput || !streamEl) return;
+
+    const text = lyricsInput.value || '';
+    const cursorPos = (typeof lyricsInput.selectionStart === 'number') ? lyricsInput.selectionStart : 0;
+    const session = activeSplitSession();
+    const ranges = session?.sections.map(section => section.range) || [];
+    const activeIdx = getBentoActiveStanzaIndex(cursorPos, ranges);
+
+    const cards = streamEl.querySelectorAll ? streamEl.querySelectorAll('.bento-single-card') : (streamEl.children || []);
+    let targetCard = null;
+    Array.from(cards).forEach(card => {
+      const cardStanzaIdx = card.dataset ? card.dataset.stanzaIndex : card.getAttribute('data-stanza-index');
+      const isMatch = (cardStanzaIdx === String(activeIdx));
+      if (isMatch) {
+        if (card.classList && typeof card.classList.add === 'function') {
+          card.classList.add('editing-focused');
+        }
+        if (!targetCard) targetCard = card;
+      } else {
+        if (card.classList && typeof card.classList.remove === 'function') {
+          card.classList.remove('editing-focused');
+        }
+      }
+    });
+
+    if (targetCard && session?.follow === 'edit') {
+      const streamRect = (typeof streamEl.getBoundingClientRect === 'function') ? streamEl.getBoundingClientRect() : null;
+      const cardRect = (typeof targetCard.getBoundingClientRect === 'function') ? targetCard.getBoundingClientRect() : null;
+      const isOutOfView = streamRect && cardRect ? (cardRect.top < streamRect.top || cardRect.bottom > streamRect.bottom) : true;
+      if (isOutOfView) {
+        scrollStreamCardIntoView(streamEl, targetCard, 'nearest', 'instant');
+      }
+    }
+  }
+
+  function createSplitDraftCard() {
+    const card = document.createElement('div');
+    card.className = 'bento-single-card';
+    card.tabIndex = -1;
+    const head = document.createElement('div');
+    head.className = 'head-tag-row';
+    const tag = document.createElement('span');
+    tag.className = 'tag-title';
+    const number = document.createElement('span');
+    number.className = 'bento-split-slide-number';
+    const actions = document.createElement('div');
+    actions.className = 'card-head-actions';
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'bento-split-icon-btn';
+    edit.title = 'Locate in editor';
+    edit.setAttribute('aria-label', 'Locate in editor');
+    edit.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H5v14h14v-4M16 3l5 5-9 9H7v-5z"/></svg>';
+    edit.onclick = e => {
+      e.stopPropagation();
+      const session = activeSplitSession();
+      if (session) syncBentoLyricsScrollToStanza(card._slide.stanzaIndex, session.sections.map(section => section.range));
+    };
+    actions.appendChild(edit);
+    head.append(number, tag, actions);
+    const body = document.createElement('div');
+    body.className = 'card-body-text';
+    card.append(head, body);
+    card._tag = tag;
+    card._number = number;
+    card._body = body;
+    card.onclick = e => {
+      if (e?.target?.closest?.('button')) return;
+      card.focus({ preventScroll: true });
+      const slide = card._slide;
+      window.projectSlide?.(slide.slideId, slide.text, slide.reference);
+    };
+    card.ondblclick = e => {
+      if (e?.target?.closest?.('button')) return;
+      const slide = card._slide;
+      window.projectSlide?.(slide.slideId, slide.text, slide.reference, { takeLive: true });
+    };
+    return card;
+  }
+
+  function updateBentoSplitEditorPreview(options = {}) {
+    const session = activeSplitSession();
+    const stream = document.getElementById('bento-split-cards-stream');
+    const lyrics = document.getElementById('bento-split-lyrics');
+    if (!session || !stream || !lyrics) return;
+    const title = document.getElementById('bento-split-title')?.value.trim() || 'Untitled Song';
+    const author = document.getElementById('bento-split-author')?.value.trim() || '';
+    const text = lyrics.value || '';
+    const parsed = text.trim()
+      ? window.libraryImporter.parseSongText(text, title, author)
+      : { stanzas: [] };
+    const stanzas = [...(parsed.stanzas || [])];
+    const trailingTag = text.match(/\[([a-zA-Z0-9\s]+)\]\s*$/);
+    if (trailingTag && (!stanzas.length || stanzas[stanzas.length - 1].type.toLowerCase() !== trailingTag[1].trim().toLowerCase())) {
+      stanzas.push({ type: trailingTag[1].trim(), text: '' });
+    }
+    const ranges = getBentoSplitStanzaRanges(text, stanzas);
+    const sections = reconcileSplitSections(session, text, stanzas, ranges);
+    const initial = !session.initialized;
+    const oldSlides = session.slides;
+    const slides = [];
+    sections.forEach((section, stanzaIndex) => {
+      const chunks = typeof window.splitStanzaIntoChunks === 'function'
+        ? window.splitStanzaIntoChunks(section, window.state.maxLinesPerSlide || 0)
+        : [{ text: section.text, label: section.type }];
+      const previous = section.previous?.slides || [];
+      const used = new Set();
+      // Match unchanged chunks first, then retain the identity of the edited chunk.
+      const matches = chunks.map(chunk => {
+        const match = previous.find(slide => !used.has(slide) && slide.text === chunk.text);
+        if (match) used.add(match);
+        return match;
+      });
+      chunks.forEach((chunk, chunkIndex) => {
+        const old = matches[chunkIndex] || previous.find(slide => !used.has(slide));
+        if (old) used.add(old);
+        const canonicalId = chunks.length > 1 ? session.songId + '_' + stanzaIndex + '_c' + chunkIndex : session.songId + '_' + stanzaIndex;
+        const slideId = old?.slideId || (initial ? canonicalId : session.songId + '_draft_' + session.sequence++);
+        const slide = { slideId, canonicalId, text: chunk.text, label: chunk.label || section.type, stanzaIndex, chunkIndex,
+          reference: title + ' (' + (chunk.label || section.type) + ')' };
+        section.slides.push(slide);
+        slides.push(slide);
+        session.knownIds.add(slideId);
+      });
+      delete section.previous;
+    });
+    const ids = new Set(slides.map(slide => slide.slideId));
+    oldSlides.forEach((slide, index) => {
+      if (!ids.has(slide.slideId)) {
+        session.removed.set(slide.slideId, {
+          before: oldSlides.slice(0, index).map(item => item.slideId).reverse(),
+          after: oldSlides.slice(index + 1).map(item => item.slideId)
+        });
+      }
+    });
+    // Keep a removed live/cue anchor navigable across subsequent edits.
+    session.removed.forEach(anchor => {
+      const expand = (list, direction, visited = new Set()) => list.flatMap(id => {
+        if (visited.has(id)) return [];
+        visited.add(id);
+        return ids.has(id) ? [id] : expand(session.removed.get(id)?.[direction] || [], direction, visited);
+      });
+      anchor.before = expand(anchor.before, 'before');
+      anchor.after = expand(anchor.after, 'after');
+    });
+    session.sections = sections;
+    session.slides = slides;
+    session.text = text;
+    session.title = title;
+    session.author = author;
+    session.initialized = true;
+    if (initial) session.originalSlides = slides.map(slide => ({ ...slide }));
+
+    const scrollTop = stream.scrollTop;
+    const oldAnchor = Array.from(stream.children).find(card => splitCardScrollTop(stream, card) + card.offsetHeight > scrollTop);
+    const anchorOffset = oldAnchor ? splitCardScrollTop(stream, oldAnchor) - scrollTop : 0;
+    session.cards.forEach((card, id) => {
+      if (!ids.has(id)) {
+        if (card.contains?.(document.activeElement)) stream.focus({ preventScroll: true });
+        window.cleanupLiveCardObserver?.(card);
+        card.remove();
+        session.cards.delete(id);
+      }
+    });
+    if (slides.length) stream.querySelector('.bento-split-empty-stream')?.remove();
+    const editingIndex = getBentoActiveStanzaIndex(lyrics.selectionStart || 0, ranges);
+    slides.forEach((slide, index) => {
+      let card = session.cards.get(slide.slideId);
+      if (!card) {
+        card = createSplitDraftCard();
+        session.cards.set(slide.slideId, card);
+        card.id = 'bento_card_' + slide.slideId;
+        card.setAttribute('data-slide-id', slide.slideId);
+      }
+      card._slide = slide;
+      card.setAttribute('data-stanza-index', String(slide.stanzaIndex));
+      card.setAttribute('data-chunk-index', String(slide.chunkIndex));
+      if (card._body.textContent !== slide.text) card._body.textContent = slide.text;
+      if (card._tag.textContent !== slide.label) card._tag.textContent = slide.label;
+      card._number.textContent = String(index + 1).padStart(2, '0') + ' / ' + slides.length;
+      card.classList.toggle('editing-focused', slide.stanzaIndex === editingIndex);
+      card.classList.toggle('bento-card-added-glow', !!options.highlightNewTag && slide.label.toLowerCase().includes(options.highlightNewTag.toLowerCase()));
+      if (stream.children[index] !== card) stream.insertBefore(card, stream.children[index] || null);
+    });
+    if (!slides.length && !stream.querySelector('.bento-split-empty-stream')) {
+      const empty = document.createElement('div');
+      empty.className = 'bento-split-empty-stream';
+      empty.textContent = 'No slides';
+      stream.appendChild(empty);
+    }
+    if (oldAnchor && session.cards.has(oldAnchor.dataset.slideId)) {
+      stream.scrollTop = Math.max(0, splitCardScrollTop(stream, oldAnchor) - anchorOffset);
+    } else {
+      stream.scrollTop = scrollTop;
+    }
+    const count = document.getElementById('bento-split-slide-count');
+    if (count) count.textContent = slides.length + (slides.length === 1 ? ' slide' : ' slides');
+
+    const prepared = window.getPreparedSlide?.();
+    if (prepared && session.knownIds.has(prepared.slideId)) {
+      const draft = slides.find(slide => slide.slideId === prepared.slideId);
+      if (!draft) window.cancelPreparedSlide?.();
+      else {
+        prepared.text = draft.text;
+        prepared.reference = draft.reference;
+        const preparedText = document.getElementById('prepared-text');
+        const preparedRef = document.getElementById('prepared-reference');
+        if (preparedText) preparedText.textContent = draft.text;
+        if (preparedRef) preparedRef.textContent = draft.reference;
+      }
+    }
+    if (options.initialMount) {
+      if (ids.has(window.state.activeLiveSlideId)) window.updateActiveSlideVisuals?.(window.state.activeLiveSlideId);
+      window.syncStagedCardVisuals?.();
+      if (session.follow === 'live') window.locateBentoSplitCard('live');
+    }
+    if (session.follow === 'edit') window.locateBentoSplitCard('edit');
+    window.refreshBentoSplitLive(session.follow === 'live');
+  }
+
+  function insertBentoSplitTag(tagName) {
+    const textarea = document.getElementById('bento-split-lyrics');
+    if (!textarea) return;
+    const start = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : (textarea.value || '').length;
+    const end = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : start;
+    const text = textarea.value || '';
+
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+
+    let prefix = '';
+    if (before.length > 0) {
+      if (before.endsWith('\n\n')) {
+        prefix = '';
+      } else if (before.endsWith('\n')) {
+        prefix = '\n';
+      } else {
+        prefix = '\n\n';
+      }
+    }
+
+    const tagStr = `${prefix}[${tagName}]\n`;
+    textarea.value = before + tagStr + after;
+
+    const newPos = start + tagStr.length;
+    if (typeof textarea.focus === 'function') textarea.focus({ preventScroll: true });
+    if (typeof textarea.setSelectionRange === 'function') {
+      textarea.setSelectionRange(newPos, newPos);
+    }
+
+    const linesBefore = (before + tagStr).split('\n').length;
+    const approxLineHeight = 19.5;
+    const targetScrollTop = Math.max(0, ((linesBefore - 1) * approxLineHeight) - ((textarea.clientHeight || 300) / 2));
+    if (typeof textarea.scrollTo === 'function') {
+      textarea.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+    } else {
+      textarea.scrollTop = targetScrollTop;
+    }
+
+    updateBentoSplitEditorPreview({ highlightNewTag: tagName });
+  }
+
+  function autoFormatBentoSplitEditor() {
+    const textarea = document.getElementById('bento-split-lyrics');
+    if (!textarea) return;
+    if (!textarea.value.trim()) {
+      if (typeof window.showToast === 'function') window.showToast('Type or paste some lyrics first.', 'warning');
+      textarea.focus({ preventScroll: true });
+      return;
+    }
+    const formatter = window.formatSongEditorLyrics;
+    if (typeof formatter === 'function') {
+      textarea.value = formatter(textarea.value);
+      updateBentoSplitEditorPreview();
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(0, 0);
+      textarea.scrollTop = 0;
+    }
+  }
+
+  function saveBentoDeckSplitEditor() {
+    if (activeSplitSession()?.saving) return;
+    const songId = (window.state && window.state.isDeckEditingSong);
+    if (!songId) return;
+    const titleInput = document.getElementById('bento-split-title');
+    const authorInput = document.getElementById('bento-split-author');
+    const lyricsInput = document.getElementById('bento-split-lyrics');
+
+    const title = (titleInput && titleInput.value.trim()) || '';
+    const author = (authorInput && authorInput.value.trim()) || '';
+    const text = (lyricsInput && lyricsInput.value.trim()) || '';
+
+    if (!title) {
+      if (typeof window.showToast === 'function') window.showToast('Please enter a song title.', 'warning');
+      if (titleInput) titleInput.focus({ preventScroll: true });
+      return;
+    }
+    if (!text) {
+      if (typeof window.showToast === 'function') window.showToast('Please enter song lyrics.', 'warning');
+      if (lyricsInput) lyricsInput.focus({ preventScroll: true });
+      return;
+    }
+
+    updateBentoSplitEditorPreview();
+    const importer = window.libraryImporter || {};
+    const parsed = typeof importer.parseSongText === 'function'
+      ? importer.parseSongText(text, title, author)
+      : { title, author, stanzas: [{ type: 'Verse 1', text }] };
+
+    let success = false;
+    try {
+      success = typeof importer.updateSong === 'function' && importer.updateSong(songId, {
+          title: parsed.title,
+          author: parsed.author,
+          stanzas: parsed.stanzas
+        }, { notify: false, durableFallback: true });
+    } catch (error) {
+      console.error('Could not save split-editor song', error);
+    }
+    const finishSave = success => {
+    if (!success) {
+      window.showToast?.('Could not save this song. Your edits are still open; please try again.', 'error');
+      return;
+    }
+
+    if (success) {
+      window.finishBentoSplitSession(true);
+      if (window.state) window.state.isDeckEditingSong = null;
+      const deckCard = document.getElementById('bento-deck-card');
+      if (deckCard) {
+        deckCard.classList.remove('in-split-editor');
+        deckCard.scrollTop = 0;
+      }
+      if (typeof window.renderDeck === 'function') window.renderDeck();
+      setTimeout(() => {
+        window.renderLibrary?.();
+        window.renderAgenda?.();
+        window.syncRemoteCatalog?.();
+      }, 0);
+      if (typeof window.showToast === 'function') {
+        window.showToast(`Saved "${parsed.title}" successfully`, 'success');
+      }
+    }
+    };
+    if (success && typeof success.then === 'function') {
+      const session = activeSplitSession();
+      if (session) session.saving = true;
+      const editor = document.querySelector('.bento-deck-editor-left');
+      if (editor) editor.inert = true;
+      const button = document.getElementById('bento-edit-btn');
+      button?.setAttribute('aria-busy', 'true');
+      return success.then(finishSave, error => {
+        console.error('Could not save split-editor song', error);
+        window.showToast?.('Song storage is unavailable. Your edits are still open.', 'error');
+      }).finally(() => {
+        if (session) session.saving = false;
+        if (editor) editor.inert = false;
+        button?.removeAttribute('aria-busy');
+      });
+    }
+    return finishSave(success);
+  }
+
+  window.renderBentoDeckSplitEditor = renderBentoDeckSplitEditor;
+  window.updateBentoSplitEditorPreview = updateBentoSplitEditorPreview;
+  window.insertBentoSplitTag = insertBentoSplitTag;
+  window.autoFormatBentoSplitEditor = autoFormatBentoSplitEditor;
+  window.saveBentoDeckSplitEditor = saveBentoDeckSplitEditor;
+  window.syncSplitActiveCardHighlight = syncSplitActiveCardHighlight;
+  window.getBentoSplitStanzaRanges = getBentoSplitStanzaRanges;
+  window.getBentoActiveStanzaIndex = getBentoActiveStanzaIndex;
+
+  // ─────────────────────────────────────────────────────────────────────────────
   const stagePreviewTransitions = new WeakMap();
 
   // Snapshot only the outgoing preview layer; library/deck nodes stay untouched.
@@ -1790,6 +2803,8 @@
 
     // The selected preview target is authoritative. Output state can briefly lag
     // while this segmented control is being changed.
+    window.syncOutputPreviews?.();
+    window.liveAlertEngine?.updatePreview();
     const previewMode = window.previewTargetMode || 'sanctuary';
     const isFullMode = previewMode === 'sanctuary';
     const isTransActive = Boolean(state.transparentBg && !isFullMode);
@@ -2096,6 +3111,7 @@
       }
     }
 
+    if (window.getPreviewTextScaleControl) scale = window.getPreviewTextScaleControl().value;
     if (scaleLabel) {
       scaleLabel.textContent = Number(scale).toFixed(1) + 'x';
       if (prevBox && prevBox.style && typeof prevBox.style.setProperty === 'function') {
@@ -2240,6 +3256,16 @@
     window.state.currentTab = tab;
     syncBentoTabsUI();
     renderBentoLibrary();
+
+    const isLive = Boolean(window.state.activeLiveSlideId || window.state.liveEngagedDeck);
+    const isSongActive = Boolean(window.state.activeSongId && (!window.state.activeDeckType || window.state.activeDeckType === 'song'));
+    const isBibleActive = Boolean(window.state.activeBibleBook && window.state.activeDeckType === 'bible');
+    const hasActiveItem = isLive || isSongActive || isBibleActive;
+
+    if (!hasActiveItem) {
+      window.state.activeDeckType = (tab === 'bible') ? 'bible' : 'song';
+    }
+
     renderBentoDeck();
     if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
   };
@@ -2287,16 +3313,21 @@
     }, 120);
   };
 
-  window.assignBibleBookToSlot = function(book, slotIdx) {
+  window.assignBibleBookToSlot = function(book, slotIdx, chapter, allowToggle = true) {
     if (!window.state) return;
     if (!Array.isArray(window.state.medleyBibleSlots)) {
       window.state.medleyBibleSlots = [null, null, null];
     }
-    window.state.medleyBibleSlots[slotIdx] = {
-      book: book,
-      chapter: 1,
-      version: window.state.bibleVersion || 'KJV'
-    };
+    const existing = window.state.medleyBibleSlots[slotIdx];
+    if (allowToggle && existing && existing.book === book && chapter === undefined) {
+      window.state.medleyBibleSlots[slotIdx] = null;
+    } else {
+      window.state.medleyBibleSlots[slotIdx] = {
+        book: book,
+        chapter: chapter || 1,
+        version: window.state.bibleVersion || 'KJV'
+      };
+    }
     if (typeof window.renderLibrary === 'function') window.renderLibrary();
     if (typeof window.renderDeck === 'function') window.renderDeck(true);
     if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
@@ -2328,7 +3359,7 @@
       deck.style.gridAutoRows = 'minmax(min-content, max-content)';
     }
 
-    // Instantly recalibrate live card SVG cutout to match the new column width
+    // Instantly recalibrate live card SVG cutout to match the new column width and keep active card in view
     requestAnimationFrame(() => {
       const liveCards = document.querySelectorAll('.bento-single-card.live');
       liveCards.forEach(card => {
@@ -2339,6 +3370,9 @@
           window.setupLiveCardObserver(card);
         }
       });
+      if (typeof window.scrollToActiveSlide === 'function') {
+        window.scrollToActiveSlide();
+      }
     });
   }
 
@@ -2393,7 +3427,10 @@
     window.state.activeBibleBook = book;
     window.state.activeBibleChapter = parsedCh;
     window.state.expandedBibleBook = book;
+    window.state.activeDeckType = 'bible';
     window.state.pendingVerseSelection = null;
+    window.state.liveEngagedDeck = null;
+    if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
     if (typeof window.renderLibrary === 'function') window.renderLibrary();
     if (typeof window.renderDeck === 'function') window.renderDeck(true);
     if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
@@ -2416,6 +3453,9 @@
       window.state.activeBibleChapter = prevChs.length > 0 ? prevChs.length : 1;
       window.state.expandedBibleBook = window.state.activeBibleBook;
     }
+    window.state.activeDeckType = 'bible';
+    window.state.liveEngagedDeck = null;
+    if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
     if (typeof window.renderLibrary === 'function') window.renderLibrary();
     if (typeof window.renderDeck === 'function') window.renderDeck(true);
     if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
@@ -2438,6 +3478,9 @@
       window.state.activeBibleChapter = 1;
       window.state.expandedBibleBook = window.state.activeBibleBook;
     }
+    window.state.activeDeckType = 'bible';
+    window.state.liveEngagedDeck = null;
+    if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
     if (typeof window.renderLibrary === 'function') window.renderLibrary();
     if (typeof window.renderDeck === 'function') window.renderDeck(true);
     if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
@@ -2600,14 +3643,19 @@
     const popover = document.getElementById('bento-verse-popover');
     const book = targetBook || (popover && popover._targetBook) || (window.state && (window.state.pendingVerseSelection?.book || window.state.activeBibleBook)) || 'Genesis';
     const ch = parseInt(targetChapter || (popover && popover._targetChapter) || (window.state && (window.state.pendingVerseSelection?.chapter || window.state.activeBibleChapter)), 10) || 1;
+    const vNum = parseInt(verseNum, 10) || 1;
 
     closeBentoVersePopover();
 
     if (!window.state) window.state = {};
     window.state.activeBibleBook = book;
     window.state.activeBibleChapter = ch;
+    window.state.activeBibleVerse = vNum;
     window.state.expandedBibleBook = book;
+    window.state.activeDeckType = 'bible';
     window.state.pendingVerseSelection = null;
+    window.state.liveEngagedDeck = null;
+    if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
 
     // Transition the main deck and library synchronously to the newly selected passage
     if (typeof window.renderLibrary === 'function') window.renderLibrary();
@@ -2617,49 +3665,28 @@
     const badge = document.getElementById('bento-active-verse-badge');
     if (badge) {
       if (badge.classList.contains('bento-unified-ref-btn')) {
-        badge.textContent = `${book} ${ch}:${verseNum} ▾`;
+        badge.textContent = `${book} ${ch}:${vNum} ▾`;
       } else {
-        badge.textContent = `Vs ${verseNum} ▾`;
+        badge.textContent = `Vs ${vNum} ▾`;
       }
     }
-    const slideId = `bible_${book}_${ch}_${verseNum}`;
-    const card = document.getElementById(`bento_card_${slideId}`);
-    if (card) {
-      window._bentoVerseSelecting = true;
-      const scrollContainer = card.closest('.bento-single-deck, .bento-slides') || document.getElementById('bento-medley-container');
-      if (scrollContainer) {
-        const cardRect = card.getBoundingClientRect();
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const offset = cardRect.top - containerRect.top;
-        const targetScrollTop = scrollContainer.scrollTop + offset - (containerRect.clientHeight / 2) + (cardRect.clientHeight / 2);
-        scrollContainer.scrollTo({
-          top: Math.max(0, targetScrollTop),
-          behavior: 'smooth'
-        });
+
+    const slideId = `bible_${book}_${ch}_${vNum}`;
+    requestAnimationFrame(() => {
+      const card = document.getElementById(`bento_card_${slideId}`);
+      if (card) {
+        card.classList.add('bento-card-pulse');
+        setTimeout(() => card.classList.remove('bento-card-pulse'), 1200);
+        card.click();
+      } else {
+        if (typeof window.projectSlide === 'function') {
+          window.projectSlide(slideId);
+        }
       }
-
-      // Guarantee outer deck card, center column, and page window never scroll or shift
-      const deckCard = document.getElementById('bento-deck-card');
-      if (deckCard && deckCard.scrollTop !== 0) deckCard.scrollTop = 0;
-      const colCenter = document.getElementById('bento-col-center');
-      if (colCenter && colCenter.scrollTop !== 0) colCenter.scrollTop = 0;
-      if (window.scrollY !== 0) window.scrollTo(0, 0);
-
-      card.classList.add('bento-card-pulse');
-      setTimeout(() => card.classList.remove('bento-card-pulse'), 1200);
-      card.click();
-
-      setTimeout(() => {
-        window._bentoVerseSelecting = false;
-        if (deckCard && deckCard.scrollTop !== 0) deckCard.scrollTop = 0;
-        if (colCenter && colCenter.scrollTop !== 0) colCenter.scrollTop = 0;
-        if (window.scrollY !== 0) window.scrollTo(0, 0);
-      }, 400);
-    } else {
-      if (typeof window.projectSlide === 'function') {
-        window.projectSlide(slideId);
+      if (typeof window.scrollToActiveSlide === 'function') {
+        window.scrollToActiveSlide({ center: true });
       }
-    }
+    });
   };
 
   window.toggleBentoVersePopover = function(event) {
@@ -2677,7 +3704,7 @@
         </div>
         <div class="bento-popover-search">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="bento-verse-popover-search-input" placeholder="Type verse number..." autocomplete="off">
+          <input type="text" id="bento-verse-popover-search-input" aria-label="Search verse number" inputmode="numeric" placeholder="Type verse number..." autocomplete="off">
         </div>
         <div class="bento-popover-grid" id="bento-verse-popover-grid"></div>
       `;

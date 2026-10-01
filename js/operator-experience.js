@@ -17,14 +17,15 @@
     if (!deck || !window.state?.activeLiveSlideId) return false;
     // In medley mode, the entire medley is one engaged unit
     if (window.state.isMedleyMode) return true;
+    const isBibleSlide = slideId.startsWith('bible_') || slideId.startsWith('medley_bible_') || slideId.startsWith('para_') || slideId.startsWith('hist_');
     if (deck.type === 'bible') {
+      if (!isBibleSlide) return false;
       return window.state.activeBibleBook === deck.book
-          && window.state.activeBibleChapter === deck.chapter
-          && (slideId.startsWith('bible_') || slideId.startsWith('medley_bible_'));
+          && String(window.state.activeBibleChapter) === String(deck.chapter);
     }
     if (deck.type === 'song') {
-      return window.state.activeSongId === deck.songId
-          && !slideId.startsWith('bible_') && !slideId.startsWith('medley_bible_');
+      if (isBibleSlide) return false;
+      return window.state.activeSongId === deck.songId;
     }
     return false;
   }
@@ -105,7 +106,7 @@
 
   function stageSlide(slideId, text, reference, extra) {
     unstageCard();
-    prepared = { slideId, text, reference, extra };
+    prepared = { slideId, text, reference, extra, stagedAt: Date.now() };
     const refEl = document.getElementById('prepared-reference');
     if (refEl) refEl.textContent = reference || 'Prepared slide';
     const textEl = document.getElementById('prepared-text');
@@ -159,6 +160,10 @@
     // Preview mode: always stage (legacy behavior)
     if (workflow === 'preview') {
       if (prepared && prepared.slideId === slideId) {
+        const now = Date.now();
+        if (prepared.stagedAt && (now - prepared.stagedAt < 200)) {
+          return true;
+        }
         window.takePreparedSlide();
         return true;
       }
@@ -171,6 +176,10 @@
       if (isDeckEngaged(slideId)) return false; // follow-suit → project instantly
       // Clicking the currently staged card a second time immediately takes it live
       if (prepared && prepared.slideId === slideId) {
+        const now = Date.now();
+        if (prepared.stagedAt && (now - prepared.stagedAt < 200)) {
+          return true; // Debounce rapid pointerdown+click double-trigger
+        }
         window.takePreparedSlide();
         return true;
       }
@@ -320,12 +329,8 @@
     const right = document.querySelector('.bento-tb-right');
     right.append(tools);
     for (const button of [...right.querySelectorAll('.bento-icon-btn')]) {
-      if (/Library manager|Switch to|Desktop projector/i.test(button.title)) {
+      if (/Switch to|Desktop projector/i.test(button.title)) {
         let labelText = button.title.replace(/^Switch to\s+/i, '');
-        if (/library manager/i.test(button.title)) {
-          button.title = 'Library Manager';
-          labelText = 'Library Manager';
-        }
         button.setAttribute('aria-label', button.title);
         button.classList.add('sf-tools-menu-item');
 

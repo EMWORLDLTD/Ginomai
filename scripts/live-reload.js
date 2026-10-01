@@ -24,9 +24,14 @@ module.exports = function createLiveReload(root) {
     for (const client of clients) client.write(': keepalive\n\n');
   }, 15000);
   heartbeat.unref();
-  const script = `<script>(()=>{let revision;const events=new EventSource('/__dev/events');events.onmessage=event=>{if(revision&&revision!==event.data){events.close();location.reload();}revision=event.data;};})();</script>`;
+  const script = `<script>(()=>{let revision;let stopped=false;let timer;const controller=new AbortController();async function poll(){try{const response=await fetch('/__dev/revision',{cache:'no-store',signal:controller.signal});const next=await response.text();if(revision&&revision!==next){location.reload();return;}revision=next;}catch(_){}if(!stopped)timer=setTimeout(poll,2000);}window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);controller.abort();});poll();})();</script>`;
   return {
     handle(req, res, pathname) {
+      if (pathname === '/__dev/revision') {
+        res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
+        res.end(revision);
+        return true;
+      }
       if (pathname !== '/__dev/events') return false;
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       clients.add(res);

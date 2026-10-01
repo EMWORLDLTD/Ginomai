@@ -375,7 +375,11 @@ class LibraryImportEngine {
     }
 
     if (modified) {
-      localStorage.setItem('sf_custom_songs', JSON.stringify(this.customSongs));
+      try {
+        localStorage.setItem('sf_custom_songs', JSON.stringify(this.customSongs));
+      } catch (error) {
+        if (error.name !== 'QuotaExceededError' || !this.db) throw error;
+      }
       if (this.db) {
         try {
           const tx = this.db.transaction(['songs'], 'readwrite');
@@ -1178,38 +1182,65 @@ class LibraryImportEngine {
     const songsArray = Array.isArray(songsData) ? songsData : [songsData];
     let importedCount = 0;
     let skippedCount = 0;
+    const importedSongs = [];
 
     songsArray.forEach(song => {
-      if (song.title && (song.stanzas || song.lyrics)) {
-        const existingIdx = this.customSongs.findIndex(s => s.title.toLowerCase() === song.title.toLowerCase());
-        
+      if (song && (song.title || song.name) && (song.stanzas || song.lyrics)) {
+        const rawTitle = song.title || song.name || 'Untitled';
+        const cleanTitle = this.cleanSongTitle(rawTitle);
+        const lowerTitle = cleanTitle.toLowerCase();
+        const targetId = song.id || '';
+
+        const existingCustomIdx = this.customSongs.findIndex(s =>
+          (targetId && s.id === targetId) || (s.title && s.title.toLowerCase() === lowerTitle)
+        );
+        const existingDbIdx = (typeof SONGS_DATABASE !== 'undefined' && Array.isArray(SONGS_DATABASE))
+          ? SONGS_DATABASE.findIndex(s => (targetId && s.id === targetId) || (s.title && s.title.toLowerCase() === lowerTitle))
+          : -1;
+
         let stanzas = song.stanzas;
         if (!stanzas && typeof song.lyrics === 'string') {
-          const parsed = this.parseSongText(song.lyrics, song.title, song.author);
+          const parsed = this.parseSongText(song.lyrics, cleanTitle, song.author);
           stanzas = parsed.stanzas;
         }
 
+        // Preserve existing song ID if updating, otherwise keep provided ID or create a clean custom one
+        const assignedId = (existingCustomIdx !== -1 && this.customSongs[existingCustomIdx].id)
+          ? this.customSongs[existingCustomIdx].id
+          : ((existingDbIdx !== -1 && SONGS_DATABASE[existingDbIdx].id)
+            ? SONGS_DATABASE[existingDbIdx].id
+            : (song.id || ('song_custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4))));
+
         const formattedSong = {
-          id: song.id || ('song_custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4)),
-          title: this.cleanSongTitle(song.title),
+          id: assignedId,
+          title: cleanTitle,
           author: this.cleanMarkup(song.author) || 'Unknown',
           songbook: song.songbook || 'Custom Library',
-          stanzas: stanzas || [{ type: 'Verse 1', text: song.title }]
+          stanzas: (Array.isArray(stanzas) && stanzas.length > 0) ? stanzas : [{ type: 'Verse 1', text: cleanTitle }]
         };
 
-        if (existingIdx !== -1) {
+        if (existingCustomIdx !== -1 || existingDbIdx !== -1) {
           if (overwriteDuplicates) {
-            this.customSongs[existingIdx] = formattedSong;
+            if (existingCustomIdx !== -1) {
+              this.customSongs[existingCustomIdx] = formattedSong;
+            } else {
+              this.customSongs.push(formattedSong);
+            }
             if (typeof SONGS_DATABASE !== 'undefined') {
-              const dbIdx = SONGS_DATABASE.findIndex(s => s.title.toLowerCase() === song.title.toLowerCase());
-              if (dbIdx !== -1) SONGS_DATABASE[dbIdx] = formattedSong;
+              if (existingDbIdx !== -1) {
+                SONGS_DATABASE[existingDbIdx] = formattedSong;
+              } else {
+                SONGS_DATABASE.push(formattedSong);
+              }
             }
             importedCount++;
+            importedSongs.push(formattedSong);
           } else {
             formattedSong.title = `${formattedSong.title} (Imported)`;
             this.customSongs.push(formattedSong);
             if (typeof SONGS_DATABASE !== 'undefined') SONGS_DATABASE.push(formattedSong);
             importedCount++;
+            importedSongs.push(formattedSong);
           }
         } else {
           this.customSongs.push(formattedSong);
@@ -1217,6 +1248,7 @@ class LibraryImportEngine {
             SONGS_DATABASE.push(formattedSong);
           }
           importedCount++;
+          importedSongs.push(formattedSong);
         }
 
         if (this.db) {
@@ -1232,7 +1264,7 @@ class LibraryImportEngine {
       this.finishBatchImport();
     }
 
-    return { importedCount, skippedCount };
+    return { importedCount, skippedCount, songs: importedSongs };
   }
 
   // Finalizes batch song imports with safe single-write and single-notify
@@ -1251,7 +1283,7 @@ class LibraryImportEngine {
   }
 
   // Update existing song in library
-  updateSong(songId, updatedData) {
+  updateSong(songId, updatedData, { notify = true, durableFallback = false } = {}) {
     const songIndex = SONGS_DATABASE.findIndex(s => s.id === songId);
     if (songIndex === -1) return false;
 
@@ -1264,16 +1296,43 @@ class LibraryImportEngine {
       stanzas: updatedData.stanzas || existingSong.stanzas
     };
 
-    SONGS_DATABASE[songIndex] = newSongObj;
-
-    const customIdx = this.customSongs.findIndex(s => s.id === songId);
+    const nextSongs = this.customSongs.slice();
+    const customIdx = nextSongs.findIndex(s => s.id === songId);
     if (customIdx !== -1) {
-      this.customSongs[customIdx] = newSongObj;
+      nextSongs[customIdx] = newSongObj;
     } else {
-      this.customSongs.push(newSongObj);
+      nextSongs.push(newSongObj);
     }
 
-    localStorage.setItem('sf_custom_songs', JSON.stringify(this.customSongs));
+    const commit = () => {
+      SONGS_DATABASE[songIndex] = newSongObj;
+      this.customSongs = nextSongs;
+      if (notify && typeof window.onLibraryDataUpdated === 'function') window.onLibraryDataUpdated();
+      return true;
+    };
+    try {
+      localStorage.setItem('sf_custom_songs', JSON.stringify(nextSongs));
+    } catch (error) {
+      if (!durableFallback || error.name !== 'QuotaExceededError' || !this.db) throw error;
+      // Migrate the complete cache before removing it, so reload cannot restore stale lyrics.
+      return new Promise((resolve, reject) => {
+        const tx = this.db.transaction(['songs'], 'readwrite');
+        tx.onabort = () => reject(tx.error || new Error('Song storage transaction was aborted.'));
+        tx.oncomplete = () => {
+          try {
+            localStorage.removeItem('sf_custom_songs');
+            resolve(commit());
+          } catch (failure) { reject(failure); }
+        };
+        try {
+          const store = tx.objectStore('songs');
+          nextSongs.forEach(song => store.put(song));
+        } catch (failure) {
+          tx.abort();
+          reject(failure);
+        }
+      });
+    }
 
     if (this.db) {
       try {
@@ -1281,10 +1340,7 @@ class LibraryImportEngine {
         tx.objectStore('songs').put(newSongObj);
       } catch (e) {}
     }
-    if (typeof window.onLibraryDataUpdated === 'function') {
-      window.onLibraryDataUpdated();
-    }
-    return true;
+    return commit();
   }
 
   // Delete song from library
@@ -1401,7 +1457,7 @@ class LibraryImportEngine {
     // 1. Try local server lyrics proxy (handles caching, lrclib & server-side fallback)
     try {
       const url = `/api/lyrics/search?q=${encodeURIComponent(qTerm)}&artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(title)}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(7000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
       if (res.ok) {
         const data = await res.json();
         if (data && Array.isArray(data.results) && data.results.length > 0) {
@@ -1453,34 +1509,70 @@ class LibraryImportEngine {
       // lrclib 503 or network failure
     }
 
-    // 3. Client-side fallback 2: Direct Genius Open Search
+    // 3. Client-side fallback 2: Direct Genius Open & Lyrics Search
     try {
-      const geniusUrl = `https://genius.com/api/search/multi?q=${encodeURIComponent(qTerm)}`;
-      const gRes = await fetch(geniusUrl, {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(4500)
-      });
-      if (gRes.ok) {
-        const gData = await gRes.json();
-        const sections = gData?.response?.sections || [];
-        const hits = [];
-        const seenHitIds = new Set();
-        for (const sec of sections) {
-          if ((sec.type === 'song' || sec.type === 'top_hit') && Array.isArray(sec.hits)) {
-            for (const hit of sec.hits) {
-              const res = hit.result;
-              if (res && res.title && (res.artist_names || res.primary_artist?.name) && !seenHitIds.has(res.id)) {
-                seenHitIds.add(res.id);
-                hits.push(res);
+      const gHeaders = { 'Accept': 'application/json' };
+      const [gResMulti, gResLyric] = await Promise.allSettled([
+        fetch(`https://genius.com/api/search/multi?q=${encodeURIComponent(qTerm)}`, { headers: gHeaders, signal: AbortSignal.timeout(4500) }),
+        fetch(`https://genius.com/api/search/lyric?q=${encodeURIComponent(qTerm)}`, { headers: gHeaders, signal: AbortSignal.timeout(4500) })
+      ]);
+      const hits = [];
+      const seenHitIds = new Set();
+      if (gResLyric.status === 'fulfilled' && gResLyric.value.ok) {
+        try {
+          const gData = await gResLyric.value.json();
+          const lHits = gData?.response?.sections?.[0]?.hits || gData?.response?.hits || [];
+          for (const hit of lHits) {
+            const res = hit.result;
+            if (res && res.title && (res.artist_names || res.primary_artist?.name) && !seenHitIds.has(res.id)) {
+              seenHitIds.add(res.id);
+              hits.push(res);
+            }
+          }
+        } catch (e) {}
+      }
+      if (gResMulti.status === 'fulfilled' && gResMulti.value.ok) {
+        try {
+          const gData = await gResMulti.value.json();
+          const sections = gData?.response?.sections || [];
+          for (const sec of sections) {
+            if ((sec.type === 'song' || sec.type === 'top_hit' || sec.type === 'lyric') && Array.isArray(sec.hits)) {
+              for (const hit of sec.hits) {
+                const res = hit.result;
+                if (res && res.title && (res.artist_names || res.primary_artist?.name) && !seenHitIds.has(res.id)) {
+                  seenHitIds.add(res.id);
+                  hits.push(res);
+                }
               }
             }
           }
-        }
+        } catch (e) {}
+      }
 
         if (hits.length > 0) {
-          const formattedGenius = hits.slice(0, 4).map(h => {
+          const topHits = hits.slice(0, 4);
+          const formattedGenius = await Promise.all(topHits.map(async h => {
             const trackTitle = this.cleanSongTitle(h.title || 'Untitled');
             const trackArtist = this.cleanMarkup(h.artist_names || h.primary_artist?.name || 'Unknown Artist');
+            let parsedStanzas = null;
+            let preview = `${trackTitle} by ${trackArtist}`;
+
+            try {
+              const lrcUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackTitle)}&artist_name=${encodeURIComponent(trackArtist)}`;
+              const lrcRes = await fetch(lrcUrl, { headers: { 'User-Agent': 'Ginomia/1.0' }, signal: AbortSignal.timeout(3000) });
+              if (lrcRes.ok) {
+                const lrcData = await lrcRes.json();
+                const rawLyrics = lrcData.plainLyrics || lrcData.syncedLyrics;
+                if (rawLyrics) {
+                  const parsed = this.parseSongText(rawLyrics, trackTitle, trackArtist, 'Cloud Worship');
+                  if (parsed && parsed.stanzas && parsed.stanzas.length > 0) {
+                    parsedStanzas = parsed.stanzas;
+                    preview = parsed.stanzas.map(s => s.text).join(' ').slice(0, 160) + '...';
+                  }
+                }
+              }
+            } catch (err) {}
+
             return {
               id: `genius_${h.id || Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
               title: trackTitle,
@@ -1489,16 +1581,16 @@ class LibraryImportEngine {
               duration: 0,
               songbook: 'Cloud Worship',
               source: 'Genius',
-              previewText: `${trackTitle} by ${trackArtist}`,
-              stanzas: [{ type: 'Verse 1', text: `${trackTitle}\nBy ${trackArtist}` }]
+              previewText: preview,
+              stanzas: parsedStanzas || [{ type: 'Verse 1', text: `${trackTitle}\nBy ${trackArtist}` }]
             };
-          });
+          }));
+
           if (formattedGenius.length > 0) {
             this._lyricsSearchCache.set(cacheKey, { results: formattedGenius, timestamp: Date.now() });
             return formattedGenius;
           }
         }
-      }
     } catch (gErr) {
       // Genius fallback failed
     }

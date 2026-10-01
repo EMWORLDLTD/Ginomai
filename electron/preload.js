@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('desktopApi', {
   closeProjector: () => ipcRenderer.invoke('desktop:close-projector'),
   getProjectorStatus: () => ipcRenderer.invoke('desktop:get-projector-status'),
 
+  // Stage Confidence Monitor Control (Choir / Pastors)
+  launchStageMonitor: (options) => ipcRenderer.invoke('desktop:launch-stage-monitor', options),
+  closeStageMonitor: () => ipcRenderer.invoke('desktop:close-stage-monitor'),
+  getStageStatus: () => ipcRenderer.invoke('desktop:get-stage-status'),
+
   // Server & Broadcast Info
   getServerInfo: () => ipcRenderer.invoke('desktop:get-server-info'),
 
@@ -29,6 +34,11 @@ contextBridge.exposeInMainWorld('desktopApi', {
     const handler = (event, status) => callback(status);
     ipcRenderer.on('desktop:projector-status-changed', handler);
     return () => ipcRenderer.removeListener('desktop:projector-status-changed', handler);
+  },
+  onStageStatusChange: (callback) => {
+    const handler = (event, status) => callback(status);
+    ipcRenderer.on('desktop:stage-status-changed', handler);
+    return () => ipcRenderer.removeListener('desktop:stage-status-changed', handler);
   },
   onDisplaysUpdated: (callback) => {
     const handler = (event, displays) => callback(displays);
