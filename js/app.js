@@ -40,7 +40,7 @@ const state = {
   activeAiTab: 'detected', // 'detected' | 'songs' | 'paraphrase' | 'history'
   aiProvider: (typeof localStorage !== 'undefined' && localStorage.getItem('sf_ai_provider')) || '',
   deepgramApiKey: (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_api_key')) || '',
-  deepgramModel: (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_model')) || 'nova-2',
+  deepgramModel: (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_model')) || 'nova-3',
   churchCustomTerms: (typeof localStorage !== 'undefined' && localStorage.getItem('sf_church_custom_terms')) || '',
   scriptureHistory: [],
   paraphraseMatches: [],
@@ -6065,7 +6065,7 @@ function saveDeepgramApiKey(key) {
   const statusEl = document.getElementById('deepgram-test-status');
   if (statusEl) {
     if (key) {
-      statusEl.textContent = '● Key saved (Ready to test)';
+      statusEl.textContent = 'Key saved — not verified';
       statusEl.style.color = '#38BDF8';
     } else {
       statusEl.textContent = '● Missing API key';
@@ -6089,99 +6089,57 @@ function toggleDeepgramKeyVisibility() {
 }
 
 async function testDeepgramConnection() {
+  testDeepgramConnection.cancel?.();
   const input = document.getElementById('setting-deepgram-api-key');
-  const key = (input ? input.value : state.deepgramApiKey) || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_api_key')) || '';
+  const key = String(input ? input.value : state.deepgramApiKey || '').trim();
+  const model = document.getElementById('setting-deepgram-model-select')?.value || state.deepgramModel || 'nova-3';
   const statusEl = document.getElementById('deepgram-test-status');
-
-  if (!key) {
+  const report = (message, success = false) => {
     if (statusEl) {
-      statusEl.textContent = '● Missing API key';
-      statusEl.style.color = '#EF4444';
+      statusEl.textContent = message;
+      statusEl.style.color = success ? '#16a34a' : '#EF4444';
     }
-    showToast('Please enter your Deepgram API key first.', 'warning');
+    showToast(message, success ? 'success' : 'warning');
+  };
+  if (!key) { report('Enter your Deepgram API key first.'); return; }
+  if (typeof speechAi !== 'undefined' && speechAi?.provider === 'deepgram' && speechAi.connectionState === 'listening' && speechAi.deepgramApiKey === key && speechAi.deepgramModel === model) {
+    report(`Live connection active · ${model}`, true);
     return;
   }
-
   if (statusEl) {
-    statusEl.textContent = 'Testing connection...';
-    statusEl.style.color = '#F2B93B';
+    statusEl.textContent = `Testing live speech connection · ${model}…`;
+    statusEl.style.color = 'var(--dim)';
   }
-
-  // 1. Try testing via local backend server (avoids browser CORS)
-  try {
-    const res = await fetch('/api/deepgram/verify-key', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: key })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.valid) {
-        if (statusEl) {
-          statusEl.textContent = '● Connected (Key Valid)';
-          statusEl.style.color = '#22C55E';
-        }
-        showToast('Deepgram API Key is valid and connected!', 'success');
-        saveDeepgramApiKey(key);
-        return;
-      } else {
-        if (statusEl) {
-          statusEl.textContent = `● Invalid key (${data.status || 'Unauthorized'})`;
-          statusEl.style.color = '#EF4444';
-        }
-        showToast(`Deepgram Key verification failed: ${data.error || 'Invalid API Key'}`, 'error');
-        return;
-      }
+  let socket, timer, finished = false;
+  const cleanup = () => {
+    finished = true;
+    clearTimeout(timer);
+    if (socket) {
+      socket.onopen = socket.onerror = socket.onclose = socket.onmessage = null;
+      try { socket.close(); } catch (_) {}
     }
-  } catch (backendErr) {
-    // If backend is not available (e.g. running file://), proceed to WebSocket test
-  }
-
-  // 2. Direct WebSocket Handshake Test (bypasses browser CORS completely)
+  };
+  testDeepgramConnection.cancel = cleanup;
+  const finish = (message, success = false) => {
+    if (finished) return;
+    cleanup();
+    // An older test must not label a newly edited key or model.
+    if (input && input.value.trim() !== key) return;
+    if ((document.getElementById('setting-deepgram-model-select')?.value || state.deepgramModel || 'nova-3') !== model) return;
+    report(message, success);
+  };
   try {
-    const testWs = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2', ['token', key]);
-    let resolved = false;
-
-    testWs.onopen = () => {
-      resolved = true;
-      try { testWs.close(); } catch (e) { }
-      if (statusEl) {
-        statusEl.textContent = '● Connected (Key Valid)';
-        statusEl.style.color = '#22C55E';
-      }
-      showToast('Deepgram API Key is valid and connected!', 'success');
-      saveDeepgramApiKey(key);
-    };
-
-    testWs.onerror = () => {
-      if (!resolved) {
-        resolved = true;
-        if (statusEl) {
-          statusEl.textContent = '● Invalid key or connection failed';
-          statusEl.style.color = '#EF4444';
-        }
-        showToast('Deepgram verification failed. Please check your API key.', 'error');
-      }
-    };
-
-    setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        try { testWs.close(); } catch (e) { }
-        if (statusEl) {
-          statusEl.textContent = '● Connection timed out';
-          statusEl.style.color = '#EF4444';
-        }
-        showToast('Connection to Deepgram timed out. Check network.', 'error');
-      }
-    }, 6000);
-
-  } catch (e) {
-    if (statusEl) {
-      statusEl.textContent = '● Connection error';
-      statusEl.style.color = '#EF4444';
-    }
-    showToast('Could not reach Deepgram server. Check your network.', 'error');
+    // Reuse the live engine's parameter builder without starting capture or changing it.
+    const config = new window.SpeechAiEngine({});
+    config.deepgramModel = model;
+    config.churchCustomTerms = document.getElementById('setting-church-custom-terms')?.value || state.churchCustomTerms || '';
+    socket = new WebSocket(`wss://api.deepgram.com/v1/listen?${config.buildDeepgramParams()}`, ['token', key]);
+    timer = setTimeout(() => finish('Live speech test timed out. Check your network and retry.'), 8000);
+    socket.onopen = () => finish(`Live speech connection verified · ${model}`, true);
+    socket.onerror = () => finish('Live speech connection failed. Check your key, model access, and network.');
+    socket.onclose = () => finish('Live speech connection closed before verification. Check your key, model access, and network.');
+  } catch (_) {
+    finish('Could not start the live speech connection test. Check your settings and network.');
   }
 }
 
@@ -6203,10 +6161,26 @@ function updateChurchCustomTermsSetting(terms) {
   showToast('Custom church vocabulary updated.', 'success');
 }
 
+function updateAiMatchScore(value) {
+  state.aiMatchScore = Math.min(100, Math.max(50, Number(value) || 95));
+  localStorage.setItem('sf_ai_match_score', String(state.aiMatchScore));
+  getAutoProjectionPolicy()?.clear('threshold-changed');
+  const label = document.getElementById('setting-ai-match-score-value');
+  if (label) label.textContent = String(state.aiMatchScore);
+}
+window.updateAiMatchScore = updateAiMatchScore;
+
 function syncAiSettingsUI() {
+  if (state.aiMatchScore === undefined) state.aiMatchScore = Math.min(100, Math.max(50, Number(localStorage.getItem('sf_ai_match_score')) || 95));
+  const autoToggle = document.getElementById('setting-auto-project-toggle');
+  if (autoToggle) autoToggle.checked = !!state.autoProject;
+  const score = document.getElementById('setting-ai-match-score');
+  const scoreLabel = document.getElementById('setting-ai-match-score-value');
+  if (score) score.value = state.aiMatchScore;
+  if (scoreLabel) scoreLabel.textContent = String(state.aiMatchScore);
   const provider = state.aiProvider || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_ai_provider')) || 'deepgram';
   const apiKey = state.deepgramApiKey || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_api_key')) || '';
-  const model = state.deepgramModel || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_model')) || 'nova-2';
+  const model = state.deepgramModel || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_model')) || 'nova-3';
   const churchTerms = state.churchCustomTerms || (typeof localStorage !== 'undefined' && localStorage.getItem('sf_church_custom_terms')) || '';
 
   const btnDeepgram = document.getElementById('btn-provider-deepgram');
@@ -6222,12 +6196,13 @@ function syncAiSettingsUI() {
   if (deepgramFields) deepgramFields.style.display = provider === 'deepgram' ? 'flex' : 'none';
   if (keyInput && keyInput.value !== apiKey) keyInput.value = apiKey;
   if (modelSelect && modelSelect.value !== model) modelSelect.value = model;
+  syncCustomSelect(modelSelect);
   if (termsTextarea && termsTextarea.value !== churchTerms) termsTextarea.value = churchTerms;
 
   if (statusEl) {
     if (provider === 'deepgram') {
       if (apiKey) {
-        statusEl.textContent = '● Key configured';
+        statusEl.textContent = 'Key saved — not verified';
         statusEl.style.color = '#38BDF8';
       } else {
         statusEl.textContent = '● Missing API key';
@@ -6238,16 +6213,150 @@ function syncAiSettingsUI() {
       statusEl.style.color = '#22C55E';
     }
   }
+  syncActiveSpeechSettings();
+}
+
+function syncSpeechInputHealth(health) {
+  const el = document.getElementById('mic-audio-health');
+  if (el) el.textContent = health?.message || (state.aiSpeechRequested ? 'Connecting microphone…' : 'AI mic is off. Input meter shows passive monitoring.');
+}
+
+function syncActiveSpeechSettings() {
+  if (!speechAi) return;
+  syncSpeechInputHealth(speechAi.audioHealth);
+  const status = document.getElementById('deepgram-test-status');
+  const input = document.getElementById('setting-deepgram-api-key');
+  if (status && speechAi.provider === 'deepgram' && speechAi.connectionState === 'listening' && (!input || input.value.trim() === speechAi.deepgramApiKey)) {
+    status.textContent = `Live connection active · ${speechAi.deepgramModel}`;
+    status.style.color = '#16a34a';
+  }
+}
+
+// Live transcript and projection share the speech stream, but have independent controls.
+let aiProjectionPolicy = null;
+function getAutoProjectionPolicy() {
+  if (!aiProjectionPolicy && window.AutoProjectionPolicy) {
+    aiProjectionPolicy = new window.AutoProjectionPolicy({
+      readState: () => ({ ...state, aiMatchScore: state.aiMatchScore ?? (Number(localStorage.getItem('sf_ai_match_score')) || 95) }),
+      project: item => projectDetectedVerse(item, item.text)
+    });
+  }
+  return aiProjectionPolicy;
+}
+
+function syncLiveTranscript(transcript, isFinal) {
+  const history = document.getElementById('bento-ai-transcript-history');
+  const panel = document.getElementById('bento-ai-transcript');
+  const follow = panel && panel.scrollHeight - panel.scrollTop - panel.clientHeight < 32;
+  if (isFinal && history) {
+    const line = document.createElement('p');
+    line.textContent = transcript;
+    history.appendChild(line);
+    while (history.childElementCount > 100) history.firstElementChild.remove();
+  }
+  state.aiTranscriptInterim = isFinal ? '' : transcript;
+  const current = document.getElementById('bento-ai-transcript-text');
+  if (current) current.textContent = state.aiTranscriptInterim;
+  if (follow) panel.scrollTop = panel.scrollHeight;
+}
+
+function toggleLiveTranscript() {
+  state.aiTranscriptVisible = state.aiTranscriptVisible === false;
+  window.syncBentoAiHud?.();
+}
+window.toggleLiveTranscript = toggleLiveTranscript;
+
+window.performDetectionAction = function(item, action) {
+  if (!item) return;
+  if (action === 'open' && item.book) {
+    if (item.version && BIBLE_DATABASE[item.version]) state.bibleVersion = item.version;
+    state.isMedleyMode = false;
+    omniOpenBibleInDeck(item.book, item.chapter, item.verse, false);
+    return;
+  }
+  if (action === 'dismiss') {
+    const key = window.detectionCardKey(item);
+    const groups = { verse: 'aiDetectedVerses', song: 'aiDetectedSongs', quotation: 'paraphraseMatches', concordance: 'aiDetectedConcordance' };
+    const group = groups[item._type] || (item.songId ? 'aiDetectedSongs' : 'aiDetectedVerses');
+    state[group] = (state[group] || []).filter(entry => window.detectionCardKey({ ...entry, _type: item._type }) !== key);
+    getAutoProjectionPolicy()?.clear('dismissed');
+    renderAiHud();
+    return;
+  }
+  // A manual selection takes control until the operator explicitly rearms Auto.
+  if (state.autoProject) toggleAutoProject(false);
+  getAutoProjectionPolicy()?.manualSelection(item.rawReference || item.reference);
+  if (item.kind === 'chapter') {
+    omniOpenBibleInDeck(item.book, item.chapter);
+  } else if (item.songId) {
+    projectDetectedSong(item);
+  } else if (item.book) {
+    projectDetectedVerse(item, item.text);
+  } else if (item._type === 'concordance') {
+    window.openLexiconInspector?.(item.id, item.translit || '');
+  } else if (item.reference && item.text) {
+    projectSlide(`para_${item.reference}`, item.text, item.reference);
+  }
+};
+
+function syncSpeechAiStatusControls() {
+  const ready = !!state.aiListening;
+  const requested = !!state.aiSpeechRequested;
+  ['ai-mic-btn', 'bento-mic-btn'].forEach(id => {
+    const button = document.getElementById(id);
+    button?.classList.toggle('active', ready);
+    button?.setAttribute('aria-pressed', String(requested));
+    if (button) {
+      const message = state.aiSpeechMessage || 'AI mic off';
+      button.setAttribute('data-tooltip', message);
+      button.removeAttribute?.('title');
+      window.refreshAppTooltip?.(button, message);
+    }
+  });
+  const label = document.getElementById('bento-mic-btn-text');
+  if (label) label.textContent = ready ? 'AI mic active' : requested ? 'AI mic connecting' : 'AI mic off';
+  document.getElementById('mic-signal-indicator')?.classList.toggle('live-active', ready);
+  document.getElementById('bento-ai-live-dot')?.classList.toggle('active', ready);
+  if (!ready) {
+    ['ai-transcript-text', 'bento-ai-transcript-text'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = state.aiSpeechMessage || 'Turn on AI Mic to begin.';
+    });
+  }
+  window.syncBentoAiHud?.();
+}
+
+function handleSpeechAiStatus({ status, message, isRequested, isListening }) {
+  state.aiSpeechStatus = status;
+  state.aiSpeechMessage = message;
+  state.aiSpeechRequested = !!isRequested;
+  state.aiListening = !!isListening;
+  if (status !== 'listening') {
+    if (typeof getAutoProjectionPolicy === 'function') getAutoProjectionPolicy()?.clear('speech-not-ready');
+    state.aiTranscriptInterim = '';
+  }
+  if (status === 'connecting' || status === 'reconnecting') window.sermonManager?.flushPendingUtterance?.();
+  if (!isRequested) window.sermonManager?.setRecordingState(false);
+  syncSpeechAiStatusControls();
+  if (typeof syncActiveSpeechSettings === 'function') syncActiveSpeechSettings();
+  if (status === 'listening' && typeof refreshAudioInputDevices === 'function') refreshAudioInputDevices();
+  if (status === 'error') showToast(message, 'error');
+  broadcastSpeechAiUpdate({ status, message, isRequested: !!isRequested, isListening: !!isListening });
 }
 
 // Speech AI Setup & Handlers
 function initSpeechAi() {
   if (window.SpeechAiEngine && !speechAi) {
     speechAi = new window.SpeechAiEngine({
+      getScriptureVerses: (book, chapter, version) => getBibleVerses(book, chapter, version || state.bibleVersion || 'KJV'),
+      onReferencePending: () => getAutoProjectionPolicy()?.clear('reference-pending'),
+      getQuotationSource: () => {
+        const version = state.bibleVersion || 'KJV';
+        return { version, bible: BIBLE_DATABASE[version] || BIBLE_DATABASE };
+      },
+      onStatusChange: handleSpeechAiStatus,
+      onAudioHealth: syncSpeechInputHealth,
       onVerseDetected: (detected) => {
-        if (window.sermonManager) {
-          window.sermonManager.addScripture(detected);
-        }
         handleDetectedVerse(detected);
       },
       onSongDetected: (songMatch) => {
@@ -6255,6 +6364,7 @@ function initSpeechAi() {
       },
       onTranscript: (transcript, isFinal = false) => {
         state.aiTranscript = transcript;
+        syncLiveTranscript(transcript, isFinal);
         if (typeof window.detectConcordanceTerms === 'function') {
           const detectedTerms = window.detectConcordanceTerms(transcript);
           if (detectedTerms && detectedTerms.length > 0) {
@@ -6270,14 +6380,8 @@ function initSpeechAi() {
         // Classic theme transcript box
         const textEl = document.getElementById('ai-transcript-text');
         if (textEl) textEl.textContent = `"${transcript}"`;
-        // Bento theme transcript box — live update
-        const bentoTransEl = document.getElementById('bento-ai-transcript-text');
-        if (bentoTransEl) {
-          bentoTransEl.textContent = `"${transcript}"`;
-          bentoTransEl.style.fontStyle = isFinal ? 'normal' : 'italic';
-          bentoTransEl.style.color = 'var(--txt, #e2e8f0)';
-        }
-        broadcastSpeechAiUpdate({ transcript });
+        window.syncBentoAiHud?.();
+        broadcastSpeechAiUpdate({ transcript, isFinal });
       },
       onParaphraseDetected: (paraphrase) => {
         handleDetectedParaphrase(paraphrase);
@@ -6317,6 +6421,11 @@ function initSpeechAi() {
 }
 
 function toggleSpeechAi() {
+  // Stopping must remain available during reconnects, even if settings changed.
+  if (speechAi && speechAi.isListening) {
+    speechAi.stop();
+    return;
+  }
   // If no AI provider has been selected yet (first-time use), prompt with onboarding modal
   const savedProvider = localStorage.getItem('sf_ai_provider');
   if (!savedProvider && !state.aiProvider) {
@@ -6354,7 +6463,7 @@ function toggleSpeechAi() {
     speechAi.setProviderConfig({
       provider: currentProvider,
       deepgramApiKey: state.deepgramApiKey || localStorage.getItem('sf_deepgram_api_key') || '',
-      deepgramModel: state.deepgramModel || localStorage.getItem('sf_deepgram_model') || 'nova-2',
+      deepgramModel: state.deepgramModel || localStorage.getItem('sf_deepgram_model') || 'nova-3',
       churchCustomTerms: state.churchCustomTerms || localStorage.getItem('sf_church_custom_terms') || '',
       selectedDeviceId: targetDevice
     });
@@ -6363,68 +6472,9 @@ function toggleSpeechAi() {
     speechAi.selectedDeviceId = targetDevice;
   }
 
-  const isListening = speechAi.toggle();
-  state.aiListening = isListening;
-
-  if (window.sermonManager) {
-    window.sermonManager.setRecordingState(isListening);
-  }
-
-  const indicator = document.getElementById('mic-signal-indicator');
-  if (indicator) {
-    indicator.classList.toggle('live-active', isListening);
-  }
-
+  speechAi.toggle();
   startAudioVuMeter(selectedAudioDeviceId);
 
-  const btn = document.getElementById('ai-mic-btn');
-  if (btn) {
-    btn.classList.toggle('active', isListening);
-    const dot = btn.querySelector('.ai-dot');
-    if (dot) dot.style.background = isListening ? '#22C55E' : '#64748B';
-  }
-
-  const pulseEl = document.querySelector('.ai-mic-indicator-pulse');
-  if (pulseEl) {
-    pulseEl.style.display = isListening ? 'block' : 'none';
-  }
-
-  const transcriptBox = document.getElementById('ai-transcript-text');
-  if (transcriptBox) {
-    const engineLabel = currentProvider === 'deepgram' ? 'Deepgram Live' : 'Browser Native';
-    transcriptBox.textContent = isListening
-      ? `Listening with ${engineLabel}... Speak scripture or sing lyrics.`
-      : 'Click "AI Mic" in top bar to listen to preacher or choir...';
-  }
-
-  const bentoMicBtn = document.getElementById('bento-mic-btn');
-  const bentoMicText = document.getElementById('bento-mic-btn-text');
-  if (bentoMicBtn) {
-    bentoMicBtn.classList.toggle('active', isListening);
-    if (bentoMicText) bentoMicText.textContent = isListening ? 'AI mic active' : 'AI mic off';
-  }
-
-  // Sync bento transcript box on toggle
-  const bentoTransEl = document.getElementById('bento-ai-transcript-text');
-  if (bentoTransEl) {
-    const engineLabel = currentProvider === 'deepgram' ? 'Deepgram Live' : 'Browser Native';
-    if (isListening) {
-      bentoTransEl.textContent = `Listening with ${engineLabel}... Speak scripture or sing lyrics.`;
-      bentoTransEl.style.fontStyle = 'normal';
-      bentoTransEl.style.color = 'var(--mute, #64748b)';
-    } else {
-      state.aiTranscript = '';
-      bentoTransEl.textContent = 'Click "AI Mic" to listen to preacher speech or choir...';
-      bentoTransEl.style.fontStyle = 'normal';
-      bentoTransEl.style.color = 'var(--mute, #64748b)';
-    }
-  }
-
-  // Refresh bento AI feed to reflect listening state change
-  if (typeof window.syncBentoAiHud === 'function') window.syncBentoAiHud();
-
-  broadcastSpeechAiUpdate({ isListening: state.aiListening });
-  showToast(`Speech AI (${currentProvider === 'deepgram' ? 'Deepgram Cloud' : 'Native'}) ${isListening ? 'Started (Listening)' : 'Paused'}`, isListening ? 'success' : 'info');
 }
 
 function handleDetectedVerse(detected) {
@@ -6440,9 +6490,11 @@ function handleDetectedVerse(detected) {
     if (!loadedBooks.includes(detected.book)) return;
     if (!chVerses || chVerses.length === 0) return; // Chapter does not exist!
 
-    if (detected.endVerse && detected.endVerse > detected.verse) {
+    if (detected.kind === 'chapter') {
+      verseText = 'Choose a verse from this chapter.';
+    } else if (detected.endVerse && detected.endVerse > detected.verse) {
       const rangeVerses = chVerses.filter(v => v.verse >= detected.verse && v.verse <= detected.endVerse);
-      if (rangeVerses.length === 0) return;
+      if (rangeVerses.length !== detected.endVerse - detected.verse + 1) return;
       verseText = rangeVerses.map(v => `${v.verse}. ${v.text}`).join(' ');
     } else {
       const vObj = chVerses.find(v => v.verse === detected.verse);
@@ -6474,7 +6526,8 @@ function handleDetectedVerse(detected) {
   };
 
   if (existingIdx !== -1) {
-    state.aiDetectedVerses[existingIdx] = verseEntry;
+    state.aiDetectedVerses.splice(existingIdx, 1);
+    state.aiDetectedVerses.unshift(verseEntry);
   } else {
     state.aiDetectedVerses.unshift(verseEntry);
     if (state.aiDetectedVerses.length > 20) state.aiDetectedVerses.pop();
@@ -6483,23 +6536,19 @@ function handleDetectedVerse(detected) {
   // Also maintain aiSuggestions for backward compatibility
   const sugIdx = state.aiSuggestions.findIndex(s => s.reference === detected.rawReference);
   if (sugIdx !== -1) {
-    state.aiSuggestions[sugIdx] = { reference: detected.rawReference, text: verseText, confidence: detected.confidence };
+    state.aiSuggestions.splice(sugIdx, 1);
+    state.aiSuggestions.unshift({ reference: detected.rawReference, text: verseText, confidence: detected.confidence });
   } else {
     state.aiSuggestions.unshift({ reference: detected.rawReference, text: verseText, confidence: detected.confidence });
     if (state.aiSuggestions.length > 20) state.aiSuggestions.pop();
   }
 
+  if (detected.kind === 'chapter') verseEntry.autoProjectEligible = false;
+  else window.sermonManager?.addScripture(verseEntry);
   renderAiHud();
   broadcastSpeechAiUpdate({ verse: verseEntry, detectedVerses: state.aiDetectedVerses });
 
-  // Auto Project if enabled and high confidence
-  if (state.autoProject && (detected.confidence || 85) >= 65) {
-    const timeSinceLast = Date.now() - (state.lastAutoProjectTime || 0);
-    if (state.lastAutoDetectedRef !== detected.rawReference || timeSinceLast > 3000 || !state.activeLiveText) {
-      state.lastAutoProjectTime = Date.now();
-      projectDetectedVerse(detected, verseText);
-    }
-  }
+  getAutoProjectionPolicy()?.offer(verseEntry);
 }
 
 function handleDetectedSong(songMatch) {
@@ -6521,15 +6570,8 @@ function handleDetectedSong(songMatch) {
   renderAiHud();
   broadcastSpeechAiUpdate({ song: songEntry, detectedSongs: state.aiDetectedSongs });
 
-  // Auto Project if enabled and high confidence
-  if (state.autoProject && (songMatch.confidence || 85) >= 55) {
-    const key = `${songMatch.songId}_${songMatch.stanzaIndex}`;
-    const timeSinceLast = Date.now() - (state.lastAutoProjectTime || 0);
-    if (state.lastAutoDetectedSongSlide !== key || timeSinceLast > 3000 || !state.activeLiveText) {
-      state.lastAutoProjectTime = Date.now();
-      projectDetectedSong(songMatch);
-    }
-  }
+  // Song matches remain suggestions for manual review.
+
 }
 
 function handleDetectedParaphrase(paraphrase) {
@@ -6551,14 +6593,8 @@ function handleDetectedParaphrase(paraphrase) {
   renderAiHud();
   broadcastSpeechAiUpdate({ paraphrase: paraEntry, paraphraseMatches: state.paraphraseMatches });
 
-  if (state.autoProject && (paraphrase.confidence || 85) >= 60) {
-    const timeSinceLast = Date.now() - (state.lastAutoProjectTime || 0);
-    if (state.lastAutoDetectedRef !== paraphrase.reference || timeSinceLast > 3000 || !state.activeLiveText) {
-      state.lastAutoProjectTime = Date.now();
-      state.lastAutoDetectedRef = paraphrase.reference;
-      projectSlide(`para_${paraphrase.reference}`, paraphrase.text, paraphrase.reference);
-    }
-  }
+  // Quotations and paraphrases remain suggestions for manual review.
+
 }
 
 function toggleAutoProject(explicitVal) {
@@ -6567,6 +6603,12 @@ function toggleAutoProject(explicitVal) {
   } else {
     state.autoProject = !state.autoProject;
   }
+
+  if (state.autoProject) getAutoProjectionPolicy()?.arm();
+  else getAutoProjectionPolicy()?.clear('disabled');
+  const settingsToggle = document.getElementById('setting-auto-project-toggle');
+  if (settingsToggle) settingsToggle.checked = state.autoProject;
+  window.syncBentoAiHud?.();
 
   // 1. Sync header button
   const btn = document.getElementById('auto-project-btn');
@@ -6598,13 +6640,22 @@ function projectDetectedVerse(detected, explicitText) {
   state.lastAutoDetectedRef = detected.rawReference;
 
   const version = detected.version && BIBLE_DATABASE[detected.version] ? detected.version : (state.bibleVersion || 'KJV');
+  const chapterChanged = state.activeBibleBook !== detected.book || state.activeBibleChapter !== (detected.chapter || 1) || state.bibleVersion !== version;
+  const deckChanged = chapterChanged || state.activeDeckType !== 'bible' || state.isMedleyMode;
+  state.activeDeckType = 'bible';
+  state.isMedleyMode = false;
+  state.activeBibleVerse = detected.verse;
+  state.expandedBibleBook = detected.book;
+  state.bibleVersion = version;
   state.activeBibleBook = detected.book;
   state.activeBibleChapter = detected.chapter || 1;
   state.currentTab = 'bible';
 
   syncActiveTabUI();
-  renderLibrary();
-  renderDeck();
+  if (deckChanged) {
+    renderLibrary();
+    renderDeck();
+  }
 
   let text = explicitText;
   if (!text) {
@@ -6621,13 +6672,15 @@ function projectDetectedVerse(detected, explicitText) {
   if (!text) text = `[${detected.rawReference}]`;
 
   const isRange = detected.endVerse && detected.endVerse > detected.verse;
+  const isClassic = window.themeManager?.currentStyle === 'classic';
+  const slidePrefix = isClassic || isRange ? `bible_${version}` : 'bible';
   const slideId = isRange
-    ? `bible_${detected.book}_${detected.chapter}_${detected.verse}_${detected.endVerse}`
-    : `bible_${detected.book}_${detected.chapter}_${detected.verse}`;
+    ? `${slidePrefix}_${detected.book}_${detected.chapter}_${detected.verse}_${detected.endVerse}`
+    : `${slidePrefix}_${detected.book}_${detected.chapter}_${detected.verse}`;
   const ref = isRange
     ? `${detected.book} ${detected.chapter}:${detected.verse}-${detected.endVerse} (${version})`
     : `${detected.book} ${detected.chapter}:${detected.verse} (${version})`;
-  projectSlide(slideId, text, ref);
+  projectSlide(slideId, text, ref, { takeLive: true, contentType: 'bible' });
 }
 
 function projectDetectedSong(songMatch) {
@@ -6737,6 +6790,13 @@ function setRemoteSessionLocked(locked) {
 
 function applyHostSpeechAiUpdate(msg) {
   if (!msg) return;
+  const speechState = msg.fullSync && msg.hostSpeechState ? msg.hostSpeechState : msg;
+  if (speechState.status !== undefined) state.aiSpeechStatus = speechState.status;
+  if (speechState.message !== undefined) state.aiSpeechMessage = speechState.message;
+  if (speechState.isRequested !== undefined) state.aiSpeechRequested = !!speechState.isRequested;
+  if (speechState.isListening !== undefined) state.aiListening = !!speechState.isListening;
+  if (speechState.transcript !== undefined && typeof syncLiveTranscript === 'function') syncLiveTranscript(speechState.transcript, !!speechState.isFinal);
+  syncSpeechAiStatusControls();
 
   if (msg.fullSync && msg.hostSpeechState) {
     const hs = msg.hostSpeechState;
@@ -7714,17 +7774,13 @@ function renderAiHud() {
           </div>
           ${snippet ? `<div class="ai-card-body">${snippet}</div>` : ''}
           <div class="ai-card-actions">
-            <button class="ai-action-btn live-btn" title="Project live immediately"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Project Live</button>
+            <button class="ai-action-btn live-btn" title="Project live immediately"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>${s.kind === 'chapter' ? 'Open Chapter' : 'Project Live'}</button>
           </div>
         `;
 
         const triggerProject = (e) => {
           if (e) e.stopPropagation();
-          if (s.book && s.chapter && s.verse) {
-            projectDetectedVerse(s, s.text);
-          } else {
-            projectSlide(`ai_${ref}`, s.text, ref);
-          }
+          window.performDetectionAction(s, 'select');
         };
 
         card.querySelector('.live-btn').onclick = triggerProject;
@@ -7771,7 +7827,7 @@ function renderAiHud() {
 
         const triggerSong = (e) => {
           if (e) e.stopPropagation();
-          projectDetectedSong(sm);
+          window.performDetectionAction(sm, 'select');
         };
 
         card.querySelector('.live-btn').onclick = triggerSong;
@@ -7901,6 +7957,7 @@ function openSettingsModal() {
   if (pane) pane.scrollTop = 0;
   syncMedleySettingsUI();
   syncAiSettingsUI();
+  refreshAudioInputDevices();
   syncTransitionSettingsUI();
   syncSongSettingsUI();
 }
@@ -8850,7 +8907,7 @@ function omniAddVerseToAgenda(book, chapter, verse, text, version) {
   showToast(`Added ${title} to Service Agenda`, 'success');
 }
 
-function omniOpenBibleInDeck(book, chapter, verse = null) {
+function omniOpenBibleInDeck(book, chapter, verse = null, projectVerse = true) {
   state.activeBibleBook = book;
   state.activeBibleChapter = parseInt(chapter, 10) || 1;
   if (verse) {
@@ -8877,9 +8934,10 @@ function omniOpenBibleInDeck(book, chapter, verse = null) {
         || document.querySelector(`[data-slide-id="${bentoSlideId}"]`);
       
       if (card) {
-        if (typeof card.click === 'function') card.click();
+        if (projectVerse && typeof card.click === 'function') card.click();
+        else card.scrollIntoView({ block: 'nearest', behavior: 'instant' });
       }
-      if (typeof scrollToActiveSlide === 'function') {
+      if (projectVerse && typeof scrollToActiveSlide === 'function') {
         scrollToActiveSlide({ center: true });
       }
     });
@@ -9201,19 +9259,7 @@ function projectAiSuggestion(sugId) {
     (state.aiDetectedSongs || []).find(s => (s.id || s.title) === sugId);
   if (!item) return;
 
-  if (item.book && item.chapter && item.verse) {
-    projectDetectedVerse(item, item.text);
-  } else if (item.title && (item.songId || item.matchedSnippet || item._type === 'song')) {
-    projectDetectedSong(item);
-  } else {
-    const isScrip = /\b\d+\s*:\s*\d+/.test(item.rawReference || item.reference || '');
-    projectSlide(
-      `${isScrip ? 'ai_' : 'ai_song_'}${item.rawReference || item.reference || item.title}`,
-      item.text || item.matchedSnippet || '',
-      item.rawReference || item.reference || item.title || '',
-      { contentType: isScrip ? 'bible' : 'song', isBible: isScrip }
-    );
-  }
+  window.performDetectionAction(item, 'select');
 }
 
 function addAiToAgenda(sugId) {
@@ -9259,6 +9305,7 @@ let audioMeterContext = null;
 let audioMeterAnalyser = null;
 let audioMeterStream = null;
 let audioMeterAnimFrame = null;
+let audioMeterRequestId = 0;
 
 async function refreshAudioInputDevices() {
   const select = document.getElementById('setting-audio-mic-select');
@@ -9273,18 +9320,6 @@ async function refreshAudioInputDevices() {
     // Query devices
     let devices = await navigator.mediaDevices.enumerateDevices();
     let audioInputs = devices.filter(d => d.kind === 'audioinput');
-
-    // If device labels are blank, prompt getUserMedia once to request browser permission
-    if (audioInputs.length > 0 && !audioInputs[0].label) {
-      try {
-        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        tempStream.getTracks().forEach(t => t.stop());
-        devices = await navigator.mediaDevices.enumerateDevices();
-        audioInputs = devices.filter(d => d.kind === 'audioinput');
-      } catch (permErr) {
-        console.warn('Microphone permission request deferred:', permErr);
-      }
-    }
 
     audioInputDevices = audioInputs;
     select.innerHTML = '';
@@ -9304,11 +9339,13 @@ async function refreshAudioInputDevices() {
       select.appendChild(opt);
     });
 
-    startAudioVuMeter(selectedAudioDeviceId);
+    syncActiveSpeechSettings();
 
   } catch (err) {
     console.error('Error refreshing audio input devices:', err);
     select.innerHTML = '<option value="default">Default System Microphone</option>';
+  } finally {
+    syncCustomSelect(select);
   }
 }
 
@@ -9328,7 +9365,9 @@ function selectAudioInputDevice(deviceId, deviceLabel) {
     if (active) updateAudioMicPickerButtonLabel(active.label || 'Microphone');
   }
 
-  renderAudioMicPopoverItems();
+  document.querySelectorAll('#audio-mic-device-list .audio-mic-option').forEach(option => {
+    option.classList.toggle('active', option.dataset.deviceId === deviceId);
+  });
   startAudioVuMeter(deviceId);
 
   if (speechAi && typeof speechAi.setAudioDeviceId === 'function') {
@@ -9341,6 +9380,7 @@ function selectAudioInputDevice(deviceId, deviceLabel) {
 
 async function startAudioVuMeter(deviceId) {
   stopAudioVuMeter();
+  const requestId = audioMeterRequestId;
   const meterBar = document.getElementById('mic-vu-meter-bar');
   const levelText = document.getElementById('mic-vu-level-text');
 
@@ -9352,13 +9392,18 @@ async function startAudioVuMeter(deviceId) {
         ? { deviceId: { ideal: deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: true }
         : true
     };
-    try {
-      audioMeterStream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (e) {
-      audioMeterStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (requestId !== audioMeterRequestId) {
+      stream.getTracks().forEach(track => track.stop());
+      return;
     }
+    audioMeterStream = stream;
 
     audioMeterContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioMeterContext.state === 'suspended') {
+      await audioMeterContext.resume();
+      if (requestId !== audioMeterRequestId) return;
+    }
     const source = audioMeterContext.createMediaStreamSource(audioMeterStream);
     audioMeterAnalyser = audioMeterContext.createAnalyser();
     audioMeterAnalyser.fftSize = 256;
@@ -9371,7 +9416,7 @@ async function startAudioVuMeter(deviceId) {
     let lastAudioBroadcastTime = 0;
 
     function updateMeter() {
-      if (!audioMeterAnalyser) return;
+      if (requestId !== audioMeterRequestId || !audioMeterAnalyser) return;
       audioMeterAnalyser.getByteFrequencyData(dataArray);
 
       let sum = 0;
@@ -9418,19 +9463,19 @@ async function startAudioVuMeter(deviceId) {
     updateMeter();
 
   } catch (err) {
-    if (speechAi && typeof speechAi.setAudioActivity === 'function') {
-      speechAi.setAudioActivity(false);
-    }
+    if (requestId !== audioMeterRequestId) return;
+    stopAudioVuMeter();
+    if (levelText) levelText.textContent = 'Mic unavailable';
+    console.warn('Microphone level monitoring unavailable:', err);
   }
 }
 
 function updateMicSignalBars(percent) {
   const container = document.getElementById('mic-signal-indicator');
-  if (!container) return;
-  const bar1 = container.querySelector('.bar-1');
-  const bar2 = container.querySelector('.bar-2');
-  const bar3 = container.querySelector('.bar-3');
-  const bar4 = container.querySelector('.bar-4');
+  const bar1 = container?.querySelector('.bar-1');
+  const bar2 = container?.querySelector('.bar-2');
+  const bar3 = container?.querySelector('.bar-3');
+  const bar4 = container?.querySelector('.bar-4');
 
   const p = Math.max(0, Number(percent) || 0);
 
@@ -9441,6 +9486,7 @@ function updateMicSignalBars(percent) {
 
   const bentoVu = document.getElementById('bento-vu-meter');
   if (bentoVu) {
+    bentoVu.classList.toggle('live-active', !!state.aiListening);
     const bars = bentoVu.querySelectorAll('i');
     if (bars.length >= 4) {
       // Staggered thresholds for each bar to light up progressively
@@ -9468,6 +9514,8 @@ function updateMicSignalBars(percent) {
 }
 
 function stopAudioVuMeter() {
+  audioMeterRequestId++;
+  audioMeterAnalyser = null;
   if (audioMeterAnimFrame) {
     cancelAnimationFrame(audioMeterAnimFrame);
     audioMeterAnimFrame = null;
@@ -9483,6 +9531,10 @@ function stopAudioVuMeter() {
   if (speechAi && typeof speechAi.setAudioActivity === 'function') {
     speechAi.setAudioActivity(false);
   }
+  const meterBar = document.getElementById('mic-vu-meter-bar');
+  const levelText = document.getElementById('mic-vu-level-text');
+  if (meterBar) meterBar.style.width = '0%';
+  if (levelText) levelText.textContent = '0%';
   updateMicSignalBars(0);
 }
 
@@ -10906,6 +10958,12 @@ function initGlobalTooltips() {
     tooltipEl.classList.remove('visible');
     activeTarget = null;
   }
+
+  window.refreshAppTooltip = (target, text) => {
+    if (activeTarget === target) {
+      tooltipEl.textContent = text;
+    }
+  };
 
   document.addEventListener('mouseover', (e) => {
     const target = e.target.closest('[data-tooltip], [title]');

@@ -26,3 +26,9 @@ test('stale, ambiguous, unverified, repeated and corrected results never auto-pr
 test('turning auto off, changing translation or ending a session invalidates queued projection',()=>{
  for(const change of [h=>h.state.autoProject=false,h=>h.state.bibleVersion='NIV',h=>h.policy.clear('session-ended')]){const h=harness();h.policy.offer(h.verse());change(h);h.tick(350);assert.equal(h.shown.length,0);}
 });
+test('configured match score controls projection and is rechecked before commit',()=>{
+ const h=harness();h.state.aiMatchScore=99;h.policy.offer(h.verse());h.tick(400);assert.equal(h.shown.length,0);
+ h.state.aiMatchScore=95;h.policy.offer(h.verse());h.state.aiMatchScore=99;h.tick(400);assert.equal(h.shown.length,0);
+ h.state.aiMatchScore=95;h.policy.offer(h.verse());h.tick(400);assert.equal(h.shown.length,1);
+ const ambiguous=harness();ambiguous.state.aiMatchScore=50;ambiguous.policy.offer(ambiguous.verse('Mark 1:4',{autoProjectEligible:false}));ambiguous.tick(400);assert.equal(ambiguous.shown.length,0);
+});

@@ -44,7 +44,7 @@ class SpeechAiEngine {
     // AI Speech Provider Configuration
     this.provider = (typeof localStorage !== 'undefined' && localStorage.getItem('sf_ai_provider')) || 'deepgram';
     this.deepgramApiKey = (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_api_key')) || '';
-    this.deepgramModel = (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_model')) || 'nova-2';
+    this.deepgramModel = (typeof localStorage !== 'undefined' && localStorage.getItem('sf_deepgram_model')) || 'nova-3';
     this.churchCustomTerms = (typeof localStorage !== 'undefined' && localStorage.getItem('sf_church_custom_terms')) || '';
     this.selectedDeviceId = (typeof localStorage !== 'undefined' && localStorage.getItem('sf_selected_mic_device')) || 'default';
     this.deepgramSocket = null;
@@ -316,7 +316,7 @@ class SpeechAiEngine {
     this.beginSession();
   }
 
-  beginSession(status = 'connecting') {
+  beginSession(status = 'connecting', retainedScriptureContext = null) {
     clearTimeout(this.restartTimer);
     this.restartTimer = null;
     this.disposeSession();
@@ -324,6 +324,7 @@ class SpeechAiEngine {
     this.session = session;
     this.lastProcessedText = '';
     this.resetScriptureContext();
+    this.scriptureContext = retainedScriptureContext;
     this.hasSelectedAudioEnergy = false;
     this.setConnectionState(status, status === 'reconnecting' ? 'Reconnecting speech recognition...' : 'Connecting speech recognition...');
     if (!this.isCurrentSession(session)) return;
@@ -354,13 +355,14 @@ class SpeechAiEngine {
       return;
     }
     this.onDiagnostic?.('reconnecting', { reason: message });
+    const retainedScriptureContext = normalNativeEnd ? this.scriptureContext : null;
     this.resetScriptureContext();
     this.disposeSession();
     const generation = this.sessionGeneration;
     this.setConnectionState('reconnecting', message);
     const delay = normalNativeEnd ? 300 : Math.min(30000, 1000 * (2 ** (this.reconnectAttempts - 1)));
     this.restartTimer = setTimeout(() => {
-      if (this.isListening && this.sessionGeneration === generation) this.beginSession('reconnecting');
+      if (this.isListening && this.sessionGeneration === generation) this.beginSession('reconnecting', retainedScriptureContext);
     }, delay);
   }
 
@@ -453,7 +455,7 @@ class SpeechAiEngine {
   }
 
   buildDeepgramParams() {
-    const model = this.deepgramModel || 'nova-2';
+    const model = this.deepgramModel || 'nova-3';
     const nova3 = /^nova-3(?:-|$)/i.test(model);
     const params = new URLSearchParams({ model, smart_format: 'true', punctuate: 'true',
       interim_results: 'true', endpointing: '300', language: 'en' });
@@ -799,6 +801,7 @@ class SpeechAiEngine {
   }
 
   resetScriptureContext() {
+    this.quotationFragments = [];
     this.cancelChapterSuggestion();
     this.quotationContextGeneration = (this.quotationContextGeneration || 0) + 1;
     this.quotationPending?.clear();
@@ -809,8 +812,10 @@ class SpeechAiEngine {
   // Bounded finalized-segment assembly. Provisional text never mutates context.
   parseScriptureReferences(text, metadata = {}) {
     const now = Date.now();
-    if (this.scriptureContext && now - this.scriptureContext.at > 60000) this.scriptureContext = null;
     let normalized = this.normalizeSpokenNumbers(text).replace(/[–—]/g, '-');
+    const explicitChapterRecall = /\b(?:that|this|the) same chapter\b/.test(normalized);
+    if (this.scriptureContext && now - this.scriptureContext.at > 10 * 60 * 1000) this.scriptureContext = null;
+    const followupContext = this.scriptureContext && (explicitChapterRecall || now - this.scriptureContext.at <= 60000) ? this.scriptureContext : null;
     if (this.pendingReference && now - this.pendingReference.at <= 8000 &&
         /^(?:\d|chapter\b|verses?\b|to\b|through\b)/.test(normalized)) {
       normalized = `${this.pendingReference.text} ${normalized}`;
@@ -864,13 +869,14 @@ class SpeechAiEngine {
     };
     if (!mentions.length) {
       const correction = normalized.match(/^(?:no|sorry|i mean|rather|correction)[,\s]+(\d+)(?:\s*(?:to|through|-)\s*(\d+))?[.!]?$/);
-      if (correction && this.scriptureContext) {
-        const c = this.scriptureContext;
+      if (correction && followupContext) {
+        const c = followupContext;
         emit(c.book, c.chapter, +correction[1], correction[2] ? +correction[2] : null, normalized, false, true);
-      } else followups(normalized, this.scriptureContext);
+      } else followups(normalized, followupContext);
     } else {
       for (let i=0; i<mentions.length; i++) {
         const mention = mentions[i], book = byAlias.get(mention[0]);
+        const previousContext = this.scriptureContext;
         this.scriptureContext = null;
         const after = normalized.slice(mention.index+mention[0].length, mentions[i+1]?.index);
         const before = normalized.slice(0,mention.index);
@@ -891,6 +897,33 @@ class SpeechAiEngine {
           this.pendingReference={text:`${mention[0]}${after.replace(/[.,]/g,'')}`,at:now};continue;
         }
         if (/^\s*(?:to\b|through\b|until\b|-|:|verses?\b)/.test(rest) || /^\.\d/.test(rest)) continue;
+        // Joined STT digits are suggestions, never permission to guess a live verse.
+        if (!m[1] && !m[4] && !m[5] && m[2].length >= 2 && book.maxChapters > 1 && this.getScriptureVerses) {
+          let candidates = [];
+          for (let split = 1; split < m[2].length; split++) {
+            const chapter = +m[2].slice(0, split), verse = +m[2].slice(split);
+            if (m[2][split] === '0' || chapter < 1 || chapter > book.maxChapters) continue;
+            const rows = this.getScriptureVerses(book.name, chapter, version);
+            if (rows?.some(row => row.verse === verse)) candidates.push({ chapter, verse });
+          }
+          const chapterRows = this.getScriptureVerses(book.name, +m[2], version);
+          const validChapter = +m[2] <= book.maxChapters && Array.isArray(chapterRows) && chapterRows.length > 0;
+          const contextual = candidates.filter(c => previousContext?.book.name === book.name && previousContext.chapter === c.chapter);
+          if (!validChapter && contextual.length === 1) candidates = contextual;
+          for (const candidate of candidates) {
+            if (emit(book, candidate.chapter, candidate.verse, null, mention[0]+m[0], false, correction)) {
+              outputs[outputs.length - 1].inferredReference = true;
+            }
+          }
+          if (candidates.length) {
+            if (validChapter) {
+              // Keep the literal chapter available, and let a later "verse N" complete it.
+              emit(book, +m[2], null, null, mention[0]+m[0], false, correction);
+              this.pendingReference = { text: mention[0]+m[0], at: now };
+            } else if (candidates.length > 1) this.scriptureContext = null;
+            continue;
+          }
+        }
         if (!m[4] && !m[1] && !cue && book.maxChapters !== 1 && ['job','mark','john','james','ruth','numbers','song'].includes(mention[0])) {
           if (/^[.,\s]*$/.test(rest)) this.pendingReference = { text: mention[0]+m[0], at: now };
           continue;
@@ -1102,8 +1135,12 @@ class SpeechAiEngine {
 
   // Worker results are suggestions only and cannot survive capture/session boundaries.
   parseSemanticParaphrases(text) {
+    const now = Date.now();
+    this.quotationFragments = (this.quotationFragments || []).filter(part => now - part.at < 20000).slice(-2);
+    this.quotationFragments.push({ text, at: now });
+    const combinedText = this.quotationFragments.map(part => part.text).join(' ');
     if (this.quotationMatcher) {
-      const match = this.quotationMatcher.match(text);
+      const match = this.quotationMatcher.match(text) || (combinedText !== text ? this.quotationMatcher.match(combinedText) : null);
       if (match && this.onParaphraseDetected) this.onParaphraseDetected({ ...match, timestamp: Date.now() });
       return;
     }
@@ -1139,7 +1176,7 @@ class SpeechAiEngine {
     const id = ++this.quotationQueryId;
     this.quotationPending.set(id, { session: this.sessionGeneration, context: this.quotationContextGeneration, at: Date.now(), text });
     while (this.quotationPending.size > 8) this.quotationPending.delete(this.quotationPending.keys().next().value);
-    this.quotationWorker.postMessage({ type: 'query', text: text.slice(-4000), id, generation: this.quotationGeneration });
+    this.quotationWorker.postMessage({ type: 'query', text: text.slice(-4000), combinedText: combinedText.slice(-4000), id, generation: this.quotationGeneration });
   }
 
 }

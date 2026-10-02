@@ -12,7 +12,7 @@
    if(item.correction){this.clear('correction');this.diagnose('correction',{reference:item.rawReference});return;}
    const reason=!state.autoProject?'disabled':state.isHoldLive?'hold':this.manual?'manual-authority':
     item.autoProjectEligible!==true||item.kind!=='verse'||item.validation!=='verified'?'not-explicit-verified':
-    (item.detectionScore??item.confidence??0)<95?'weak-evidence':
+    (item.detectionScore??item.confidence??0)<Math.min(100,Math.max(50,Number(state.aiMatchScore)||95))?'weak-evidence':
     item.recognitionConfidence!==null&&item.recognitionConfidence!==undefined&&item.recognitionConfidence<.8?'weak-recognition':
     !Number.isFinite(item.timestamp)||now-item.timestamp>6000||item.timestamp>now+100?'stale':null;
    if(reason){if(['verse','chapter'].includes(item.kind) && this.pending && this.pending.item.rawReference!==item.rawReference)this.clear('uncertain-reference');this.diagnose('suppressed',{reason,reference:item.rawReference});return;}
@@ -25,7 +25,7 @@
   commit(){
    this.timer=null;const pending=this.pending;this.pending=null;if(!pending)return;
    const state=this.readState();
-   if(!state.autoProject||state.isHoldLive||this.manual||state.bibleVersion!==pending.version||this.now()-pending.item.timestamp>6000){this.diagnose('suppressed',{reason:'state-changed-or-stale',reference:pending.item.rawReference});return;}
+   if((pending.item.detectionScore??pending.item.confidence??0)<Math.min(100,Math.max(50,Number(state.aiMatchScore)||95))||!state.autoProject||state.isHoldLive||this.manual||state.bibleVersion!==pending.version||this.now()-pending.item.timestamp>6000){this.diagnose('suppressed',{reason:'state-changed-or-stale',reference:pending.item.rawReference});return;}
    try{if((pending.execute||this.project)(pending.item)===false)return;this.lastKey=pending.key;this.lastShown=this.now();this.diagnose('auto-projected',{reference:pending.item.rawReference});}
    catch(_){this.diagnose('projection-failed',{reference:pending.item.rawReference});}
   }

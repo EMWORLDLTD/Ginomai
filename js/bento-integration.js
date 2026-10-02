@@ -1346,7 +1346,7 @@
                 <div class="empty-title">No Bible translations installed</div>
                 <div class="empty-desc">Import your Bible JSON files or download translations from Cloud Repository.</div>
                 <div class="sf-empty-actions">
-                  <button type="button" class="song-empty-primary" onclick="openImportModal(); switchImportSubTab('bibles');">Import Bible</button>
+                  <button type="button" class="bento-import-bible-btn" onclick="openImportModal(); switchImportSubTab('bibles');">Import Bible</button>
                 </div>
               </div>
             `;
@@ -3179,28 +3179,24 @@
       liveDot.classList.toggle('active', isListening);
     }
 
-    // ── Update live transcript box ──────────────────────────────────────────────
-    if (transcriptEl) {
-      const transcript = (state.aiTranscript || '').trim();
-      if (transcript && isListening) {
-        transcriptEl.textContent = `"${transcript}"`;
-        transcriptEl.style.fontStyle = 'italic';
-        transcriptEl.style.color = 'var(--text, #f3f2f7)';
-      } else if (isListening) {
-        transcriptEl.textContent = 'Listening... speak scripture or sing lyrics live.';
-        transcriptEl.style.fontStyle = 'normal';
-        transcriptEl.style.color = 'var(--mute, #696773)';
-      } else {
-        transcriptEl.textContent = state.aiSpeechMessage || 'Click "AI Mic" to listen to preacher speech or choir...';
-        transcriptEl.style.fontStyle = 'normal';
-        transcriptEl.style.color = 'var(--mute, #696773)';
-      }
+    const statusEl = document.getElementById('ai-feed-status');
+    if (statusEl) statusEl.textContent = state.aiSpeechMessage || (isListening ? 'Listening for scripture and song references…' : 'Turn on AI Mic to begin.');
+    if (liveDot) liveDot.classList.toggle('active', isListening && (!state.aiSpeechStatus || state.aiSpeechStatus === 'listening'));
+    const transcriptPanel = document.getElementById('bento-ai-transcript');
+    if (transcriptPanel) {
+      transcriptPanel.hidden = false;
+      const message = state.aiSpeechMessage || (isListening ? 'Listening…' : 'Turn on AI Mic to see the live transcript.');
+      transcriptPanel.setAttribute('data-placeholder', message);
+      const hasText = !!state.aiTranscriptInterim || !!document.getElementById('bento-ai-transcript-history')?.childElementCount;
+      if (statusEl) statusEl.hidden = !hasText || !['connecting', 'reconnecting', 'error'].includes(state.aiSpeechStatus);
     }
-
-    // ── Update History button label ─────────────────────────────────────────────
-    const docBadgeEl = document.getElementById('bento-transcript-badge-text');
-    if (docBadgeEl) {
-      docBadgeEl.textContent = 'History';
+    if (transcriptEl) transcriptEl.textContent = state.aiTranscriptInterim || '';
+    const autoToggle = document.getElementById('ai-feed-auto-toggle');
+    if (autoToggle) {
+      autoToggle.textContent = state.autoProject ? 'Auto-project on' : 'Auto-project off';
+      autoToggle.classList.toggle('active', !!state.autoProject);
+      autoToggle.setAttribute('aria-pressed', String(!!state.autoProject));
+      autoToggle.title = state.autoProject ? 'Turn off automatic projection' : 'Automatically project verified scripture references';
     }
 
     // ── Render unified live stream ──────────────────────────────────────────────
@@ -3209,7 +3205,7 @@
     const songs = (state.aiDetectedSongs || []).map(v => ({ ...v, _type: 'song' }));
     const quotations = (state.paraphraseMatches || []).map(v => ({ ...v, _type: 'quotation' }));
     const concordance = (state.aiDetectedConcordance || []).map(v => ({ ...v, _type: 'concordance' }));
-    window.renderDetectionCards?.(listEl, [...verses, ...songs, ...quotations, ...concordance], { bento: true, diagnostics: true });
+    window.renderDetectionCards?.(listEl, [...verses, ...songs, ...quotations, ...concordance], { bento: true });
   }
 
 

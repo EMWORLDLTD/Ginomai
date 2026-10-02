@@ -280,7 +280,7 @@ body[data-theme-style="bento"] #bento-layout-root {
   border-radius: 1px;
   background: var(--border-strong);
   display: block;
-  transition: height 0.05s ease, background 0.05s ease;
+  transition: height 0.04s ease, background 0.04s ease;
 }
 
 .bento-vu i:nth-child(1) { height: 30%; }
@@ -288,17 +288,12 @@ body[data-theme-style="bento"] #bento-layout-root {
 .bento-vu i:nth-child(3) { height: 80%; }
 .bento-vu i:nth-child(4) { height: 45%; }
 
-/* Active state: JS sets .active on individual <i> elements */
-.bento-vu i.active:nth-child(1) { background: var(--green); height: 50%; }
-.bento-vu i.active:nth-child(2) { background: var(--green); height: 85%; }
-.bento-vu i.active:nth-child(3) { background: var(--amber); height: 100%; }
-.bento-vu i.active:nth-child(4) { background: var(--green); height: 70%; }
-
-/* Legacy: parent .active class (kept for fallback) */
-.bento-vu.active i:nth-child(1) { background: var(--green); height: 50%; }
-.bento-vu.active i:nth-child(2) { background: var(--green); height: 85%; }
-.bento-vu.active i:nth-child(3) { background: var(--amber); height: 100%; }
-.bento-vu.active i:nth-child(4) { background: var(--green); height: 70%; }
+/* Passive monitoring stays off-white; live AI follows the input level in color. */
+.bento-vu i.active { background: rgba(255, 255, 255, 0.72); }
+.bento-vu.live-active i.active:nth-child(1) { background: var(--green); }
+.bento-vu.live-active i.active:nth-child(2) { background: var(--green); }
+.bento-vu.live-active i.active:nth-child(3) { background: var(--amber); }
+.bento-vu.live-active i.active:nth-child(4) { background: var(--green); }
 
 .bento-device-sel {
   display: inline-flex;
@@ -10685,7 +10680,7 @@ body[data-theme-mode="light"] .session-foot-hint code {
   justify-content: center;
   padding: 24px;
   opacity: 0;
-  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: none;
 }
 
 #sermon-transcript-modal-backdrop.open {
@@ -10706,7 +10701,7 @@ body[data-theme-mode="light"] .session-foot-hint code {
   flex-direction: row;
   overflow: hidden;
   transform: scale(0.97) translateY(6px);
-  transition: transform 0.05s ease;
+  transition: none;
 }
 
 #sermon-transcript-modal-backdrop.open .sermon-transcript-modal-card {
@@ -12584,3 +12579,105 @@ body[data-theme-mode="light"] .session-foot-hint code {
 :is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #sanctuary-theme-modal-backdrop .sanctuary-theme-modal-card :is(button, select, input):focus-visible { outline-color:#795bea; }
 :is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #sanctuary-theme-modal-backdrop .sanctuary-modal-themes-grid .sanctuary-theme-card { box-shadow:0 0 0 1px #d7d4df; }
 :is(:root[data-theme-mode="light"], body[data-theme-mode="light"]) #sanctuary-theme-modal-backdrop .sanctuary-modal-themes-grid .sanctuary-theme-card.active { box-shadow:0 0 0 1px #795bea; }
+
+/* Compact controls and readable transcript surfaces in both theme modes. */
+#bento-feed-card #ai-feed-auto-toggle { flex-shrink:0; font-family:inherit; font-size:11px; font-weight:600; line-height:1.3; padding:6px 9px; border:1px solid var(--border-strong); border-radius:7px; background:var(--card-2); color:var(--dim); cursor:pointer; transition:background 0.04s, color 0.04s; }
+#bento-feed-card #ai-feed-auto-toggle.active { color:var(--purple-text); border-color:var(--purple-text); }
+#bento-feed-card .bento-card-head { gap:8px; margin-bottom:10px; }
+#bento-feed-card button:focus-visible, #bento-ai-transcript:focus-visible { outline:2px solid var(--purple-text); outline-offset:3px; }
+#bento-feed-card #ai-feed-status { font-size:11px; line-height:1.5; color:var(--dim); margin:0 0 10px; }
+#bento-feed-card #bento-ai-transcript { display:block; max-height:160px; min-height:0; box-sizing:border-box; padding:8px 10px; margin:0 0 10px; overflow-y:auto; white-space:normal; overflow-wrap:anywhere; font-size:12px; line-height:1.65; font-style:normal; cursor:text; background:var(--card-2); border:1px solid var(--border); border-radius:8px; }
+#bento-feed-card #bento-ai-transcript[hidden] { display:none; }
+#bento-ai-transcript:has(#bento-ai-transcript-history:empty):has(#bento-ai-transcript-text:empty)::before { content:attr(data-placeholder); display:block; color:var(--dim); font-size:11px; font-weight:400; }
+#bento-ai-transcript-history p { margin:0 0 7px; color:var(--text); }
+#bento-ai-transcript-text { font-style:italic; color:var(--dim); }
+#bento-feed-card .ai-suggestions-heading { display:flex; align-items:center; gap:10px; font-size:10px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:var(--dim); margin-bottom:12px; }
+#bento-feed-card .ai-suggestions-heading::after { content:''; height:1px; flex:1; background:var(--border); }
+#bento-ai-feed-list .ai-empty-state { padding:16px 12px; margin:0; border:1px dashed var(--border-strong); border-radius:8px; text-align:center; color:var(--text); font-size:12px; font-weight:500; line-height:1.6; }
+#bento-ai-feed-list .ai-empty-state::after { content:'Detected scriptures and songs appear here for review.'; display:block; max-width:240px; margin:5px auto 0; color:var(--dim); font-size:11px; font-weight:400; }
+
+/* Suggestion cards: clear reference hierarchy and consistent compact actions. */
+#bento-ai-feed-list .bento-ai-card { padding:10px; border-radius:9px; }
+#bento-ai-feed-list .ai-card-header { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 8px; align-items:center; margin-bottom:6px; }
+#bento-ai-feed-list .ai-badge { grid-column:1; grid-row:1; justify-self:start; padding:0; border:0; background:none; color:var(--dim); font-family:inherit; font-size:9px; font-weight:600; line-height:1.3; letter-spacing:0.06em; }
+#bento-ai-feed-list .ai-conf-pill { grid-column:2; grid-row:1; padding:0; background:none; border:0; color:var(--dim); font-family:inherit; font-size:9px; font-weight:500; line-height:1.3; }
+#bento-ai-feed-list .ai-conf-pill:empty { display:none; }
+#bento-ai-feed-list .ai-card-ref { grid-column:1 / -1; grid-row:2; color:var(--text); font-size:13px; font-weight:650; line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
+#bento-ai-feed-list .ai-card-body { display:block; -webkit-line-clamp:unset; line-clamp:unset; max-height:112px; overflow-y:auto; color:var(--dim); font-size:11px; line-height:1.6; overflow-wrap:anywhere; margin:0; }
+#bento-ai-feed-list .ai-card-actions { display:flex; align-items:center; flex-wrap:wrap; gap:6px; padding-top:9px; margin-top:9px; border-top:1px solid var(--border); }
+#bento-ai-feed-list .ai-card-actions button { appearance:none; display:inline-flex; align-items:center; justify-content:center; min-height:28px; margin:0; padding:5px 9px; border:1px solid var(--border-strong); border-radius:6px; box-shadow:none; background:transparent; color:var(--dim); font-family:inherit; font-size:10px; font-weight:600; line-height:1.3; cursor:pointer; transition:background 0.04s, border-color 0.04s; }
+#bento-ai-feed-list .ai-card-actions button:hover { background:var(--card-hover); color:var(--text); }
+#bento-ai-feed-list .ai-card-actions .proj { background:var(--purple, #8a6dff); border-color:transparent; color:#fff; }
+#bento-ai-feed-list .ai-card-actions .proj:hover { background:var(--purple, #8a6dff); filter:brightness(1.08); color:#fff; }
+#bento-ai-feed-list .ai-card-actions button:focus-visible { outline:2px solid var(--purple-text); outline-offset:2px; }
+
+/* Transcript: wrapping controls and theme-aware reading surfaces. */
+#sermon-transcript-modal-backdrop .sermon-modal-sidebar { background:var(--card); }
+#sermon-transcript-modal-backdrop .sermon-moment-card { background:var(--card); border-color:var(--border); }
+#sermon-transcript-modal-backdrop .moment-header { display:grid; grid-template-columns:minmax(0,1fr); background:var(--card-2); border-color:var(--border); gap:8px; }
+#sermon-transcript-modal-backdrop .moment-header-left { min-width:0; flex-wrap:wrap; }
+#sermon-transcript-modal-backdrop .moment-title-input { flex:1 1 140px; min-width:0; max-width:100%; color:var(--text); border-bottom-color:var(--border-strong); }
+#sermon-transcript-modal-backdrop .moment-type-pills { flex-wrap:wrap; }
+#sermon-transcript-modal-backdrop .moment-header-right { min-width:0; flex-wrap:wrap; gap:6px; }
+#sermon-transcript-modal-backdrop .moment-time-meta { flex:1 1 180px; font-size:10px; overflow-wrap:anywhere; }
+#sermon-transcript-modal-backdrop .moment-btn { background:var(--card); border-color:var(--border-strong); color:var(--text); flex-shrink:0; }
+#sermon-transcript-modal-backdrop .type-pill { background:var(--card); border-color:var(--border-strong); color:var(--dim); }
+#sermon-transcript-modal-backdrop .type-pill.active { background:var(--purple-dim); color:var(--purple-text); border-color:var(--purple-text); }
+#sermon-transcript-modal-backdrop .moment-badge { background:var(--purple-dim); color:var(--purple-text); }
+#sermon-transcript-modal-backdrop .doc-para-text { color:var(--text) !important; overflow-wrap:anywhere; }
+#sermon-transcript-modal-backdrop .sermon-modal-head { flex-wrap:wrap; }
+#sermon-transcript-modal-backdrop .sermon-sidebar-head { border-color:var(--border); }
+
+/* Speech preferences: consistent fields and compact, responsive control columns. */
+#tab-speech .settings-field-row { gap:16px; align-items:center; padding-top:14px; padding-bottom:14px; flex-wrap:wrap; }
+#tab-speech .settings-field-info { flex:1 1 220px; min-width:0; }
+#tab-speech .settings-field-sub { line-height:1.5; }
+#tab-speech .speech-key-controls { display:flex; flex-direction:column; gap:8px; flex:0 1 340px; min-width:0; width:100%; }
+#tab-speech .speech-key-row { display:flex; align-items:center; gap:8px; }
+#tab-speech .speech-key-input-wrap { position:relative; flex:1; min-width:0; }
+#tab-speech #setting-deepgram-api-key { width:100%; min-width:0; box-sizing:border-box; height:36px; background:var(--card, #fff) !important; color:var(--text, #14131c) !important; border:1px solid var(--border-strong) !important; }
+#tab-speech .speech-key-visibility { position:absolute; right:5px; top:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; background:transparent; border:0; border-radius:4px; color:var(--dim); cursor:pointer; }
+#tab-speech .speech-key-row > button { flex-shrink:0; height:36px; min-width:60px; color:#fff !important; }
+#tab-speech .speech-key-feedback { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+#tab-speech #deepgram-test-status { flex:1 1 140px; overflow-wrap:anywhere; }
+#tab-speech .speech-key-feedback button { flex-shrink:0; }
+#tab-speech #setting-church-custom-terms { flex:0 1 340px; width:100%; min-width:0; min-height:88px !important; height:88px; max-height:180px; box-sizing:border-box; resize:vertical; font-family:inherit; line-height:1.5; background:var(--card, #fff) !important; color:var(--text, #14131c) !important; border:1px solid var(--border-strong) !important; }
+#tab-speech :is(#setting-deepgram-api-key, #setting-church-custom-terms)::placeholder { color:var(--dim); opacity:1; }
+#tab-speech #setting-ai-provider-segmented { display:flex; max-width:100%; flex-wrap:wrap; }
+#tab-speech #setting-ai-provider-segmented button { font-size:11px; white-space:normal; transition:background 0.04s, color 0.04s; }
+#tab-speech #setting-ai-provider-segmented button.active { color:#fff !important; }
+#tab-speech :is(input,textarea,button,select):focus-visible { outline:2px solid var(--purple-text); outline-offset:2px; }
+
+.bento-empty-unit .bento-import-bible-btn { appearance:none; display:inline-flex; align-items:center; justify-content:center; min-height:32px; padding:7px 14px; border:1px solid transparent; border-radius:7px; background:var(--purple, #8a6dff); color:#fff; font-family:inherit; font-size:12px; font-weight:600; line-height:1.3; cursor:pointer; transition:filter 0.04s; }
+.bento-empty-unit .bento-import-bible-btn:hover { filter:brightness(1.08); }
+.bento-empty-unit .bento-import-bible-btn:focus-visible { outline:2px solid var(--purple-text); outline-offset:3px; }
+
+/* Keep the raised theme while removing the empty column below input selection. */
+#tab-speech .speech-input-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,0.9fr); gap:10px 18px; }
+#tab-speech .speech-input-controls { display:contents; }
+#tab-speech .speech-input-controls > div:first-child { min-width:0; }
+#tab-speech .speech-input-controls .audio-vu-meter-box { grid-column:1 / -1; margin-top:0; padding:10px 12px; }
+#tab-speech .speech-input-controls .custom-select-wrapper { min-width:0; flex:1; }
+#tab-speech .speech-input-controls .custom-select-trigger span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#tab-speech .settings-switch { width:38px; height:22px; flex:0 0 38px; }
+#tab-speech .settings-switch .settings-slider { background:var(--border-strong) !important; box-shadow:none; border:1px solid var(--border-strong); transition:background 0.04s; }
+#tab-speech .settings-switch .settings-slider::before { width:16px; height:16px; left:2px; bottom:2px; background:#fff; box-shadow:0 1px 3px #0003; transition:transform 0.04s; }
+#tab-speech .settings-switch input:checked + .settings-slider { background:var(--purple) !important; border-color:var(--purple); }
+#tab-speech .settings-switch input:checked + .settings-slider::before { transform:translateX(16px); }
+#tab-speech .settings-switch input:focus-visible + .settings-slider { outline:2px solid var(--purple-text); outline-offset:3px; }
+#tab-speech .settings-range-wrap { display:flex; align-items:center; gap:10px; min-width:180px; }
+#tab-speech #setting-ai-match-score { flex:1; min-width:0; height:5px; background:var(--border-strong); accent-color:var(--purple); }
+#tab-speech #setting-ai-match-score::-webkit-slider-thumb { background:var(--purple) !important; width:14px; height:14px; box-shadow:0 1px 3px #0002; }
+#tab-speech #setting-ai-match-score::-moz-range-thumb { background:var(--purple) !important; width:14px; height:14px; border:0; }
+#tab-speech #setting-ai-match-score-value { min-width:32px; text-align:center; color:var(--purple-text); }
+@media(max-width:760px) { #tab-speech .speech-input-row { grid-template-columns:minmax(0,1fr); } }
+
+/* Compact feed gives suggestions priority; full passages remain available in the deck. */
+#bento-feed-card #bento-ai-transcript { max-height:88px; }
+#bento-ai-feed-list { min-height:0; overflow-y:auto; gap:6px; }
+#bento-ai-feed-list .bento-ai-card { flex-shrink:0; padding:8px 9px; }
+#bento-ai-feed-list .ai-card-header { margin-bottom:4px; gap:2px 6px; }
+#bento-ai-feed-list .ai-card-body { max-height:3.2em; }
+#bento-ai-feed-list .ai-card-actions { gap:4px; padding-top:6px; margin-top:6px; }
+#bento-ai-feed-list .ai-card-actions button { min-height:24px; padding:4px 7px; font-size:10px; }
+#bento-ai-feed-list .ai-card-actions button[hidden] { display:none; }

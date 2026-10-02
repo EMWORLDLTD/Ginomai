@@ -372,3 +372,13 @@ test('a pending chapter is cancelled immediately when the connection drops', asy
  assert.equal(found.length, 0);
  h.engine.stop();
 });
+
+test('normal native restart retains scripture context but stopping clears it',()=>{
+ const h=harness();h.engine.provider='native';h.engine.start();h.recognizers[0].onstart();
+ const found=[];h.engine.onVerseDetected=v=>found.push(v);
+ h.engine.simulateTranscript('Matthew 1:21');
+ h.recognizers[0].onend();h.tick(300);h.recognizers[1].onstart();
+ h.engine.simulateTranscript('From that same chapter go back to verse seven');
+ assert.equal(found.at(-1).rawReference,'Matthew 1:7');
+ h.engine.stop();assert.equal(h.engine.scriptureContext,null);
+});

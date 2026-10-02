@@ -479,15 +479,14 @@
               <span>AI Live Feed</span>
               <span class="ai-live-indicator-dot" id="bento-ai-live-dot" title="Microphone Status"></span>
             </div>
-            <button type="button" class="bento-doc-trigger-btn" id="bento-transcript-open-btn" onclick="if(window.sermonManager) window.sermonManager.openModal()" title="View Sermon History & Export .txt">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-              <span id="bento-transcript-badge-text">History</span>
-            </button>
+            <button type="button" id="ai-feed-auto-toggle" aria-pressed="false" onclick="toggleAutoProject()">Auto-project off</button>
           </div>
-          <div class="bento-transcript" id="bento-ai-transcript" onclick="if(window.sermonManager) window.sermonManager.openModal()" title="Click to view full Live Sermon Audio Transcript & export .txt">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
-            <span id="bento-ai-transcript-text">Click "AI Mic" to listen to preacher speech or choir...</span>
+          <p id="ai-feed-status" role="status" hidden>AI mic is off</p>
+          <div class="bento-transcript" id="bento-ai-transcript" data-placeholder="Turn on AI Mic to see the live transcript." role="region" aria-label="Live transcript" tabindex="0">
+            <div id="bento-ai-transcript-history"></div>
+            <span id="bento-ai-transcript-text"></span>
           </div>
+          <div class="ai-suggestions-heading">Suggestions</div>
           <div class="bento-list" id="bento-ai-feed-list">
             <div class="bento-empty-unit compact">
               <div class="empty-icon">
@@ -1986,15 +1985,17 @@ My chains are gone, I've been set free..."></textarea>
                     <div class="settings-field-label">Deepgram API Key</div>
                     <div class="settings-field-sub">Your live streaming API token from <a href="https://console.deepgram.com" target="_blank" class="settings-link">console.deepgram.com</a></div>
                   </div>
-                  <div style="display:flex; flex-direction:column; gap:8px; width:320px;">
-                    <div style="display:flex; gap:6px; position:relative;">
+                  <div class="speech-key-controls">
+                    <div class="speech-key-row">
+                      <div class="speech-key-input-wrap">
                       <input type="password" id="setting-deepgram-api-key" class="import-text-field search-input" placeholder="Enter your Deepgram API key..." style="flex:1; padding:8px 36px 8px 12px; border-radius:8px; font-family:var(--font-mono, monospace); font-size:12px;" onchange="saveDeepgramApiKey(this.value)">
-                      <button type="button" onclick="toggleDeepgramKeyVisibility()" title="Show/Hide API Key" style="position:absolute; right:74px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--dim, #a3a1ae); cursor:pointer; padding:4px; display:flex; align-items:center;">
+                      <button type="button" onclick="toggleDeepgramKeyVisibility()" title="Show/Hide API Key" aria-label="Show or hide API key" class="speech-key-visibility">
                         <svg id="deepgram-eye-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                       </button>
+                      </div>
                       <button type="button" class="mode-toggle-btn active repo-action-btn" onclick="saveDeepgramApiKey(document.getElementById('setting-deepgram-api-key').value)" style="font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:8px;">Save</button>
                     </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div class="speech-key-feedback">
                       <span id="deepgram-test-status" style="font-size:11px; color:var(--dim, #a3a1ae); font-weight:500;">● Status: Not checked</span>
                       <button type="button" onclick="testDeepgramConnection()" class="mode-toggle-btn" style="font-size:11px; padding:4px 10px; border-radius:6px;">Test Connection</button>
                     </div>
@@ -2005,11 +2006,11 @@ My chains are gone, I've been set free..."></textarea>
                 <div class="settings-field-row">
                   <div class="settings-field-info">
                     <div class="settings-field-label">Deepgram Speech Model</div>
-                    <div class="settings-field-sub">Nova-2 provides optimal sub-250ms response and high acoustic accuracy</div>
+                    <div class="settings-field-sub">Choose the speech model used for live transcription.</div>
                   </div>
                   <select class="settings-select-custom" id="setting-deepgram-model-select" style="width:200px;" onchange="updateDeepgramModelSetting(this.value)">
-                    <option value="nova-2" selected>Nova-2 (Recommended)</option>
-                    <option value="nova-3">Nova-3 (Latest Gen)</option>
+                    <option value="nova-3" selected>Nova-3 (Recommended)</option>
+                    <option value="nova-2">Nova-2</option>
                     <option value="enhanced">Enhanced General</option>
                   </select>
                 </div>
@@ -2028,12 +2029,12 @@ My chains are gone, I've been set free..."></textarea>
             <!-- Audio Input & Hardware Group -->
             <div class="settings-card-group" id="speech-settings-card-group">
               <!-- Microphone Device Selection Row -->
-              <div class="settings-field-row" style="align-items:flex-start;">
+              <div class="settings-field-row speech-input-row" style="align-items:flex-start;">
                 <div class="settings-field-info">
                   <div class="settings-field-label">Audio Microphone Source</div>
                   <div class="settings-field-sub">Choose which laptop microphone, USB interface, or mixer to pick audio from</div>
                 </div>
-                <div style="display:flex; flex-direction:column; gap:8px; width:260px;">
+                <div class="speech-input-controls">
                   <div style="display:flex; gap:6px;">
                     <select class="settings-select-custom" id="setting-audio-mic-select" style="flex:1; width:auto; text-overflow:ellipsis; overflow:hidden;" onchange="selectAudioInputDevice(this.value)">
                       <option value="default">Scanning audio devices...</option>
@@ -2065,7 +2066,7 @@ My chains are gone, I've been set free..."></textarea>
                   <div class="settings-field-sub">Automatically send detected spoken verses directly to output screen</div>
                 </div>
                 <label class="settings-switch">
-                  <input type="checkbox" id="setting-auto-project-toggle" checked onchange="toggleAutoProject(this.checked)">
+                  <input type="checkbox" id="setting-auto-project-toggle" aria-label="Auto-project matched scripture" onchange="toggleAutoProject(this.checked)">
                   <span class="settings-slider"></span>
                 </label>
               </div>
@@ -2073,12 +2074,12 @@ My chains are gone, I've been set free..."></textarea>
               <!-- Confidence Threshold Slider -->
               <div class="settings-field-row">
                 <div class="settings-field-info">
-                  <div class="settings-field-label">AI Match Confidence Threshold</div>
-                  <div class="settings-field-sub">Higher percentage avoids false positive verse triggers during sermons</div>
+                  <div class="settings-field-label">Minimum Auto-Project Match Score</div>
+                  <div class="settings-field-sub">Only verified, explicit references meeting this score can auto-project. Suggestions remain visible.</div>
                 </div>
                 <div class="settings-range-wrap">
-                  <input type="range" class="settings-range-slider" min="50" max="95" value="75" oninput="this.nextElementSibling.innerText = this.value + '%'">
-                  <span class="settings-val-badge">75%</span>
+                  <input type="range" id="setting-ai-match-score" aria-label="Minimum auto-project match score" class="settings-range-slider" min="50" max="100" value="95" oninput="updateAiMatchScore(this.value)">
+                  <span id="setting-ai-match-score-value" class="settings-val-badge">95</span>
                 </div>
               </div>
             </div>

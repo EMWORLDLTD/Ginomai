@@ -146,6 +146,9 @@ test('invalid verse ranges neither project nor enter the sermon log', () => {
   assert.equal(logged.length, 1); assert.equal(projected.length, 1);
   ctx.handleDetectedVerse({ ...verse, endVerse: null, rawReference: 'John 3:35', autoProjectEligible: false });
   assert.equal(projected.length, 1);
+  ctx.handleDetectedVerse({ ...verse, endVerse: 36, rawReference: 'John 3:35-36' });
+  assert.equal(ctx.state.aiDetectedVerses[0].rawReference, 'John 3:35-36');
+  assert.equal(ctx.state.aiDetectedVerses.length, 2);
 });
 
 test('final segments assemble book, chapter, verse and unfinished range without interim effects', () => {
@@ -198,4 +201,38 @@ test('chapter-only callbacks do not log or auto-project an invented verse',()=>{
  getAutoProjectionPolicy:()=>({offer:v=>assert.equal(v.autoProjectEligible,false)}),renderAiHud(){},broadcastSpeechAiUpdate(){},projectDetectedVerse(){throw Error('chapter auto-projected');}});
  vm.runInContext(handler,ctx);ctx.handleDetectedVerse({book:'Romans',chapter:8,verse:null,kind:'chapter',rawReference:'Romans 8',autoProjectEligible:true,confidence:98});
  assert.equal(ctx.state.aiDetectedVerses[0].rawReference,'Romans 8');assert.equal(ctx.state.aiDetectedVerses[0].autoProjectEligible,false);
+});
+
+test('same chapter recall survives a sermon pause and joined digits remain suggestions',()=>{
+ const h=harness();h.engine.simulateTranscript('Matthew 1:21');h.tick(90000);
+ h.engine.simulateTranscript('Let us think about what this means for us today');
+ h.engine.simulateTranscript('Okay from that same chapter if you go back to verse seven');
+ assert.equal(h.verses.at(-1).rawReference,'Matthew 1:7');
+ h.engine.simulateTranscript('Matthew 121');
+ assert.equal(h.verses.at(-1).rawReference,'Matthew 1:21');
+ assert.equal(h.verses.at(-1).autoProjectEligible,false);
+ const other=harness();other.engine.simulateTranscript('Matthew 121');
+ assert.deepEqual(other.verses.map(v=>v.rawReference),['Matthew 1:21','Matthew 12:1']);
+ assert(other.verses.every(v=>!v.autoProjectEligible));
+});
+
+test('two-digit merged references recover as manual suggestions without losing literal chapters',()=>{
+ const h=harness();h.engine.simulateTranscript('Revelation 52');
+ assert.equal(h.verses.at(-1).rawReference,'Revelation 5:2');
+ assert.equal(h.verses.at(-1).inferredReference,true);
+ assert.equal(h.verses.at(-1).autoProjectEligible,false);
+ h.engine.simulateTranscript('Mark 14');
+ assert.equal(h.verses.at(-1).rawReference,'Mark 1:4');
+ assert.equal(h.verses.at(-1).autoProjectEligible,false);
+ h.tick(2600);assert.equal(h.verses.at(-1).rawReference,'Mark 14');
+ h.engine.simulateTranscript('verse three');assert.equal(h.verses.at(-1).rawReference,'Mark 14:3');
+});
+test('explicit chapters are not split, separated numbers stay explicit, and prose is rejected',()=>{
+ const h=harness();h.engine.simulateTranscript('Mark chapter fourteen');h.tick(2600);
+ assert.deepEqual(h.verses.map(v=>v.rawReference),['Mark 14']);
+ h.engine.simulateTranscript('Mark one four');assert.equal(h.verses.at(-1).rawReference,'Mark 1:4');
+ assert.equal(h.verses.at(-1).inferredReference,undefined);
+ h.engine.simulateTranscript('Revelation five two');assert.equal(h.verses.at(-1).rawReference,'Revelation 5:2');
+ const count=h.verses.length;h.engine.simulateTranscript('Mark 14 people arrived');h.engine.simulateTranscript('Revelation 50');h.tick(2600);
+ assert.equal(h.verses.length,count);
 });

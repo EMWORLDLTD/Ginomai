@@ -47,3 +47,11 @@ test('missing worker support does not fall back to the old keyword guesses',()=>
  const found=[];const engine=new ctx.window.SpeechAiEngine({getQuotationSource:()=>({bible,version:'KJV'}),onParaphraseDetected:m=>found.push(m)});
  engine.simulateTranscript('God so loved the world and gave his only begotten son');assert.equal(found.length,0);
 });
+
+test('distinctive short quotation tolerates knowest/knewest speech variation',()=>{
+ const {QuotationIndex}=require('../js/quotation-index.js');
+ const index=new QuotationIndex(require('../bibles/KJV.json'),'KJV');
+ const match=index.match('if thou knowest the gift of God');
+ assert.equal(match.reference,'John 4:10');assert.equal(match.autoProjectEligible,false);
+ assert.equal(index.match('glory to God praise the Lord'),null);
+});

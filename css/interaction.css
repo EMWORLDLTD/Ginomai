@@ -457,6 +457,6 @@ body #omni-search-palette .bento-omni-grid { margin:0; gap:8px; }
 body #omni-search-palette .omni-results-container > * { flex-shrink:0; }
 body #omni-search-palette :is(.bento-omni-hero-card,.bento-omni-grid-card,.omni-card) { flex-shrink:0; height:auto; }
 body #omni-search-palette .bento-omni-hero-title-row { flex-wrap:wrap; row-gap:4px; }
-.uses-output-renderer { overflow:hidden; background:#000; }
+.uses-output-renderer { position:relative; isolation:isolate; overflow:hidden; background:#000; }
 .uses-output-renderer > :not(.actual-output-preview) { visibility:hidden !important; }
-.actual-output-preview { position:absolute; border:0; transform-origin:top left; pointer-events:none; max-width:none; max-height:none; z-index:100001; }
+.actual-output-preview { position:absolute; border:0; transform-origin:top left; pointer-events:none; max-width:none; max-height:none; z-index:1; }

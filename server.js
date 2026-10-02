@@ -538,6 +538,12 @@ const server = http.createServer((req, res) => {
       if (!apiKey) return json(400, { error: 'API key is required' });
 
       const https = require('https');
+      let verificationFinished = false;
+      const finishVerification = result => {
+        if (verificationFinished) return;
+        verificationFinished = true;
+        json(200, result);
+      };
       const reqDg = https.request('https://api.deepgram.com/v1/projects', {
         method: 'GET',
         headers: {
@@ -550,20 +556,20 @@ const server = http.createServer((req, res) => {
         resDg.on('data', chunk => { dgBody += chunk; });
         resDg.on('end', () => {
           if (resDg.statusCode >= 200 && resDg.statusCode < 300) {
-            json(200, { success: true, valid: true });
+            finishVerification({ success: true, valid: true });
           } else {
-            json(200, { success: false, valid: false, status: resDg.statusCode, error: 'Invalid API Key' });
+            finishVerification({ success: false, valid: false, status: resDg.statusCode, error: resDg.statusCode === 401 ? 'API key rejected' : resDg.statusCode === 403 ? 'Permission denied for project verification' : 'Deepgram verification service returned an error' });
           }
         });
       });
 
       reqDg.on('error', (netErr) => {
-        json(200, { success: false, valid: false, error: netErr.message || 'Could not connect to Deepgram server' });
+        finishVerification({ success: false, valid: null, code: netErr.code || 'NETWORK_ERROR', error: netErr.message || 'Could not connect to Deepgram server' });
       });
 
       reqDg.on('timeout', () => {
+        finishVerification({ success: false, valid: null, code: 'ETIMEDOUT', error: 'Connection to Deepgram timed out' });
         reqDg.destroy();
-        json(200, { success: false, valid: false, error: 'Connection to Deepgram timed out' });
       });
 
       reqDg.end();

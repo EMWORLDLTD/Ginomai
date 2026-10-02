@@ -10,6 +10,7 @@
   const anchorTop=anchor?anchor.getBoundingClientRect().top:0;
   if(!list._detectionCards){list._detectionCards=new Map();while(list.firstChild)list.firstChild.remove();}
   const map=list._detectionCards,wanted=new Set();
+  const ordered=[];
   for(const item of items.slice(0,60).reverse()){
    const key=keyOf(item);if(wanted.has(key))continue;wanted.add(key);
    let card=map.get(key);
@@ -23,22 +24,29 @@
     const actions=document.createElement('div');actions.className='ai-card-actions';
     const project=document.createElement('button');project.type='button';project.className=bento?'bento-ai-btn proj':'ai-action-btn live-btn';
     project.onclick=e=>{e.stopPropagation();root.performDetectionAction?.(card._item,'select');};actions.appendChild(project);
+    const open=document.createElement('button');open.type='button';open.className='bento-ai-btn';open.textContent='Open';open.title='Open in Bible deck without projecting';
+    open.onclick=e=>{e.stopPropagation();root.performDetectionAction?.(card._item,'open');};actions.appendChild(open);card._open=open;
     const dismiss=document.createElement('button');dismiss.type='button';dismiss.className=bento?'bento-ai-btn':'ai-action-btn';dismiss.textContent='Dismiss';
     dismiss.onclick=e=>{e.stopPropagation();root.performDetectionAction?.(card._item,'dismiss');};actions.appendChild(dismiss);
     if(bento){const agenda=document.createElement('button');agenda.type='button';agenda.className='ai-action-btn';agenda.textContent='Add to Agenda';agenda.onclick=e=>{e.stopPropagation();const item=card._item;root.addAiToAgenda?.(item.rawReference||item.reference||item.title);};actions.appendChild(agenda);card._agenda=agenda;}
     card.appendChild(header);card.appendChild(body);card.appendChild(actions);card._parts={ref,score,body,project,badge};
     map.set(key,card);list.insertBefore(card,list.firstChild);
    }
+   ordered.unshift(card);
    card._item=item;
+   card._open.hidden=!item.book || item.kind==='chapter';
    if(card._agenda)card._agenda.style.display=item._type==='concordance'||item.kind==='chapter'?'none':'';
-   const ref=item.rawReference||item.reference||item.title||`${item.id}: ${item.translit||''}`;
+   const reference=item.rawReference||item.reference||item.title||`${item.id}: ${item.translit||''}`;
+   const ref=item.version ? `${reference} (${item.version})` : reference;
    const text=item.text||item.fullStanzaText||item.shortDef||item.def||'';
    const score=item.detectionScore??item.confidence;
-   const values={ref,badge:item._type==='concordance'?(item.lang||'Word Study'):item.songId?'SONG':item.kind==='semantic'?'SEMANTIC':item.kind==='quotation'?'QUOTE':item.kind==='chapter'?'CHAPTER':'SCRIPTURE',body:text,score:score===undefined?'':`Match ${score}`,project:item._type==='concordance'?'Word Study':item.kind==='chapter'?'Open Chapter':'Project Live'};
+   const values={ref,badge:item.inferredReference?'POSSIBLE SCRIPTURE':item._type==='concordance'?(item.lang||'Word Study'):item.songId?'SONG':item.kind==='semantic'?'SEMANTIC':item.kind==='quotation'?'QUOTE':item.kind==='chapter'?'CHAPTER':'SCRIPTURE',body:text,score:score===undefined?'':`Match ${score}`,project:item._type==='concordance'?'Word Study':item.kind==='chapter'?'Open Chapter':'Project Live'};
    for(const [part,value] of Object.entries(values))if(card._parts[part].textContent!==value)card._parts[part].textContent=value;
-   card._parts.score.title='Detection match score, not a calibrated probability';
+   card._parts.score.title=item.inferredReference ? `Possible chapter/verse split from “${item.matchedQuery || ''}”. Review before projecting.` : 'Detection match score, not a calibrated probability';
    card.classList.toggle('scripture-card',!item.songId);card.classList.toggle('song-card',!!item.songId);
   }
+  let previous=null;
+  for(const card of ordered){const next=previous?previous.nextSibling:list.firstChild;if(next!==card)list.insertBefore(card,next);previous=card;}
   for(const [key,card] of map)if(!wanted.has(key)){card.remove();map.delete(key);}
   if(!list._empty){list._empty=document.createElement('div');list._empty.className='ai-empty-state';list._empty.textContent='No detections yet.';list.appendChild(list._empty);}
   list._empty.style.display=map.size>0?'none':'';

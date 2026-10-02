@@ -3,7 +3,7 @@
 (function (root) {
   const stop = new Set('a an the and or but for of to in on at by with from as is are was were be been being it its this that these those which who whom whose you your yours thee thou thy thine he his him she her they them their we us our i me my have has had hath hast do does did doth shall will may might can could would should unto'.split(' '));
   function tokens(text) {
-    return (String(text).toLowerCase().replace(/<[^>]*>/g,' ').match(/[a-z]+/g) || []).filter(t => !stop.has(t));
+    return (String(text).toLowerCase().replace(/\bknowest\b/g, 'knewest').replace(/<[^>]*>/g,' ').match(/[a-z]+/g) || []).filter(t => !stop.has(t));
   }
   const grams = words => words.slice(2).map((_,i) => words.slice(i,i+3).join(' '));
   class QuotationIndex {
@@ -26,7 +26,9 @@
     }
     match(text) {
       const query=tokens(text).slice(-120), unique=new Set(query);
-      if(query.length<5 || unique.size<5) return null;
+      if(query.length<3 || unique.size<3) return null;
+      const shortQuote = query.length < 5;
+      if(shortQuote && (String(text).match(/[a-z]+/gi)||[]).length < 7) return null;
       const votes=new Map();
       for(const gram of new Set(grams(query))) for(const id of this.postings.get(gram)||[]) votes.set(id,(votes.get(id)||0)+1);
       const ranked=[];
@@ -34,7 +36,7 @@
         const row=this.rows[id], shared=[...new Set(row.words)].filter(w=>unique.has(w));
         const rareWords = shared.filter(w=>(this.frequency.get(w)||0)/this.rows.length<.015).length;
         const uniquePhrases = grams(query).filter(g => this.postings.get(g)?.length === 1 && this.postings.get(g)[0] === id).length;
-        if(shared.length<5 || (rareWords<2 && !(rareWords>=1 && uniquePhrases>=2))) continue;
+        if(shortQuote ? (shared.length<query.length || rareWords<1 || uniquePhrases<1) : (shared.length<5 || (rareWords<2 && !(rareWords>=1 && uniquePhrases>=2)))) continue;
         // Ordered evidence tolerates omitted function words and small transcription edits.
         let previous=new Uint16Array(row.words.length+1);
         for(const word of query) {
@@ -44,7 +46,7 @@
         }
         const ordered=previous[row.words.length];
         const coverage=ordered/Math.min(query.length,row.words.length);
-        if(ordered<5 || coverage<.75 || ordered/query.length<.5) continue;
+        if(ordered<(shortQuote ? query.length : 5) || coverage<(shortQuote ? 1 : .75) || ordered/query.length<.5) continue;
         const score=coverage*.7+Math.min(1,shared.length/10)*.3;
         ranked.push({row,score,ordered,coverage});
       }
