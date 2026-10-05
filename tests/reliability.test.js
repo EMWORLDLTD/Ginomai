@@ -195,11 +195,13 @@ test('Enter on Cancel does not submit a custom confirmation', () => {
 
 test('same-deck projection is immediate, preserves cards, and updates the preview once', () => {
   const source = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
-  const project = source.slice(source.indexOf('function projectSlide('), source.indexOf('function sendRemoteCommand('));
+  const project = source.slice(source.indexOf('function applyProjectedSongTheme('), source.indexOf('function sendRemoteCommand('));
   const calls = [];
   const state = { scriptureHistory: [], currentTab: 'songs' };
-  const window = {};
+  const themes = [];
+  const window = { SONGS_DATABASE: [{ id: 'song_test' }] };
   const context = vm.createContext({ window, state, REMOTE_MODE: false, document: { getElementById: () => null },
+    applySongBoundTheme: (id, deferred) => { state.boundThemeSongId = id; themes.push([id, deferred]); },
     updateActiveSlideVisuals: id => calls.push(['active', id]), updateLivePreview: () => calls.push(['preview']),
     syncStateFromSlideId: () => false, broadcastState: (_payload, alreadyUpdated) => calls.push(['broadcast', alreadyUpdated]),
     renderDeck: () => assert.fail('Selecting within a deck must not rebuild its cards'), renderAiHud() {},
@@ -208,13 +210,18 @@ test('same-deck projection is immediate, preserves cards, and updates the previe
   context.projectSlide('song_test_0', 'First slide', 'Test song');
   assert.equal(state.activeLiveText, 'First slide');
   assert.deepEqual(calls, [['active', 'song_test_0'], ['preview'], ['broadcast', true]]);
+  assert.deepEqual(themes, [['song_test', true]]);
+  calls.length = 0;
+  context.projectSlide('song_test_1', 'Next slide', 'Test song');
+  assert.deepEqual(calls, [['active', 'song_test_1'], ['preview'], ['broadcast', true]]);
+  assert.equal(themes.length, 1, 'Following slides must preserve manual theme overrides');
   state.isHoldLive = true;
   context.projectSlide('song_test_1', 'Second slide', 'Test song');
-  assert.equal(state.activeLiveText, 'First slide');
+  assert.equal(state.activeLiveText, 'Next slide');
   state.isHoldLive = false;
   window.prepareSlideIfNeeded = () => true;
   context.projectSlide('song_test_1', 'Prepared slide', 'Test song');
-  assert.equal(state.activeLiveText, 'First slide');
+  assert.equal(state.activeLiveText, 'Next slide');
 });
 
 test('preview requires Take live, preserves a held selection, and can be cancelled', () => {
@@ -249,6 +256,7 @@ test('smart follow-suit stages unengaged decks and projects engaged decks instan
   const elements = new Map();
   const element = id => { if (!elements.has(id)) elements.set(id, { hidden: true, textContent: '' }); return elements.get(id); };
   const calls = [];
+  let now = 1000;
   const state = {
     activeLiveSlideId: null,
     activeSongId: 'song_1',
@@ -274,6 +282,7 @@ test('smart follow-suit stages unengaged decks and projects engaged decks instan
   const context = vm.createContext({
     window,
     document,
+    Date: class extends Date { static now() { return now; } },
     localStorage: { getItem: () => 'smart', setItem() {} }
   });
   vm.runInContext(fs.readFileSync(path.join(root, 'js/operator-experience.js'), 'utf8'), context);
@@ -298,7 +307,11 @@ test('smart follow-suit stages unengaged decks and projects engaged decks instan
   // 4. Switching song should stage first slide safely
   state.activeSongId = 'song_2';
   assert.equal(window.prepareSlideIfNeeded('song_2_0', 'Verse 1', 'Song 2', {}), true);
-  // Clicking the same staged card again takes it live directly
+  // A rapid pointerdown/click pair must not accidentally take a cue live.
+  assert.equal(window.prepareSlideIfNeeded('song_2_0', 'Verse 1', 'Song 2', {}), true);
+  assert.equal(calls.length, 1);
+  now += 200;
+  // A deliberate second click after the guard takes the staged slide live.
   assert.equal(window.prepareSlideIfNeeded('song_2_0', 'Verse 1', 'Song 2', {}), true);
   assert.equal(calls.length, 2);
   assert.equal(calls[1][3].takeLive, true);

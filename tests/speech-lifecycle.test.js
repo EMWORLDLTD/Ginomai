@@ -208,8 +208,15 @@ test('Nova-3 uses plain deduplicated keyterms with a bounded prompt; Nova-2 caps
 });
 
 test('changing the selected model restarts the live connection with new parameters', async () => {
-  const h=harness();await connected(h);h.engine.setProviderConfig({deepgramModel:'nova-3'});await settle();
-  assert.equal(h.sockets[0].readyState,3);assert.equal(new URL(h.sockets[1].url).searchParams.get('model'),'nova-3');
+  const h=harness();h.engine.deepgramModel='nova-2';await connected(h);
+  assert.equal(new URL(h.sockets[0].url).searchParams.get('model'),'nova-2');
+  h.engine.setProviderConfig({deepgramModel:'nova-2'});await settle();
+  assert.equal(h.sockets.length,1,'Selecting the current model must preserve the live session');
+  assert.equal(h.sockets[0].readyState,1);
+  h.engine.setProviderConfig({deepgramModel:'nova-3'});await settle();
+  assert.equal(h.sockets[0].readyState,3);assert.equal(h.streams[0].track.stopped,true);
+  assert.equal(new URL(h.sockets[1].url).searchParams.get('model'),'nova-3');
+  h.sockets[1].open();assert.equal(h.engine.connectionState,'listening');
   h.engine.stop();h.tick(60000);assert.equal(h.engine.isListening,false);
 });
 
@@ -294,13 +301,34 @@ test('remote reconnect snapshots preserve the distinction between requested and 
 });
 
 test('opening input settings never captures a second microphone', async () => {
-  const source=fs.readFileSync(path.join(root,'js/app.js'),'utf8');let captures=0;
-  const ctx=vm.createContext({navigator:{mediaDevices:{getUserMedia:()=>{captures++;}}},document:{getElementById:()=>null},
-    state:{aiListening:false}, speechAi:{audioHealth:null},updateMicSignalBars(){}});
-  vm.runInContext(source.slice(source.indexOf('async function startAudioVuMeter('),source.indexOf('function updateMicSignalBars('))+
+  const source=fs.readFileSync(path.join(root,'js/app.js'),'utf8');
+  const h=monitoredHarness(),elements=new Map(),levels=[],broadcasts=[];
+  const element=id=>{if(!elements.has(id))elements.set(id,{style:{},textContent:''});return elements.get(id);};
+  const ctx=vm.createContext({navigator:{mediaDevices:{getUserMedia:()=>assert.fail('Settings must reuse the speech input')}},
+    document:{getElementById:element},state:{aiListening:false},speechAi:h.engine,
+    updateMicSignalBars:level=>levels.push(level),broadcastSpeechAiUpdate:update=>broadcasts.push(update)});
+  vm.runInContext(source.slice(source.indexOf('function syncSpeechInputHealth('),source.indexOf('function syncActiveSpeechSettings('))+
+    source.slice(source.indexOf('async function startAudioVuMeter('),source.indexOf('function updateMicSignalBars('))+
     source.slice(source.indexOf('function stopAudioVuMeter('),source.indexOf('// Auto-detect plugged / unplugged microphones')),ctx);
-  await ctx.startAudioVuMeter('default');ctx.stopAudioVuMeter();
-  assert.equal(captures,0);
+  await ctx.startAudioVuMeter('default');assert.equal(h.calls(),0);
+  assert.equal(element('mic-vu-level-text').textContent,'0%');
+  assert.equal(element('mic-audio-health').textContent,'Start listening to check input.');
+  h.engine.onAudioHealth=health=>ctx.syncSpeechInputHealth(health);
+  await connected(h);ctx.state.aiListening=true;
+  h.analysers[0].level=0.1;h.tick(200);
+  const percent=h.engine.audioHealth.percent;
+  assert.ok(percent>0);assert.equal(element('mic-vu-meter-bar').style.width,percent+'%');
+  assert.equal(element('mic-vu-level-text').textContent,percent+'%');assert.equal(levels.at(-1),percent);
+  assert.equal(broadcasts.at(-1).audioLevel,percent);
+  const recorder=h.recorders[0],input=h.captured;
+  await ctx.startAudioVuMeter('mixer');await ctx.startAudioVuMeter('mixer');ctx.stopAudioVuMeter();
+  assert.equal(h.calls(),1);assert.equal(h.recorders[0],recorder);assert.equal(recorder.state,'recording');
+  assert.equal(input.track.stopped,false,'Settings must not stop the shared input');
+  assert.equal(element('mic-vu-level-text').textContent,'0%');
+  h.tick(200);assert.equal(element('mic-vu-level-text').textContent,percent+'%');
+  h.engine.stop();ctx.state.aiListening=false;
+  assert.equal(element('mic-vu-level-text').textContent,'0%');assert.equal(levels.at(-1),0);
+  assert.equal(input.track.stopped,true);assert.equal(h.timers.size,0);
 });
 
 function monitoredHarness() {

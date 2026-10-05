@@ -6292,7 +6292,28 @@ function syncAiSettingsUI() {
 
 function syncSpeechInputHealth(health) {
   const el = document.getElementById('mic-audio-health');
-  if (el) el.textContent = health?.message || (state.aiSpeechRequested ? 'Connecting microphone…' : 'AI mic is off. Input meter shows passive monitoring.');
+  if (el) el.textContent = health?.message || (state.aiSpeechRequested ? 'Connecting microphone…' : 'Start listening to check input.');
+  const percent = Number.isFinite(health?.percent) ? Math.max(0, Math.min(100, Math.round(health.percent))) : 0;
+  const meterBar = document.getElementById('mic-vu-meter-bar');
+  const levelText = document.getElementById('mic-vu-level-text');
+  if (meterBar) {
+    meterBar.style.width = `${percent}%`;
+    meterBar.style.background = percent > 75
+      ? 'linear-gradient(90deg, #22C55E 0%, #EAB308 65%, #EF4444 100%)'
+      : percent > 40 ? 'linear-gradient(90deg, #22C55E 0%, #EAB308 100%)'
+      : 'linear-gradient(90deg, #10B981, #22C55E)';
+  }
+  if (levelText) levelText.textContent = `${percent}%`;
+  updateMicSignalBars(percent);
+  // The engine measures the same input it transcribes; share those levels with operators.
+  const now = Date.now();
+  if (state.aiListening && typeof broadcastSpeechAiUpdate === 'function' &&
+      (now - (syncSpeechInputHealth.lastBroadcastAt || 0) >= 180 ||
+       (percent === 0 && syncSpeechInputHealth.lastBroadcastLevel !== 0))) {
+    syncSpeechInputHealth.lastBroadcastAt = now;
+    syncSpeechInputHealth.lastBroadcastLevel = percent;
+    broadcastSpeechAiUpdate({ audioLevel: percent });
+  }
 }
 
 function syncActiveSpeechSettings() {
@@ -9375,11 +9396,6 @@ function addAiToAgenda(sugId) {
 // ── Live Microphone Hardware Discovery & Real-Time VU Level Meter ──────────────
 /* hoisted */
 /* hoisted */
-let audioMeterContext = null;
-let audioMeterAnalyser = null;
-let audioMeterStream = null;
-let audioMeterAnimFrame = null;
-let audioMeterRequestId = 0;
 
 async function refreshAudioInputDevices() {
   const select = document.getElementById('setting-audio-mic-select');
@@ -9452,96 +9468,9 @@ function selectAudioInputDevice(deviceId, deviceLabel) {
   }
 }
 
-async function startAudioVuMeter(deviceId) {
-  stopAudioVuMeter();
-  const requestId = audioMeterRequestId;
-  const meterBar = document.getElementById('mic-vu-meter-bar');
-  const levelText = document.getElementById('mic-vu-level-text');
-
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-
-  try {
-    const constraints = {
-      audio: deviceId && deviceId !== 'default'
-        ? { deviceId: { ideal: deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: true }
-        : true
-    };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    if (requestId !== audioMeterRequestId) {
-      stream.getTracks().forEach(track => track.stop());
-      return;
-    }
-    audioMeterStream = stream;
-
-    audioMeterContext = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioMeterContext.state === 'suspended') {
-      await audioMeterContext.resume();
-      if (requestId !== audioMeterRequestId) return;
-    }
-    const source = audioMeterContext.createMediaStreamSource(audioMeterStream);
-    audioMeterAnalyser = audioMeterContext.createAnalyser();
-    audioMeterAnalyser.fftSize = 256;
-    audioMeterAnalyser.smoothingTimeConstant = 0.4;
-    source.connect(audioMeterAnalyser);
-
-    const dataArray = new Uint8Array(audioMeterAnalyser.frequencyBinCount);
-
-    let lastAudioActivityTime = 0;
-    let lastAudioBroadcastTime = 0;
-
-    function updateMeter() {
-      if (requestId !== audioMeterRequestId || !audioMeterAnalyser) return;
-      audioMeterAnalyser.getByteFrequencyData(dataArray);
-
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        sum += dataArray[i];
-      }
-      const avg = sum / dataArray.length;
-      const percent = Math.min(100, Math.round((avg / 120) * 100));
-
-      if (percent > 2) {
-        lastAudioActivityTime = Date.now();
-      }
-      const isAudible = (Date.now() - lastAudioActivityTime) < 1600;
-      if (speechAi && typeof speechAi.setAudioActivity === 'function') {
-        speechAi.setAudioActivity(isAudible);
-      }
-
-      if (meterBar) {
-        meterBar.style.width = `${percent}%`;
-        if (percent > 75) {
-          meterBar.style.background = 'linear-gradient(90deg, #22C55E 0%, #EAB308 65%, #EF4444 100%)';
-        } else if (percent > 40) {
-          meterBar.style.background = 'linear-gradient(90deg, #22C55E 0%, #EAB308 100%)';
-        } else {
-          meterBar.style.background = 'linear-gradient(90deg, #10B981, #22C55E)';
-        }
-      }
-
-      if (levelText) {
-        levelText.textContent = `${percent}%`;
-      }
-
-      updateMicSignalBars(percent);
-
-      // Stream live audio meter levels to remote operators
-      if (state.aiListening && Date.now() - lastAudioBroadcastTime > 180) {
-        lastAudioBroadcastTime = Date.now();
-        broadcastSpeechAiUpdate({ audioLevel: percent });
-      }
-
-      audioMeterAnimFrame = requestAnimationFrame(updateMeter);
-    }
-
-    updateMeter();
-
-  } catch (err) {
-    if (requestId !== audioMeterRequestId) return;
-    stopAudioVuMeter();
-    if (levelText) levelText.textContent = 'Mic unavailable';
-    console.warn('Microphone level monitoring unavailable:', err);
-  }
+async function startAudioVuMeter() {
+  // Opening settings must not capture another microphone or alter the speech session.
+  syncSpeechInputHealth(speechAi?.audioHealth);
 }
 
 function updateMicSignalBars(percent) {
@@ -9588,28 +9517,8 @@ function updateMicSignalBars(percent) {
 }
 
 function stopAudioVuMeter() {
-  audioMeterRequestId++;
-  audioMeterAnalyser = null;
-  if (audioMeterAnimFrame) {
-    cancelAnimationFrame(audioMeterAnimFrame);
-    audioMeterAnimFrame = null;
-  }
-  if (audioMeterStream) {
-    try { audioMeterStream.getTracks().forEach(t => t.stop()); } catch (e) { }
-    audioMeterStream = null;
-  }
-  if (audioMeterContext && audioMeterContext.state !== 'closed') {
-    try { audioMeterContext.close(); } catch (e) { }
-    audioMeterContext = null;
-  }
-  if (speechAi && typeof speechAi.setAudioActivity === 'function') {
-    speechAi.setAudioActivity(false);
-  }
-  const meterBar = document.getElementById('mic-vu-meter-bar');
-  const levelText = document.getElementById('mic-vu-level-text');
-  if (meterBar) meterBar.style.width = '0%';
-  if (levelText) levelText.textContent = '0%';
-  updateMicSignalBars(0);
+  // Reset the UI only; the speech engine owns its capture and monitoring resources.
+  syncSpeechInputHealth(null);
 }
 
 // Auto-detect plugged / unplugged microphones (USB mics, headsets, mixer lines)
