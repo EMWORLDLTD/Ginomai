@@ -1486,7 +1486,7 @@ body {
   flex-direction: column;
   gap: 6px;
   opacity: 0.95;
-  transition: var(--transition-smooth);
+  transition: border-color 0.04s ease, background 0.04s ease, opacity 0.04s ease;
   height: 100%;
   max-height: 100%;
   overflow: hidden;
@@ -1565,7 +1565,7 @@ body {
   font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: var(--transition-smooth);
+  transition: color 0.04s ease, background 0.04s ease, border-color 0.04s ease;
   flex-shrink: 0;
   align-self: center;
 }
@@ -2380,7 +2380,7 @@ select option {
   opacity: 0;
   transform: translateY(-6px) scale(0.98);
   pointer-events: none;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -3452,6 +3452,49 @@ select option {
   min-width: 0;
 }
 
+/* A compact reference list, separate from projection controls. */
+.settings-hotkeys-list {
+  width: 100%;
+  max-width: 680px;
+}
+
+body #tab-shortcuts .settings-hotkeys-list .shortcut-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1)) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+body #tab-shortcuts .settings-hotkeys-list .shortcut-action-name {
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 500 !important;
+}
+
+body #tab-shortcuts .settings-hotkeys-list .shortcut-card .shortcut-kbd {
+  flex-shrink: 0;
+  white-space: nowrap;
+  background: var(--card, #151c2a) !important;
+  border-color: var(--border-strong, rgba(255, 255, 255, 0.14)) !important;
+  color: var(--text, #f3f2f7) !important;
+  box-shadow: none !important;
+}
+
+#tab-control .custom-select-wrapper {
+  flex-shrink: 0;
+}
+
+#tab-control .custom-select-trigger {
+  width: 100%;
+  transition: background 0.04s, border-color 0.04s;
+}
+
 .settings-field-label {
   font-size: 13px;
   font-weight: 550;
@@ -3767,7 +3810,7 @@ input:checked+.settings-slider:before {
   position: fixed;
   bottom: 42px;
   right: 24px;
-  z-index: 100000;
+  z-index: 2147483647;
   display: flex;
   flex-direction: column;
   gap: 8px;

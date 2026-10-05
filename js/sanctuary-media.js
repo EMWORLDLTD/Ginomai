@@ -1,8 +1,8 @@
 /* Saved local media uses host-served URLs, never browser-only blob URLs. */
 (() => {
-  let loading;
+  let loading, deleting = false;
   const uploadHelp = 'Images, GIFs and videos · Up to 250 MB each · Videos loop without sound';
-  window.loadSanctuaryUploads = function () {
+  window.loadSanctuaryUploads = function (publish = true) {
     if (loading) return loading;
     loading = (async () => {
       try {
@@ -15,9 +15,9 @@
         if (status) status.textContent = uploadHelp;
         items.forEach(item => { window.SANCTUARY_THEMES[item.id] = item; });
         const manager = window.themeManager;
-        if (manager.activeSanctuaryTheme.startsWith('upload_')) {
+        if (publish && manager.activeSanctuaryTheme.startsWith('upload_')) {
           if (!window.SANCTUARY_THEMES[manager.activeSanctuaryTheme]) manager.activeSanctuaryTheme = 'celestial_motion';
-          manager.broadcastSanctuaryTheme();
+          if (publish) manager.broadcastSanctuaryTheme();
           if (manager.sanctuaryDraft && !manager.hasSanctuaryDraftChanges()) manager.beginSanctuaryDraft();
         }
         manager.updateSanctuaryUi();
@@ -58,7 +58,7 @@
     });
   }
 
-  window.uploadSanctuaryBackgrounds = async function (input) {
+  window.uploadSanctuaryBackgrounds = async function (input, options = {}) {
     const files = Array.from(input.files || []);
     input.value = '';
     if (!files.length) return;
@@ -68,7 +68,7 @@
     const failures = [];
     let saved = 0;
     try {
-      await window.loadSanctuaryUploads();
+      await window.loadSanctuaryUploads(options.publish !== false);
       for (const file of files) {
         status.textContent = `Reading ${file.name}…`;
         try {
@@ -89,10 +89,11 @@
             xhr.send(file);
           });
           window.SANCTUARY_THEMES[item.id] = item;
+          options.onSaved?.(item);
           saved++;
         } catch (error) { failures.push(`${file.name}: ${error.message}`); }
       }
-      if (saved) window.filterSanctuaryThemes('uploads');
+      if (saved) { window.filterSanctuaryThemes('uploads'); window.refreshStyleGallery?.(); }
       status.textContent = [saved ? `${saved} background${saved === 1 ? '' : 's'} saved in Custom. Select one to preview it.` : '', ...failures].filter(Boolean).join(' ');
     } finally { button.disabled = false; }
   };
@@ -135,12 +136,13 @@
     }
   };
 
-  window.deleteSanctuaryBackground = async function (themeId) {
+  window.deleteSanctuaryBackground = async function (themeId, options = {}) {
     const theme = window.SANCTUARY_THEMES?.[themeId];
-    if (!theme || !theme.custom) return;
+    if (!theme || !theme.custom || deleting) return;
+    deleting = true;
 
     window._sfSuppressSanctuaryClose = true;
-    const modal = document.getElementById('sanctuary-theme-modal-backdrop');
+    const modal = options.source === 'style' ? null : document.getElementById('sanctuary-theme-modal-backdrop');
 
     try {
       const confirmed = typeof window.showCustomConfirm === 'function'
@@ -161,7 +163,7 @@
       }
 
       if (!confirmed) {
-        const uploadBtn = document.getElementById('sanctuary-upload-button');
+        const uploadBtn = document.getElementById(options.source === 'style' ? options.focusId || 'style-upload-trigger' : 'sanctuary-upload-button');
         if (uploadBtn) uploadBtn.focus({ preventScroll: true });
         return;
       }
@@ -179,10 +181,14 @@
       const remainingCustomThemes = Object.values(window.SANCTUARY_THEMES || {}).filter(t => t.custom);
       const fallbackThemeId = remainingCustomThemes.length > 0 ? remainingCustomThemes[0].id : 'celestial_motion';
 
+      // Clear references in both Output style libraries before publishing a fallback.
+      window.onStyleBackgroundDeleted?.(themeId, theme, fallbackThemeId);
+
       const manager = window.themeManager;
       if (manager) {
         if (manager.activeSanctuaryTheme === themeId) {
           manager.activeSanctuaryTheme = fallbackThemeId;
+          try { localStorage.setItem('sf_sanctuary_theme', fallbackThemeId); } catch (_) {}
           manager.broadcastSanctuaryTheme();
         }
         if (manager.sanctuaryDraft && manager.sanctuaryDraft.activeSanctuaryTheme === themeId) {
@@ -190,12 +196,12 @@
         }
         manager.updateSanctuaryUi();
       }
-      if (typeof window.updateSanctuaryFramingPreview === 'function') {
+      if (modal && typeof window.updateSanctuaryFramingPreview === 'function') {
         window.updateSanctuaryFramingPreview();
       }
 
       // Safely move focus to safe control inside theme modal before card removal
-      const uploadBtn = document.getElementById('sanctuary-upload-button');
+      const uploadBtn = document.getElementById(options.source === 'style' ? options.focusId || 'style-upload-trigger' : 'sanctuary-upload-button');
       if (uploadBtn) uploadBtn.focus({ preventScroll: true });
 
       const card = document.querySelector(`.sanctuary-theme-card[data-theme-id="${themeId}"]`);
@@ -229,6 +235,7 @@
         window.showToast(error.message || 'Could not delete background', 'error');
       }
     } finally {
+      deleting = false;
       setTimeout(() => {
         window._sfSuppressSanctuaryClose = false;
       }, 350);

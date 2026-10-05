@@ -745,6 +745,7 @@
 #ann-live-preview { display:block; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0; }
 #ann-live-destinations { font-size:10px; flex-shrink:0; }
 #ann-stop-live { order:4; flex:0 0 auto; width:auto; padding:4px 12px; }
+#ann-live-summary .sf-output-status { order:6; flex:0 0 auto; margin-left:auto; white-space:nowrap; }
 @container announcement-workspace (max-width:639px) {
   #announcement-hub-drawer .ann-drawer-content { display:flex; flex-direction:column; overflow:auto; }
   #announcement-hub-drawer .ann-simple-compose { flex:0 0 auto; overflow:visible; }

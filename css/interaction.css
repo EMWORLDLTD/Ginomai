@@ -13,6 +13,15 @@ select:focus-visible, textarea:focus-visible, a:focus-visible {
   outline: 2px solid var(--sf-focus) !important;
   outline-offset: 3px !important;
 }
+/* The rounded search bar owns focus feedback, rather than its inner input. */
+body .bento-searchbox input:focus,
+body .bento-searchbox input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+body .bento-searchbox:has(input:focus-visible) {
+  border-color: var(--sf-focus);
+}
 /* Segmented controls, tabs, and pill switches must never show detached/floating offset outlines */
 :is(.bento-tabs2, .bento-seg, .tabs, .tabs2, [role="tablist"]) :is(span, [role="button"], [role="tab"], button) {
   outline: none !important;

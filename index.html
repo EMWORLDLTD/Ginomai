@@ -8,13 +8,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Didact+Gothic&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/main.css?v=20260903-05">
+  <link rel="stylesheet" href="css/main.css?v=20261004-01">
   <link rel="stylesheet" href="css/bento-theme.css?v=20260903-13">
   <link rel="stylesheet" href="css/interaction.css?v=20260903-13">
   <link rel="stylesheet" href="css/song-editor.css?v=20260927-01">
   <link rel="stylesheet" href="css/library-manager.css?v=20260927-01">
   <link rel="stylesheet" href="css/broadcast-hub.css?v=20260927-01">
   <link rel="stylesheet" href="css/stage-preview.css?v=20260927-01">
+  <link rel="stylesheet" href="css/presentation-controls.css">
+  <link rel="stylesheet" href="css/presentation-media.css">
   <link rel="stylesheet" href="css/announcements.css?v=20260928-01">
   <script src="js/accessibility.js"></script>
   <style id="sf-deck-grid-guarantee">
@@ -182,6 +184,7 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
               Service agenda
             </div>
+            <div class="agenda-add-menu"><button type="button" id="agenda-add-trigger" aria-expanded="false" aria-controls="agenda-add-options" onclick="toggleAgendaAdd(event)">Add</button><div id="agenda-add-options" hidden><button type="button" onclick="closeAgendaAdd();openOmniSearchPalette('all')">Song or Bible</button><button type="button" onclick="closeAgendaAdd();openCountdownSetup()">Countdown</button><button type="button" onclick="closeAgendaAdd();switchBentoTab('media')">Media</button><button type="button" onclick="closeAgendaAdd();addCustomAgendaPrompt()">Custom item</button></div></div>
             <div class="bento-count-badge" id="bento-agenda-count">0</div>
           </div>
           <div class="bento-list" id="bento-agenda-list">
@@ -202,7 +205,9 @@
           <div class="bento-card-head">
             <div class="bento-tabs2" role="tablist" aria-label="Library category">
               <span id="bento-tab-bible" role="tab" aria-selected="false" onclick="switchBentoTab('bible')">Bible</span>
+
               <span id="bento-tab-songs" role="tab" aria-selected="true" class="active" onclick="switchBentoTab('songs')">Songs</span>
+              <button type="button" id="bento-tab-media" role="tab" aria-selected="false" onclick="switchBentoTab('media')">Media</button>
             </div>
             <div class="bento-trans-sel" id="bento-trans-sel" onclick="toggleTranslationDropdown(event)">
               <span id="bento-active-version-label">NIV</span>
@@ -227,6 +232,7 @@
             <span id="bento-search-clear" style="display:none; cursor:pointer; font-size:11px; opacity:0.6; line-height:1; padding:0 3px;" onclick="clearBentoSearch()" title="Clear search">✕</span>
             <button type="button" class="tag-chip" style="font-size:9px; padding:2px 6px; border-radius:4px; flex-shrink:0; cursor:pointer;" onclick="openOmniSearchPalette(state.currentTab === 'bible' ? 'verses' : 'songs', document.getElementById('bento-search-input').value)" title="Open floating omni search">Omni ↗</button>
           </div>
+<input id="presentation-media-input" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.avif,.mp4,.webm,.mov,.m4v,.ogv" multiple hidden onchange="uploadPresentationMedia(this)"><p id="media-upload-status" role="status"></p>
           <div class="bento-list" id="bento-library-list">
             <div class="bento-empty-unit compact">
               <div class="empty-icon">
@@ -288,6 +294,7 @@
             </div>
           </div>
 
+          <div id="media-controls-bar" hidden></div>
           <div class="bento-medley" id="bento-medley-container">
             <div class="bento-empty-unit hero">
               <div class="empty-icon">
@@ -308,6 +315,10 @@
       <span id="ann-live-destinations"></span>
       <button type="button" id="ann-stop-live" class="alert-clear-btn" onclick="clearLiveAlert()" hidden>Stop</button>
       <button type="button" id="ann-collapse" class="ann-action-btn" onclick="closeAnnouncementHub()" aria-label="Collapse announcements">Collapse</button>
+      <div class="sf-output-status" aria-label="Display connections" role="status">
+        <span id="sanctuary-connection">Projector: checking…</span>
+        <span id="livestream-connection">Livestream: checking…</span>
+      </div>
     </section>
   <aside id="announcement-hub-drawer" class="announcement-drawer" role="region" aria-label="Announcements" hidden inert>
     <div class="ann-drawer-content">
@@ -359,19 +370,19 @@
           <div class="bento-mode-row">
             <div class="bento-card-title">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-              Stage preview
+              Output preview
             </div>
             <div class="bento-prev-top-cluster">
-              <!-- Custom Stage Transition Dialog & Trigger -->
+              <button type="button" id="presentation-settings-trigger" aria-label="Output style" title="Preview output style" aria-controls="presentation-settings" aria-expanded="false" onclick="togglePresentationSettings()">Style</button>
 
               <div class="bento-live-cluster idle" id="bento-live-status"><i></i>IDLE</div>
             </div>
           </div>
           <div class="bento-prev-mode-row">
-            <div class="bento-seg" id="bento-prev-mode-seg" role="group" aria-label="Stage preview layout">
-              <button type="button" id="bento-prev-mode-full" class="active" role="button" aria-pressed="true" onclick="setPreviewTargetMode('sanctuary')" title="Full-screen Sanctuary output">Full screen</button>
-              <button type="button" id="bento-prev-mode-lt" role="button" aria-pressed="false" onclick="setPreviewTargetMode('livestream')" title="Lower-third livestream overlay">Lower third</button>
-              <button type="button" id="bento-prev-mode-dual" role="button" aria-pressed="false" onclick="setPreviewTargetMode('dual')" title="Show both outputs">Dual</button>
+            <div class="bento-seg" id="bento-prev-mode-seg" role="group" aria-label="Output preview target">
+              <button type="button" id="bento-prev-mode-full" class="active" role="button" aria-pressed="true" onclick="setPreviewTargetMode('sanctuary')" title="View the Projector output">Projector</button>
+              <button type="button" id="bento-prev-mode-lt" role="button" aria-pressed="false" onclick="setPreviewTargetMode('livestream')" title="View the Livestream output">Livestream</button>
+              <button type="button" id="bento-prev-mode-dual" role="button" aria-pressed="false" onclick="setPreviewTargetMode('dual')" title="View both outputs">Both</button>
             </div>
           </div>
 
@@ -402,7 +413,7 @@
               <div class="bento-dual-prev-wrap" id="bento-dual-prev-wrap" style="display:none;">
                 <div class="bento-dual-mon bento-dual-sanctuary" id="bento-dual-sanctuary">
                 <div id="ann-preview-sanctuary" class="ann-preview-ticker" hidden aria-hidden="true"><span class="ann-preview-scroll-text"></span></div>
-                  <span class="dual-mon-badge sanctuary-badge">SANCTUARY 16:9</span>
+                  <span class="dual-mon-badge sanctuary-badge">PROJECTOR</span>
                   <div class="dual-mon-bg" id="bento-dual-sanctuary-bg">
                     <video class="bento-dual-sanctuary-video" id="bento-dual-sanctuary-video" autoplay loop muted playsinline></video>
                   </div>
@@ -413,7 +424,7 @@
                 </div>
                 <div class="bento-dual-mon bento-dual-livestream" id="bento-dual-livestream">
                 <div id="ann-preview-livestream" class="ann-preview-ticker" hidden aria-hidden="true"><span class="ann-preview-scroll-text"></span></div>
-                  <span class="dual-mon-badge livestream-badge">LIVESTREAM OBS</span>
+                  <span class="dual-mon-badge livestream-badge">LIVESTREAM</span>
                   <div class="dual-mon-camera-sim">
                     <div class="cam-silhouette"></div>
                   </div>
@@ -431,15 +442,10 @@
             </button>
             <button type="button" class="bento-sbtn hold" id="bento-hold-btn" onclick="toggleHoldLive()" title="Hold current slide live">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <span class="btn-label">Hold</span>
+              <span class="btn-label">Hold live</span>
             </button>
-          <button type="button" class="bento-sbtn trans" id="bento-trans-btn" onclick="toggleTransparencyLive()" title="Toggle transparent background for OBS overlay">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-              <span>Transparent</span>
-            </button><button type="button" class="bento-sbtn theme" id="bento-theme-btn" onclick="openSanctuaryThemeModal()" title="Sanctuary Visual Themes & Fonts">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
-              <span>Themes</span>
-            </button></div>
+
+          </div>
           <!-- Active Live Alert Tally & Quick-Dismiss Strip under Stage Preview -->
           <div id="bento-live-alert-strip" class="bento-live-alert-strip" style="display:none;">
             <div class="alert-strip-left">
@@ -460,13 +466,7 @@
               </div>
             </div>
           </section>
-          <div class="bento-prev-status-row">
-            <div class="sf-output-status" aria-label="Display connections" role="status">
-              <span id="sanctuary-connection">Sanctuary: checking…</span>
-              <span id="livestream-connection">Stream: checking…</span>
-            </div>
-
-          </div>
+          <div id="media-playback-controls" hidden aria-label="Live video controls"></div>
         </div>
 
 <!-- Resizable Splitter between Stage Preview & AI Feed in Right Column -->
@@ -584,6 +584,7 @@
         <button type="button" class="sanctuary-cat-tab active" data-cat="all" aria-pressed="true" onclick="filterSanctuaryThemes('all')">All backgrounds</button>
         <button type="button" class="sanctuary-cat-tab" data-cat="motion" aria-pressed="false" onclick="filterSanctuaryThemes('motion')">Motion</button>
         <button type="button" class="sanctuary-cat-tab" data-cat="still" aria-pressed="false" onclick="filterSanctuaryThemes('still')">Still</button>
+        <button type="button" class="sanctuary-cat-tab" data-cat="colors" aria-pressed="false" onclick="filterSanctuaryThemes('colors')">Colors</button>
         <button type="button" class="sanctuary-cat-tab" data-cat="uploads" aria-pressed="false" onclick="filterSanctuaryThemes('uploads')">Custom</button>
         <button type="button" class="sanctuary-cat-tab" data-cat="minimal" aria-pressed="false" onclick="filterSanctuaryThemes('minimal')">Minimal</button>
       </div>
@@ -755,7 +756,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2" style="flex-shrink:0;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             <div style="min-width:0;">
               <div style="display:flex; align-items:center; gap:6px;">
-                <span class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">OBS & vMix</span>
+                <span class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Livestream — OBS / vMix</span>
 
               </div>
               <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Switches between full screen and lower-third with your live layout.</div>
@@ -774,7 +775,7 @@
           <div style="display:flex; align-items:center; gap:12px; min-width:0;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2" style="flex-shrink:0;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             <div style="min-width:0;">
-              <div class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Sanctuary Projector</div>
+              <div class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Projector</div>
               <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Full-screen lyrics and backgrounds for your sanctuary display.</div>
             </div>
           </div>
@@ -786,12 +787,12 @@
           </div>
         </div>
 
-        <!-- 3. Lower-third overlay -->
+<details class="hub-advanced"><summary>Advanced output</summary>        <!-- 3. Lower-third overlay -->
         <div class="links-row" style="padding:11px 4px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
           <div style="display:flex; align-items:center; gap:12px; min-width:0;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F472B6" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
             <div style="min-width:0;">
-              <div class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Lower-third overlay</div>
+              <div class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Overlay only</div>
               <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">A fixed lower-third for lyrics over your camera feed.</div>
             </div>
           </div>
@@ -803,6 +804,7 @@
           </div>
         </div>
 
+</details>
         <!-- 4. Stage Confidence Monitor (Choir / Pastors) -->
         <div class="links-row" style="padding:11px 4px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
           <div style="display:flex; align-items:center; gap:12px; min-width:0;">
@@ -1454,9 +1456,14 @@ My chains are gone, I've been set free..."></textarea>
               <span>Bibles & Songs Repositories</span>
             </div>
 
+            <div class="settings-nav-item" onclick="switchSettingsTab('control', this)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+              <span>Control</span>
+            </div>
+
             <div class="settings-nav-item" onclick="switchSettingsTab('shortcuts', this)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6.01" y2="8"/><line x1="10" y1="8" x2="10.01" y2="8"/><line x1="14" y1="8" x2="14.01" y2="8"/><line x1="18" y1="8" x2="18.01" y2="8"/><line x1="8" y1="12" x2="8.01" y2="12"/><line x1="12" y1="12" x2="12.01" y2="12"/><line x1="16" y1="12" x2="16.01" y2="12"/><line x1="7" y1="16" x2="17" y2="16"/></svg>
-              <span>Hotkeys & Control</span>
+              <span>Hotkeys</span>
             </div>
 
             <div class="settings-nav-item" onclick="switchSettingsTab('help', this)">
@@ -1772,6 +1779,7 @@ My chains are gone, I've been set free..."></textarea>
                 <select class="settings-select-custom" id="setting-concordance-style" style="width:240px;" onchange="updateConcordanceStyleSetting(this.value)">
                   <option value="hero" selected>Modern Focus Card (Flashcard)</option>
                   <option value="classic">Classic Theological Card</option>
+                  <option value="glass">Liquid Glass</option>
                 </select>
               </div>
 
@@ -2129,55 +2137,62 @@ My chains are gone, I've been set free..."></textarea>
             </div>
           </div>
 
-          <!-- TAB 5: HOTKEYS & SHORTCUTS -->
-          <div id="tab-shortcuts" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
-            <label>Slide selection
-              <select id="projection-workflow" onchange="setProjectionWorkflow(this.value)">
-                <option value="smart">Smart Follow-Suit — stage new items, follow through</option>
-                <option value="instant">Instant — click to project</option>
-                <option value="preview">Preview — select, then Take live</option>
-              </select>
-            </label>
-            <p>Smart mode stages the first verse of a new song or chapter for safe review, then lets you click through remaining verses instantly once live. Instant mode projects every click immediately. Preview mode requires Take Live for every slide.</p>
-            <div>
-              <div class="settings-section-title">Keyboard Shortcuts & Fast Control</div>
-              <div class="settings-section-desc">Master hotkeys for instantaneous live service broadcast operation.</div>
+          <!-- SLIDE CONTROL -->
+          <div id="tab-control" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
+            <div class="settings-section-title">Control</div>
+            <div class="settings-card-group">
+              <div class="settings-field-row" style="flex-wrap:wrap; gap:10px;">
+                <div class="settings-field-info" style="flex:1 1 200px;">
+                  <label class="settings-field-label" for="projection-workflow">Slide selection</label>
+                  <div class="settings-field-sub">Smart previews new songs and chapters, then follows live slides.</div>
+                </div>
+                <select class="settings-select-custom" id="projection-workflow" style="width:180px;" onchange="setProjectionWorkflow(this.value)">
+                  <option value="smart">Smart follow-suit</option>
+                  <option value="instant">Instant projection</option>
+                  <option value="preview">Preview, then Take Live</option>
+                </select>
+              </div>
             </div>
+          </div>
 
-            <div class="settings-card-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-              <div class="shortcut-card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-radius:8px;">
-                <span class="shortcut-action-name" style="font-size:12.5px; font-weight:500;">Quick Command Palette</span>
-                <kbd class="shortcut-kbd kbd-pink" style="font-family:var(--font-mono); font-size:11px; font-weight:600;">Ctrl + K</kbd>
+          <!-- HOTKEYS -->
+          <div id="tab-shortcuts" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
+            <div class="settings-section-title">Keyboard shortcuts</div>
+
+            <div class="settings-hotkeys-list">
+              <div class="shortcut-card">
+                <span class="shortcut-action-name">Command palette</span>
+                <kbd class="shortcut-kbd">Ctrl + K</kbd>
               </div>
 
-              <div class="shortcut-card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-radius:8px;">
-                <span class="shortcut-action-name" style="font-size:12.5px; font-weight:500;">Focus Library Search</span>
-                <kbd class="shortcut-kbd kbd-blue" style="font-family:var(--font-mono); font-size:11px; font-weight:600;">Ctrl + L</kbd>
+              <div class="shortcut-card">
+                <span class="shortcut-action-name">Library search</span>
+                <kbd class="shortcut-kbd">Ctrl + L</kbd>
               </div>
 
-              <div class="shortcut-card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-radius:8px;">
-                <span class="shortcut-action-name" style="font-size:12.5px; font-weight:500;">Clear Output Screen</span>
-                <kbd class="shortcut-kbd" style="font-family:var(--font-mono); font-size:11px; font-weight:600;">Space / Esc</kbd>
+              <div class="shortcut-card">
+                <span class="shortcut-action-name">Clear output</span>
+                <kbd class="shortcut-kbd">F1 / Esc</kbd>
               </div>
 
-              <div class="shortcut-card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-radius:8px;">
-                <span class="shortcut-action-name" style="font-size:12.5px; font-weight:500;">Next / Previous Slide</span>
-                <kbd class="shortcut-kbd" style="font-family:var(--font-mono); font-size:11px; font-weight:600;">← / →</kbd>
+              <div class="shortcut-card">
+                <span class="shortcut-action-name">Previous / next slide</span>
+                <kbd class="shortcut-kbd">← / →</kbd>
               </div>
 
-              <div class="shortcut-card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-radius:8px;">
-                <span class="shortcut-action-name" style="font-size:12.5px; font-weight:500;">Blackout Panic Toggle</span>
-                <kbd class="shortcut-kbd kbd-red" style="font-family:var(--font-mono); font-size:11px; font-weight:600;">B</kbd>
+              <div class="shortcut-card">
+                <span class="shortcut-action-name">Hold live</span>
+                <kbd class="shortcut-kbd">H / F5</kbd>
               </div>
 
-              <div class="shortcut-card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-radius:8px;">
-                <span class="shortcut-action-name" style="font-size:12.5px; font-weight:500;">Switch Bible / Songs Tab</span>
-                <kbd class="shortcut-kbd" style="font-family:var(--font-mono); font-size:11px; font-weight:600;">Tab</kbd>
+              <div class="shortcut-card">
+                <span class="shortcut-action-name">Take selected slide live</span>
+                <kbd class="shortcut-kbd">Enter / Space</kbd>
               </div>
 
-              <div class="shortcut-card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-radius:8px;">
-                <span class="shortcut-action-name" style="font-size:12.5px; font-weight:500;">Toggle Medley Deck View</span>
-                <kbd class="shortcut-kbd" style="font-family:var(--font-mono); font-size:11px; font-weight:600;">Ctrl + M</kbd>
+              <div class="shortcut-card">
+                <span class="shortcut-action-name">Previous / next song</span>
+                <kbd class="shortcut-kbd">Ctrl + ← / →</kbd>
               </div>
             </div>
           </div>
@@ -2561,6 +2576,7 @@ My chains are gone, I've been set free..."></textarea>
           <select id="drawer-concordance-style-select" class="strongs-style-select" onchange="updateConcordanceStyleSetting(this.value)" title="Select Concordance presentation card style">
             <option value="hero" selected>Focus Card</option>
             <option value="classic">Theological</option>
+            <option value="glass">Liquid Glass</option>
           </select>
           <select id="drawer-concordance-position-select" class="strongs-style-select" onchange="updateConcordancePositionSetting(this.value)" title="Select Live Stream Position (Right / Left / Center)">
             <option value="right" selected>Right Side</option>
@@ -2708,8 +2724,8 @@ My chains are gone, I've been set free..."></textarea>
   </div>
 
   <!-- ── Custom Dialog (Prompt & Confirm) Modal ────────────────────── -->
-  <div id="sf-custom-dialog-backdrop" class="modal-backdrop sf-dialog-backdrop" style="display:none;" onclick="if(event.target===this){event.stopPropagation(); window.sfCloseCustomDialog(null);}">
-    <div class="sf-custom-dialog-card" onclick="event.stopPropagation()">
+  <div id="sf-custom-dialog-backdrop" class="modal-backdrop sf-dialog-backdrop" style="display:none;" onpointerdown="if(event.target===this){event.preventDefault();event.stopPropagation()}" onclick="if(event.target===this){event.preventDefault();event.stopImmediatePropagation(); window.sfCloseCustomDialog(null);}">
+    <div class="sf-custom-dialog-card" role="dialog" aria-modal="true" aria-labelledby="sf-dialog-title" onclick="event.stopPropagation()">
       <div class="sf-dialog-head">
         <div class="sf-dialog-icon-badge" id="sf-dialog-icon-badge">
           <!-- SVG icon dynamically populated -->
@@ -2718,7 +2734,7 @@ My chains are gone, I've been set free..."></textarea>
           <h3 class="sf-dialog-title" id="sf-dialog-title">Save Session Snapshot</h3>
           <p class="sf-dialog-subtitle" id="sf-dialog-subtitle">Save current agenda snapshot as a new session:</p>
         </div>
-        <button type="button" class="sf-dialog-close-btn" onclick="event.stopPropagation(); window.sfCloseCustomDialog(null)" title="Cancel (Esc)">
+        <button type="button" class="sf-dialog-close-btn" onclick="event.stopPropagation(); window.sfCloseCustomDialog(null)" aria-label="Cancel">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -2830,6 +2846,123 @@ My chains are gone, I've been set free..."></textarea>
     </div>
   </div>
 
+  <div id="presentation-settings-shield" hidden aria-hidden="true" onpointerdown="event.preventDefault(); event.stopPropagation()" onclick="event.preventDefault(); event.stopImmediatePropagation(); closePresentationSettings()"></div>
+  <section id="presentation-settings" role="dialog" aria-modal="true" aria-labelledby="presentation-settings-title" hidden>
+    <header class="style-editor-header">
+      <strong id="presentation-settings-title">Output style</strong>
+      <div class="style-targets" role="group" aria-label="Output destination"><span class="style-selection-indicator" aria-hidden="true"></span><button type="button" data-style-target="sanctuary" onclick="setStyleTarget('sanctuary')">Projector</button><button type="button" data-style-target="livestream" onclick="setStyleTarget('livestream')">Livestream</button></div>
+      <button type="button" aria-label="Close style" onclick="closePresentationSettings()">Close</button>
+    </header>
+    <div class="style-editor-layout">
+      <section class="style-background-column" aria-label="Background library">
+        <div id="style-projector-controls">
+          <p id="style-shared-note" class="presentation-scope">Uses projector theme. Shared edits affect both full-screen outputs.</p>
+          <div class="style-library-heading"><strong>Background library</strong><button type="button" id="style-upload-trigger" onclick="document.getElementById('style-background-upload').click()">Upload background</button></div>
+          <input id="style-background-upload" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.avif,.mp4,.webm,.mov,.m4v,.ogv" multiple hidden onchange="uploadStyleBackground(this)">
+          <div class="style-background-filters" role="group" aria-label="Background type">
+            <span class="style-selection-indicator" aria-hidden="true"></span>
+            <button type="button" data-style-category="all" aria-pressed="true" onclick="filterStyleBackgrounds('all')">All backgrounds</button>
+            <button type="button" data-style-category="motion" aria-pressed="false" onclick="filterStyleBackgrounds('motion')">Motion</button>
+            <button type="button" data-style-category="still" aria-pressed="false" onclick="filterStyleBackgrounds('still')">Still</button>
+            <button type="button" data-style-category="colors" aria-pressed="false" onclick="filterStyleBackgrounds('colors')">Colors</button>
+            <button type="button" data-style-category="uploads" aria-pressed="false" onclick="filterStyleBackgrounds('uploads')">Custom</button>
+            <button type="button" data-style-category="minimal" aria-pressed="false" onclick="filterStyleBackgrounds('minimal')">Minimal</button>
+          </div>
+          <div id="style-background-list" aria-label="Choose a background"></div>
+          <p id="style-background-empty" class="presentation-scope" hidden>No backgrounds in this category. Upload a background to add your own.</p>
+        </div>
+        <div id="style-overlay-controls">
+          <div class="style-library-heading"><strong>Bottom overlay</strong><button type="button" id="stream-upload-trigger" onclick="document.getElementById('stream-image-upload').click()">Upload image</button></div>
+          <label>Verse label <select id="stream-reference-style" onchange="updateStreamAppearance({referenceStyle:this.value})"><option value="inline">Inline</option><option value="tab">Reference tab</option></select></label>
+          <div class="presentation-upload"><span>Background</span><div class="stream-background-options" role="group" aria-label="Overlay background">
+            <button type="button" id="stream-background-solid" onclick="updateStreamAppearance({surface:'solid'})" aria-pressed="false">Solid</button>
+            <button type="button" id="stream-background-none" onclick="updateStreamAppearance({surface:'none'})" aria-pressed="false">Text only</button>
+            <button type="button" id="stream-background-image" onclick="updateStreamAppearance({surface:'image'})" aria-pressed="false" aria-controls="stream-image-library">Image</button>
+          </div><input id="stream-image-upload" type="file" hidden aria-label="Background image" accept="image/png,image/jpeg,image/webp,image/gif" onchange="uploadStreamBackground(this)"></div>
+          <div class="stream-image-actions" id="stream-image-actions" hidden><span id="stream-image-name">Image selected</span><button type="button" id="stream-image-crop" onclick="cropStreamBackground()">Crop</button><button type="button" id="stream-image-clear" onclick="updateStreamAppearance({imageUrl:'',surface:'solid'})">Remove</button></div>
+          <section id="stream-image-library" aria-label="Uploaded overlay images" hidden>
+            <div class="stream-image-library-heading">Uploaded images</div>
+            <div id="stream-image-list" role="group" aria-label="Choose a lower-third background image"></div>
+            <p id="stream-image-empty" class="presentation-scope" hidden>No uploaded images yet. Use Upload image to add one.</p>
+          </section>
+          <p id="stream-upload-status" role="status" class="presentation-scope"></p>
+          <details class="presentation-appearance">
+            <summary>More options</summary>
+            <label id="stream-opacity-row">Darkness <input id="stream-opacity" type="range" min="0" max="100" step="5" oninput="updateStreamAppearance({opacity:Number(this.value)})"></label>
+            <label>Height <select id="stream-band-height" onchange="updateStreamAppearance({height:Number(this.value)})"><option value="20">20% of screen</option><option value="28">28% of screen</option><option value="35">35% of screen</option></select></label>
+            <label id="stream-position-row">Crop position <input id="stream-image-position" type="range" min="0" max="100" step="5" oninput="updateStreamAppearance({position:Number(this.value)})"></label>
+          </details>
+        </div>
+      </section>
+      <aside class="style-preview-column" aria-label="Appearance preview and typography">
+        <div class="style-preview"><iframe id="style-preview-frame" src="display.html?target=sanctuary&amp;embedded=1&amp;draft=1" title="Projector appearance preview" tabindex="-1"></iframe><iframe id="style-preview-livestream-frame" src="display.html?target=livestream&amp;embedded=1&amp;draft=1" title="Livestream appearance preview" tabindex="-1" hidden></iframe></div>
+        <div class="style-preview-caption"><span id="style-preview-caption-label">Preview only</span><button type="button" id="style-compare" onclick="toggleStyleComparison()">View live</button></div>
+        <label id="style-layout-row">Layout <select id="style-layout" onchange="updateStyleDraft({obsModeRule:this.value})"><option value="always_full">Full screen</option><option value="always_lt">Bottom overlay</option></select></label>
+        <div id="style-font-controls">
+          <div class="style-font-heading">Font</div>
+          <div class="style-font-group" role="group" aria-label="Projection font">
+            <button type="button" class="style-font-option" data-style-font="Outfit" aria-pressed="false" onclick="updateStyleDraft({sanctuaryFont:'Outfit'})"><span class="style-font-sample" style="font-family:'Outfit', sans-serif">Aa</span><span>Outfit</span></button>
+            <button type="button" class="style-font-option" data-style-font="Cormorant Garamond" aria-pressed="false" onclick="updateStyleDraft({sanctuaryFont:'Cormorant Garamond'})"><span class="style-font-sample" style="font-family:'Cormorant Garamond', serif">Aa</span><span>Cormorant Garamond</span></button>
+            <button type="button" class="style-font-option" data-style-font="Cinzel" aria-pressed="false" onclick="updateStyleDraft({sanctuaryFont:'Cinzel'})"><span class="style-font-sample" style="font-family:'Cinzel', serif">Aa</span><span>Cinzel</span></button>
+            <button type="button" class="style-font-option" data-style-font="Inter" aria-pressed="false" onclick="updateStyleDraft({sanctuaryFont:'Inter'})"><span class="style-font-sample" style="font-family:'Inter', sans-serif">Aa</span><span>Inter</span></button>
+            <button type="button" class="style-font-option" data-style-font="Century Gothic" aria-pressed="false" onclick="updateStyleDraft({sanctuaryFont:'Century Gothic'})"><span class="style-font-sample" style="font-family:'Century Gothic', 'CenturyGothic', AppleGothic, 'Didact Gothic', sans-serif">Aa</span><span>Century Gothic</span></button>
+          </div>
+          <label>Dimmer <input id="style-dimmer" type="range" min="0" max="80" step="5" oninput="updateStyleDraft({sanctuaryDimmer:Number(this.value)})"></label>
+          <details><summary>More options</summary><label>Background sizing <select id="style-fit" onchange="updateStyleFit(this.value)"><option value="cover">Fill — crop edges</option><option value="contain">Fit — show whole file</option><option value="fill">Stretch</option></select></label></details>
+        </div>
+      </aside>
+    </div>
+    <footer class="style-footer"><span id="style-status" role="status"></span><div><button type="button" onclick="closePresentationSettings()">Cancel</button><button type="button" id="style-apply" onclick="applyStyleDraft()">Apply to live</button></div></footer>
+  </section>
+  <div id="stream-crop-shield" hidden onpointerdown="if(event.target===this){event.preventDefault();event.stopPropagation()}" onclick="if(event.target===this){event.preventDefault();event.stopImmediatePropagation();closeStreamCrop()}">
+    <section class="stream-crop-dialog" role="dialog" aria-modal="true" aria-labelledby="stream-crop-title" aria-describedby="stream-crop-help">
+      <header><h3 id="stream-crop-title">Crop lower-third image</h3><button type="button" onclick="closeStreamCrop()" aria-label="Close crop">Close</button></header>
+      <p id="stream-crop-help">Adjust the image inside the lower-third frame. Save crop adds a fitted copy to your library and keeps the original.</p>
+      <div id="stream-crop-viewport" aria-label="Lower-third crop preview"><img id="stream-crop-image" alt="Selected background crop" draggable="false"></div>
+      <div class="stream-crop-sliders">
+        <label>Zoom <input id="stream-crop-zoom" type="range" min="1" max="4" step="0.01" value="1" oninput="updateStreamCrop()"></label>
+        <label>Horizontal position <input id="stream-crop-x" type="range" min="0" max="100" step="1" value="50" oninput="updateStreamCrop()"></label>
+        <label>Vertical position <input id="stream-crop-y" type="range" min="0" max="100" step="1" value="50" oninput="updateStreamCrop()"></label>
+      </div>
+      <p id="stream-crop-status" role="status"></p>
+      <footer><button type="button" onclick="closeStreamCrop()">Cancel</button><button type="button" id="stream-crop-save" onclick="saveStreamCrop()" disabled>Save crop</button></footer>
+    </section>
+  </div>
+  <div id="agenda-add-shield" hidden aria-hidden="true" style="position:fixed;inset:0;z-index:90001;" onpointerdown="event.preventDefault();event.stopPropagation()" onclick="event.preventDefault();event.stopImmediatePropagation();closeAgendaAdd()"></div>
+  <div id="countdown-setup-shield" class="presentation-dialog-shield" hidden onpointerdown="if(event.target===this){event.preventDefault();event.stopPropagation()}" onclick="if(event.target===this){event.preventDefault();event.stopImmediatePropagation();closeCountdownSetup()}">
+    <section class="presentation-dialog countdown-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="countdown-setup-title">
+      <header><h3 id="countdown-setup-title">Service countdown</h3><button type="button" onclick="closeCountdownSetup()" aria-label="Close countdown">Close</button></header>
+      <div class="countdown-setup-layout">
+        <div class="countdown-setup-fields">
+          <div class="countdown-input-modes" role="group" aria-label="Set countdown by">
+            <button type="button" id="countdown-mode-time" aria-pressed="true" onclick="setCountdownInputMode('time')">Service start time</button>
+            <button type="button" id="countdown-mode-minutes" aria-pressed="false" onclick="setCountdownInputMode('minutes')">Minutes</button>
+          </div>
+          <div id="countdown-time-fields" class="countdown-time-fields">
+            <label>Service start time <input id="countdown-start" type="time" required oninput="updateCountdownSetup()"></label>
+            <label>Service date <input id="countdown-date" type="date" required oninput="updateCountdownSetup()"></label>
+          </div>
+          <label id="countdown-minutes-field" hidden>Countdown minutes <input id="countdown-minutes" type="number" min="1" max="1440" step="1" value="15" oninput="updateCountdownSetup(true)"></label>
+          <p id="countdown-schedule-hint" class="countdown-setup-hint"></p>
+          <label>Heading <input id="countdown-message" type="text" maxlength="160" value="Service starts in" oninput="updateCountdownSetup()"></label>
+          <label>When countdown ends <input id="countdown-completion" type="text" maxlength="160" placeholder="Please rise to your feet" oninput="updateCountdownSetup()"></label>
+          <label>Show on <select id="countdown-dest"><option value="both">Both</option><option value="sanctuary">Projector</option><option value="livestream">Livestream</option></select></label>
+          <details class="countdown-appearance"><summary>Appearance</summary>
+            <label>Font <select id="countdown-font" onchange="updateCountdownSetup()"><option value="">Output font</option><option value="Outfit">Outfit</option><option value="Inter">Inter</option><option value="Cormorant Garamond">Cormorant Garamond</option><option value="Cinzel">Cinzel</option></select></label>
+            <label>Timer size <select id="countdown-size" onchange="updateCountdownSetup()"><option value="0.8">Medium</option><option value="1" selected>Large</option><option value="1.2">Extra large</option></select></label>
+          </details>
+        </div>
+        <aside class="countdown-setup-preview-column" aria-label="Output preview">
+          <strong>Output preview</strong>
+          <div id="countdown-setup-preview" class="countdown-preview" aria-label="Countdown preview"><div id="countdown-preview-display" class="countdown-display"><div id="countdown-preview-message" class="countdown-message">Service starts in</div><div id="countdown-preview-clock" class="countdown-clock">15:00</div></div></div>
+          <div class="countdown-preview-modes" role="group" aria-label="Preview state"><button type="button" id="countdown-preview-running" aria-pressed="true" onclick="setCountdownPreviewFinished(false)">Countdown</button><button type="button" id="countdown-preview-finished" aria-pressed="false" onclick="setCountdownPreviewFinished(true)">Finished message</button></div>
+          <p class="countdown-setup-hint">Start shows the countdown on your selected outputs. Add to agenda prepares it for later.</p>
+        </aside>
+      </div>
+      <p id="countdown-setup-error" role="alert"></p>
+      <footer><button type="button" onclick="closeCountdownSetup()">Cancel</button><button type="button" id="countdown-save" onclick="saveCountdownSetup()">Add to agenda</button><button type="button" id="countdown-start-live" onclick="saveCountdownSetup(true)">Start</button></footer>
+    </section>
+  </div>
   <script src="js/announcements.js"></script>
   <script src="js/app.js"></script>
   <div id="session-save-warning" role="alert" hidden>
@@ -2839,5 +2972,11 @@ My chains are gone, I've been set free..."></textarea>
   </div>
   <script src="js/operator-experience.js"></script>
   <script src="js/output-preview.js"></script>
+  <script src="js/stream-appearance.js"></script>
+  <script src="js/background-thumbnails.js"></script>
+  <script src="js/stream-crop.js"></script>
+  <script src="js/presentation-controls.js"></script>
+  <script src="js/presentation-model.js"></script>
+  <script src="js/presentation-library.js"></script>
 </body>
 </html>

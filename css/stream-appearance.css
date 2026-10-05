@@ -1,0 +1,4 @@
+.card-box.broadcast-card { background:var(--broadcast-surface) !important; background-size:cover !important; background-position:var(--broadcast-image-position) !important; border:1px solid #ffffff26; border-radius:40px; padding:24px 40px; box-shadow:none !important; }
+.card-box.broadcast-card.transparent-bg,.card-box.broadcast-card.broadcast-text-only { border:0; }
+.card-box.broadcast-card .content-line { max-height:none; overflow:visible; }
+.card-box.broadcast-reference-tab .reference-line { align-self:flex-start; max-width:100%; box-sizing:border-box; padding:6px 16px; border-radius:999px; background:#fff; color:#111827; font-size:24px; letter-spacing:.04em; text-shadow:none !important; margin-bottom:12px; }

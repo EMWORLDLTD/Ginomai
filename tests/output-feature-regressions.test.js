@@ -37,7 +37,8 @@ test('real output handles theme-only and SSE theme updates without clearing or r
   const themes=[],alerts=[];
   const c={isStage:false,stageServiceTimer:{},applyLiveAlert:a=>alerts.push(a),applySanctuaryTheme:t=>themes.push(t),
     isLowerThirdLayout:()=>false,lastProcessedTimestamp:1,
-    lastRenderedKey:'s|text|ref||full|0|1|2.2|1.4|0|0',container:{classList:{contains:()=>true}}};
+    window:{LATEST_STATE:null,applyStreamAppearance(){}},document:{getElementById:()=>null},slots:[],ensureAlphaTransparent(){},
+    lastRenderedKey:'s|text|ref||full|0|1|2.2|1.4|0|0|false|false|undefined|undefined',container:{classList:{contains:()=>true}}};
   vm.createContext(c);vm.runInContext(functionSource(display,'applyState'),c);
   c.applyState({type:'sanctuary_theme_sync',sanctuaryTheme:{id:'one'}});
   assert.equal(alerts.length,0);
@@ -45,6 +46,19 @@ test('real output handles theme-only and SSE theme updates without clearing or r
   assert.deepEqual(themes.map(t=>t.id),['one','two']);
   c.applyState({_timestamp:1,alert:{active:true}});
   assert.equal(alerts.length,1,'stale state cannot restore dismissed alerts');
+});
+test('draft frames never poll committed state through the output watchdog', () => {
+  const start=display.indexOf('    // High-Frequency Realtime Watchdog');
+  const end=display.indexOf('    window.applyState = applyState;',start);
+  let callback,requests=0,applied=0;
+  const context={isDraftPreview:true,window:{location:{protocol:'http:',origin:'http://localhost'}},
+    outputStreamConnected:false,setInterval:fn=>callback=fn,
+    fetch:()=>{requests++;return Promise.resolve({json:()=>Promise.resolve({_timestamp:2})});},
+    applyState:()=>applied++,lastProcessedTimestamp:1,lastRenderedKey:''};
+  vm.runInNewContext(display.slice(start,end),context);
+  callback();
+  assert.equal(requests,0);assert.equal(applied,0);
+  context.isDraftPreview=false;callback();assert.equal(requests,1);
 });
 test('monitor defaults are distinct and manual choices survive refresh', async () => {
   const select=()=>({value:'',replaceChildren(){this.value=''},appendChild(){}});
@@ -95,7 +109,7 @@ test('real announcement renderer loops edge tickers, applies speed and stops ins
 });
 
 test('preview +/- uses the displayed song setting for custom IDs and respects Settings limits', () => {
-  const state = { currentTab:'songs',activeLiveSlideId:'custom-verse-1',activeLiveText:'Lyrics',songScaleFull:2.2,songScaleLt:1.4,textSize:1 };
+  const state = { currentMode:'lt',currentTab:'songs',activeLiveSlideId:'custom-verse-1',activeLiveText:'Lyrics',songScaleFull:2.2,songScaleLt:1.4,textSize:1 };
   const c = { state,window:{previewTargetMode:'sanctuary'},
     updateSongScaleFullSetting:v=>state.songScaleFull=v,
     updateSongScaleLtSetting:v=>state.songScaleLt=v,
@@ -116,4 +130,16 @@ test('preview +/- uses the displayed song setting for custom IDs and respects Se
   state.currentTab='bible'; state.activeLiveSlideId='bible_Genesis_1_1';
   c.adjustTextScale(-0.1);
   assert.equal(state.textSize,0.9);
+});
+test('quick sizing patches the readout and preserves clear without running the legacy preview layout', () => {
+  const calls=[],label={},delivery=[];
+  const context={document:{getElementById:id=>id==='bento-textscale-label'?label:{classList:{contains:()=>true}}},
+    quickTextScaleQueued:false,queueMicrotask:fn=>delivery.push(fn),
+    getPreviewTextScaleControl:()=>({value:1.7}),pendingLiveStorage:{clear:true,blackout:false},
+    broadcastState:(payload,alreadyUpdated)=>calls.push({payload,alreadyUpdated})};
+  vm.runInNewContext(functionSource(app,'publishQuickTextScale')+';publishQuickTextScale();',context);
+  assert.equal(label.textContent,'1.7x');assert.equal(calls.length,0);
+  context.pendingLiveStorage.blackout=true;delivery[0]();assert.equal(calls.length,1);
+  assert.equal(calls[0].payload.blackout,true,'queued delivery retains newer output protection');
+  assert.equal(calls[0].payload.clear,true);assert.equal(calls[0].payload.transitionType,'cut');assert.equal(calls[0].alreadyUpdated,true);
 });

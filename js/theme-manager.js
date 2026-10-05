@@ -252,6 +252,32 @@ const SANCTUARY_THEMES = {
   }
 };
 
+// Keep the thumbnail fallback palettes available as independent, media-free themes.
+for (const [id, source, name] of [
+  ['celestial_color', 'celestial_motion', 'Celestial Blue (Gradient)'],
+  ['golden_color', 'golden_motion', 'Sunrise Amber (Gradient)'],
+  ['ember_color', 'ember_motion', 'Ember Purple (Gradient)'],
+  ['emerald_color', 'emerald_motion', 'Emerald Green (Gradient)']
+]) {
+  const base = SANCTUARY_THEMES[source];
+  SANCTUARY_THEMES[id] = {
+    id, name, type:'gradient', badge:'GRADIENT', category:'colors',
+    bgCss:base.previewGradient, previewGradient:base.previewGradient,
+    textColor:base.textColor, headerColor:base.headerColor, textShadow:base.textShadow, font:base.font
+  };
+}
+for (const [id, name, color] of [
+  ['solid_blue', 'Midnight Blue (Solid)', '#163a70'],
+  ['solid_amber', 'Warm Amber (Solid)', '#714000'],
+  ['solid_purple', 'Deep Purple (Solid)', '#4c216a'],
+  ['solid_emerald', 'Forest Green (Solid)', '#0c5141']
+]) {
+  SANCTUARY_THEMES[id] = {
+    id, name, type:'gradient', badge:'SOLID', category:'colors',
+    bgCss:color, previewGradient:color, textColor:'#FFFFFF', headerColor:'#FFFFFF', textShadow:'none', font:'Outfit'
+  };
+}
+
 const THEME_ICONS = {
   sun: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
   moon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`

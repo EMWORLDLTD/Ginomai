@@ -295,6 +295,10 @@ body[data-theme-style="bento"] #bento-layout-root {
 .bento-vu.live-active i.active:nth-child(3) { background: var(--amber); }
 .bento-vu.live-active i.active:nth-child(4) { background: var(--green); }
 
+/* Keep idle and passive input levels visible on the light toolbar. */
+body[data-theme-mode="light"] .bento-vu i { background: #898493; }
+body[data-theme-mode="light"] .bento-vu:not(.live-active) i.active { background: #655c7a; }
+
 .bento-device-sel {
   display: inline-flex;
   align-items: center;
@@ -1216,9 +1220,10 @@ body[data-theme-style="bento"] #bento-layout-root {
 
 .bento-medley {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1229,6 +1234,7 @@ body[data-theme-style="bento"] #bento-layout-root {
   padding: 12px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   box-sizing: border-box;
   transition: opacity 0.04s ease, background 0.04s ease, border-color 0.04s ease;
@@ -1238,6 +1244,10 @@ body[data-theme-style="bento"] #bento-layout-root {
   border-color: var(--green) !important;
   box-shadow: none !important;
   background: var(--card-2);
+}
+
+.bento-slot-col.selected-song:not(.active-song) {
+  border-color: var(--purple);
 }
 
 .bento-slot-col.active-song .bento-slot-badge {
@@ -1314,11 +1324,33 @@ body[data-theme-style="bento"] #bento-layout-root {
   color: var(--purple-text);
 }
 
+.bento-slot-col-head[draggable="true"] .t {
+  cursor: grab;
+}
+
+.bento-slot-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  color: var(--mute);
+  cursor: pointer;
+  transition: color 0.04s ease;
+}
+
+.bento-slot-edit:hover {
+  color: var(--purple-text);
+}
+
 .bento-slides {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   display: flex;
   flex-direction: column;
   gap: calc(8px * var(--deck-scale-medley, var(--deck-scale, 1)));
@@ -1335,6 +1367,8 @@ body[data-theme-style="bento"] #bento-layout-root {
 }
 
 .bento-slide-card {
+  flex-shrink: 0;
+  min-width: 0;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1382,6 +1416,7 @@ body[data-theme-style="bento"] #bento-layout-root {
 }
 
 .bento-slide-card .ln {
+  overflow-wrap: anywhere;
   font-size: calc(11.5px * var(--deck-scale-medley, var(--deck-scale, 1)));
   line-height: 1.5;
   color: var(--dim);

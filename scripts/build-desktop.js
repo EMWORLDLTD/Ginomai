@@ -1,89 +1,114 @@
-// Ginomia - Desktop Build Script
-// Builds Windows NSIS installer and portable executable cleanly without workspace file-locking conflicts.
-
+// Package the main app first, then the branded installer with its offline payload.
 'use strict';
-
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { spawn } = require('child_process');
+const fs = require('node:fs');
+const fsp = fs.promises;
+const path = require('node:path');
+const os = require('node:os');
+const { build, Platform, Arch } = require('electron-builder');
+const { sha256, inventory, run } = require('../electron/installer/install-engine');
 
 const projectRoot = path.resolve(__dirname, '..');
-const tempBuildDir = path.join(os.tmpdir(), 'ginomai-desktop-build');
+const installerRoot = path.join(projectRoot, 'electron', 'installer');
 const installersDir = path.join(projectRoot, 'installers');
 
-const shouldPublish = process.argv.includes('--publish');
-
-console.log('====================================================');
-console.log(' Ginomia — Windows Desktop App Builder');
-console.log('====================================================');
-console.log(`Project root:      ${projectRoot}`);
-console.log(`Build staging dir: ${tempBuildDir}`);
-console.log(`Final output dir:  ${installersDir}`);
-console.log(`Publish to GitHub: ${shouldPublish ? 'YES (Releases)' : 'NO (Local Only)'}`);
-console.log('----------------------------------------------------');
-
-if (!fs.existsSync(installersDir)) {
-  fs.mkdirSync(installersDir, { recursive: true });
+function options(argv, host = process.platform, hostArch = process.arch) {
+  const platform = argv.includes('--mac') ? 'darwin' : 'win32';
+  if (platform === 'darwin' && host !== 'darwin') throw new Error('Build macOS installers on a Mac.');
+  const archIndex = argv.indexOf('--arch');
+  const arch = archIndex === -1 ? (platform === 'darwin' ? hostArch : 'x64') : argv[archIndex + 1];
+  if (!['x64', 'arm64'].includes(arch) || (platform === 'win32' && arch !== 'x64')) throw new Error('Use x64 for Windows, or x64 / arm64 for macOS.');
+  return { platform, arch, publish:argv.includes('--publish'), nativeOnly:argv.includes('--native-only') };
 }
 
-// Normalize path with forward slashes for electron-builder config
-const safeBuildPath = tempBuildDir.replace(/\\/g, '/');
-
-const isWin = process.platform === 'win32';
-const npxCmd = isWin ? 'npx.cmd' : 'npx';
-
-const args = [
-  'electron-builder',
-  '--win',
-  `--config.directories.output=${safeBuildPath}`
-];
-
-if (shouldPublish) {
-  args.push('--publish', 'always');
+function payloadConfig(settings, output) {
+  const mac = settings.platform === 'darwin';
+  return {
+    directories:{ output },
+    files:[...require('../package.json').build.files, '!electron/installer/**', '!output/**', '!docs/installer.md'],
+    ...(settings.publish ? {} : { publish:null }),
+    ...(mac ? {
+      mac:{ target:[{ target:'zip', arch:[settings.arch] }], artifactName:'Ginomia-${version}-mac-${arch}.${ext}' }
+    } : {
+      nsis:{ include:path.join(installerRoot, 'windows.nsh'), artifactName:'Ginomia-${version}-native-${arch}.${ext}', runAfterFinish:false }
+    })
+  };
 }
 
-console.log(`Executing: ${npxCmd} ${args.join(' ')}\n`);
+function wrapperConfig(settings, output, payload, manifestFile, version) {
+  const mac = settings.platform === 'darwin';
+  return {
+    appId:'com.ginomia.setup', productName:'Install Ginomia', asar:true,
+    electronVersion:require('electron/package.json').version,
+    directories:{ output }, extraMetadata:{ version },
+    files:['main.js', 'preload.js', 'install-engine.js', 'renderer.js', 'index.html', 'installer.css', 'icon.svg', 'package.json'],
+    extraResources:[
+      { from:payload, to:mac ? 'payload/Ginomia.app' : 'payload/setup.exe' },
+      { from:manifestFile, to:'installer-manifest.json' }
+    ],
+    publish:null,
+    ...(mac ? {
+      mac:{ category:'public.app-category.utilities', artifactName:'Ginomia-Setup-${version}-mac-${arch}.${ext}' },
+      dmg:{ title:'Install Ginomia', window:{ width:440, height:300 }, contents:[{ x:220, y:145, type:'file' }] }
+    } : {
+      win:{ executableName:'Ginomia Setup', artifactName:'Ginomia-Setup-${version}-win-${arch}.${ext}' },
+      portable:{ requestExecutionLevel:'user' }
+    })
+  };
+}
 
-const builder = spawn(npxCmd, args, {
-  cwd: projectRoot,
-  stdio: 'inherit',
-  shell: true,
-  env: process.env
-});
-
-builder.on('close', (code) => {
-  if (code !== 0) {
-    console.error(`\n⨯ Build failed with exit code ${code}`);
-    process.exit(code);
-  }
-
-  console.log('\n✔ Packaging complete! Copying installer executables to ./installers ...');
-
+async function main() {
+  const settings = options(process.argv.slice(2));
+  const version = require('../package.json').version;
+  const platform = settings.platform === 'darwin' ? Platform.MAC : Platform.WINDOWS;
+  const arch = Arch[settings.arch];
+  const stage = await fsp.mkdtemp(path.join(os.tmpdir(), 'ginomia-build-'));
+  const payloadOutput = path.join(stage, 'application');
+  await fsp.mkdir(installersDir, { recursive:true });
+  console.log(`Building Ginomia ${version} for ${settings.platform} (${settings.arch})`);
   try {
-    const files = fs.readdirSync(tempBuildDir);
-    let copiedCount = 0;
-
-    for (const file of files) {
-      if (file.endsWith('.exe') || file.endsWith('.blockmap') || file.endsWith('.yml')) {
-        const src = path.join(tempBuildDir, file);
-        const dest = path.join(installersDir, file);
-        fs.copyFileSync(src, dest);
-        const sizeMb = (fs.statSync(dest).size / (1024 * 1024)).toFixed(1);
-        console.log(`  -> Copied ${file} (${sizeMb} MB)`);
-        copiedCount++;
-      }
+    const nativeArtifacts = await build({
+      projectDir:projectRoot,
+      targets:platform.createTarget(settings.platform === 'darwin' ? ['zip'] : ['nsis', 'portable'], arch),
+      config:payloadConfig(settings, payloadOutput), publish:settings.publish ? 'always' : 'never'
+    });
+    for (const artifact of nativeArtifacts) await fsp.copyFile(artifact, path.join(installersDir, path.basename(artifact)));
+    // Updater metadata references native app artifacts, never the setup shell.
+    for (const name of await fsp.readdir(payloadOutput)) {
+      if (/\.(yml|blockmap)$/.test(name)) await fsp.copyFile(path.join(payloadOutput, name), path.join(installersDir, name));
     }
-
-    console.log(`\n====================================================`);
-    console.log(`✔ SUCCESS! ${copiedCount} build artifacts available in:`);
-    console.log(`  ${installersDir}`);
-    if (shouldPublish) {
-      console.log(`✔ Released to GitHub: https://github.com/EMWORLDLTD/ginomai-pro/releases`);
+    if (settings.nativeOnly) return;
+    const mac = settings.platform === 'darwin';
+    const appDirectory = path.join(payloadOutput, mac ? (settings.arch === 'x64' ? 'mac' : 'mac-arm64') : 'win-unpacked', ...(mac ? ['Ginomia.app'] : []));
+    const payload = mac ? appDirectory : nativeArtifacts.find(name => path.basename(name) === `Ginomia-${version}-native-${settings.arch}.exe`);
+    if (!payload) throw new Error('The native application installer was not produced.');
+    const files = await inventory(appDirectory);
+    const manifest = {
+      version, platform:settings.platform, arch:settings.arch, appId:require('../package.json').build.appId,
+      installedBytes:files.reduce((sum, file) => sum + file.size, 0),
+      appSha256:await sha256(path.join(appDirectory, ...(mac ? ['Contents', 'Resources'] : ['resources']), 'app.asar')),
+      ...(mac ? { signed:false } : { payloadSha256:await sha256(payload) })
+    };
+    if (mac) {
+      try { await run('/usr/bin/codesign', ['--verify', '--deep', '--strict', appDirectory]); manifest.signed = true; }
+      catch { console.warn('This local application build is unsigned. Release builds need Apple signing credentials.'); }
     }
-    console.log(`====================================================\n`);
-  } catch (err) {
-    console.error('⨯ Error copying output files:', err);
-    process.exit(1);
-  }
-});
+    const manifestFile = path.join(stage, 'installer-manifest.json');
+    await fsp.writeFile(manifestFile, JSON.stringify(manifest, null, 2));
+    console.log('Packaging the branded offline setup app…');
+    await build({
+      projectDir:installerRoot, targets:platform.createTarget(mac ? ['dir'] : ['portable'], arch),
+      config:wrapperConfig(settings, installersDir, payload, manifestFile, version), publish:'never'
+    });
+    if (mac) {
+      // Use macOS's own disk-image tool; no extra DMG tool download is needed.
+      const imageSource = path.join(installersDir, settings.arch === 'x64' ? 'mac' : 'mac-arm64');
+      const imageFile = path.join(installersDir, `Ginomia-Setup-${version}-mac-${settings.arch}.dmg`);
+      await run('/usr/bin/hdiutil', ['create', '-ov', '-volname', 'Install Ginomia', '-srcfolder', imageSource, '-format', 'UDZO', imageFile]);
+    }
+    console.log(`Installers saved to ${installersDir}`);
+    if (settings.publish) console.log('Native updater artifacts were published. Branded setup is saved locally for distribution.');
+  } finally { await fsp.rm(stage, { recursive:true, force:true }); }
+}
+
+if (require.main === module) main().catch(error => { console.error('Desktop build failed:', error.stack || error); process.exitCode = 1; });
+module.exports = { options, payloadConfig, wrapperConfig };

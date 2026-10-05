@@ -17,8 +17,29 @@ function fixture() {
   let broadcasts = 0;
   manager.updateSanctuaryUi = () => {};
   manager.broadcastSanctuaryTheme = () => { broadcasts++; };
-  return { manager, writes, broadcasts: () => broadcasts };
+  return { manager, themes: context.window.SANCTUARY_THEMES, writes, broadcasts: () => broadcasts };
 }
+
+test('fallback colors are permanent media-free gradient themes, with separate flat solids', () => {
+  const {manager, themes, writes, broadcasts} = fixture();
+  manager.beginSanctuaryDraft();
+  const sources={celestial_color:'celestial_motion',golden_color:'golden_motion',ember_color:'ember_motion',emerald_color:'emerald_motion'};
+  for(const [id, source] of Object.entries(sources)) {
+    manager.setSanctuaryTheme(id);
+    const preview=manager.getSanctuaryPayload(manager.sanctuaryDraft);
+    assert.equal(preview.bgCss,themes[source].previewGradient);
+    assert.equal(preview.category,'colors');assert.equal(preview.type,'gradient');
+    assert.equal(preview.imageUrl,'');assert.equal(preview.videoUrl,'');
+  }
+  for(const id of ['solid_blue','solid_amber','solid_purple','solid_emerald']) {
+    manager.setSanctuaryTheme(id);
+    const preview=manager.getSanctuaryPayload(manager.sanctuaryDraft);
+    assert.match(preview.bgCss,/^#[a-f0-9]{6}$/i);assert.equal(preview.badge,'SOLID');
+    assert.equal(preview.imageUrl,'');assert.equal(preview.videoUrl,'');
+  }
+  assert.equal(manager.activeSanctuaryTheme,'celestial_motion');assert.equal(writes.size,0);assert.equal(broadcasts(),0);
+  manager.applySanctuaryDraft();assert.equal(manager.getSanctuaryPayload().id,'solid_emerald');
+});
 
 test('all theme edits remain draft-only until one atomic Apply', () => {
   const { manager, writes, broadcasts } = fixture();
@@ -77,4 +98,3 @@ test('century gothic typography updates draft and applies to sanctuary payload',
   assert.equal(writes.get('sf_sanctuary_font'), 'Century Gothic');
   assert.equal(broadcasts(), 1);
 });
-

@@ -143,6 +143,11 @@
       e.preventDefault();
       e.stopPropagation();
       window.sfCloseCustomDialog(null);
+    } else if (e.key === 'Tab') {
+      const fields = [...backdrop.querySelectorAll('button,input')].filter(node => !node.disabled && node.getClientRects().length);
+      const first = fields[0], last = fields[fields.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
     } else if (e.key === 'Enter' && e.target.id === 'sf-dialog-input') {
       e.preventDefault();
       e.stopPropagation();

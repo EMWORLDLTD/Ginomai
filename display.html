@@ -780,6 +780,56 @@
       color: #0F172A !important;
     }
 
+    /* Liquid glass uses translucent surfaces and highlights without backdrop blur. */
+    .card-box.lexicon-lt-wrapper.lexicon-glass,
+    .full-card-wrapper .lexicon-focus-card.lexicon-glass {
+      position: relative;
+      background: linear-gradient(135deg, rgba(230, 239, 255, 0.23), rgba(147, 164, 208, 0.08) 45%, rgba(218, 225, 255, 0.16)), rgba(18, 25, 45, 0.78) !important;
+      background-color: rgba(18, 25, 45, 0.78) !important;
+      border: 1px solid rgba(235, 242, 255, 0.52) !important;
+      border-left: 1px solid rgba(235, 242, 255, 0.52) !important;
+      border-radius: 26px !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42), inset 0 -1px 0 rgba(157, 180, 231, 0.22), 0 14px 36px rgba(0, 0, 0, 0.24) !important;
+      color: #f7f9ff !important;
+    }
+
+    .lexicon-lt-wrapper.lexicon-glass .lexicon-translation-hero,
+    .lexicon-focus-card.lexicon-glass .lexicon-translation-hero,
+    .lexicon-glass .orig-val {
+      color: #ffffff !important;
+    }
+
+    .lexicon-glass .lexicon-meta-strip {
+      background: rgba(218, 207, 255, 0.12);
+      border-color: rgba(218, 207, 255, 0.3);
+      color: #e2d6ff;
+    }
+
+    .lexicon-glass .lexicon-strong-pill {
+      background: #7952df;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+
+    .lexicon-glass .lexicon-pos-tag,
+    .lexicon-glass .lexicon-trans-val {
+      color: #ddd0ff !important;
+    }
+
+    .lexicon-glass .lexicon-orig-label,
+    .lexicon-glass .lexicon-details-strip {
+      color: #d5deee !important;
+    }
+
+    .lexicon-glass .lexicon-pron-val {
+      color: #b8d9ff !important;
+    }
+
+    .lexicon-glass .lexicon-definition-sub {
+      color: #edf2ff !important;
+      background: rgba(221, 231, 255, 0.1) !important;
+      border-color: rgba(221, 231, 255, 0.2) !important;
+    }
+
     /* Optional Dark Adaptive Card Theme */
     .card-box.lexicon-lt-wrapper.theme-dark,
     .card-box.lexicon-lt-wrapper[data-card-theme="dark"],
@@ -1226,11 +1276,17 @@
     </div>
   </div>
 
+  <link rel="stylesheet" href="css/stream-appearance.css">
+  <script src="js/stream-appearance.js"></script>
   <script src="js/output-fit.js"></script>
+  <link rel="stylesheet" href="css/presentation-media.css">
+  <script src="js/presentation-model.js"></script>
+  <script src="js/presentation-output.js"></script>
   <script>
     'use strict';
 
     const urlParams = new URLSearchParams(window.location.search);
+    const isDraftPreview = urlParams.has('draft') && urlParams.has('embedded');
     const isPreview = urlParams.has('preview') || urlParams.get('mode') === 'preview';
     const rawTarget = (urlParams.get('target') || urlParams.get('mode') || '').toLowerCase();
     const rawLayout = (urlParams.get('layout') || '').toLowerCase();
@@ -1271,6 +1327,7 @@
       if (isStage) return false;
       if (!data) data = window.LATEST_STATE || {};
       if (isExplicitLt) return true;
+      if (['media','countdown'].includes(data.contentType)) return false;
       if (isExplicitFull || isSanctuary) return false;
 
       const obsRule = (data.sanctuaryTheme && data.sanctuaryTheme.obsModeRule) || data.obsModeRule || localStorage.getItem('sf_obs_mode_rule') || 'follow';
@@ -1326,10 +1383,13 @@
       const isTransparent = Boolean(window.LATEST_STATE && window.LATEST_STATE.transparentBg);
 
       // Transparency is strictly for lower-third mode
-      if (isLt && isTransparent) {
-        document.documentElement.style.setProperty('background', 'transparent', 'important');
+      if (isLt && (isTransparent || window.LATEST_STATE?.streamAppearance)) {
+        const previewBackground = urlParams.has('embedded')
+          ? 'repeating-conic-gradient(#646872 0% 25%, #777b85 0% 50%) 0 0 / 72px 72px'
+          : 'transparent';
+        document.documentElement.style.setProperty('background', previewBackground, 'important');
         document.documentElement.style.setProperty('background-color', 'transparent', 'important');
-        document.body.style.setProperty('background', 'transparent', 'important');
+        document.body.style.setProperty('background', previewBackground, 'important');
         document.body.style.setProperty('background-color', 'transparent', 'important');
         return;
       }
@@ -1398,7 +1458,7 @@
           loadSaved();
         });
     }
-    fetchInitialState();
+    if (!isDraftPreview) fetchInitialState();
 
     let sseRetryTimer = null;
     let outputConnectionId = null;
@@ -1437,7 +1497,7 @@
       };
     }
 
-    if (window.location.protocol !== 'file:' && !isPreview) {
+    if (window.location.protocol !== 'file:' && !isPreview && !isDraftPreview) {
       if (!urlParams.has('embedded')) connectSSE();
     }
 
@@ -1539,9 +1599,9 @@
         applySanctuaryTheme({ id: themeId, font: font, dimmer: dimmer, ...cur });
       } catch(e) {}
     }
-    initLocalSanctuaryTheme();
+    if (!isDraftPreview) initLocalSanctuaryTheme();
 
-    if (syncChannel) {
+    if (syncChannel && !isDraftPreview) {
       try { syncChannel.postMessage({ type: 'REQUEST_STATE' }); } catch (e) {}
       syncChannel.onmessage = (event) => {
         if (event.data && event.data.type === 'REQUEST_STATE') return;
@@ -1550,6 +1610,7 @@
     }
 
     window.addEventListener('storage', (event) => {
+      if (isDraftPreview) return;
       if (event.key === 'scriptureflow_live_state' && event.newValue) {
         try { applyState(JSON.parse(event.newValue)); } catch (e) {}
       }
@@ -1558,6 +1619,10 @@
       }
     });
 
+    window.addEventListener('message', event => {
+      if (!isDraftPreview || event.source !== parent || event.origin !== location.origin || event.data?.type !== 'APPEARANCE_PREVIEW') return;
+      applyState(event.data.payload);
+    });
     window.DISPLAY_LEXICON_CACHE = {};
 
     async function ensureLexiconData(strongId) {
@@ -1590,6 +1655,7 @@
       let boxClass = isLt ? 'lt-card-wrapper' : 'full-card-wrapper';
       if (isLt && data.transparentBg) boxClass += ' transparent-bg';
       slot.box.className = 'card-box ' + boxClass;
+      window.applyStreamAppearance?.(slot.box, data, isLt && !isSanctuary && !isStage);
       slot.el.removeAttribute('data-lex-pos');
 
       const isLex = Boolean(data.isLexicon || data.contentType === 'lexicon' || (data.slideId && data.slideId.startsWith('lexicon_')));
@@ -1642,7 +1708,7 @@
         const isLexLt = (targetType === 'livestream') || isExplicitLt || (displayMode !== 'full') || (data.mode === 'lt' || data.mode === 'lowerthird');
         const cardThemeClass = (data.cardTheme === 'dark' || (data.lexiconData && data.lexiconData.cardTheme === 'dark')) ? ' theme-dark' : '';
         if (isLexLt) {
-          slot.box.className = `card-box lt-card-wrapper lexicon-lt-wrapper ${posClass}${cardThemeClass}`;
+          slot.box.className = `card-box lt-card-wrapper lexicon-lt-wrapper ${posClass}${cardThemeClass}${style === 'glass' ? ' lexicon-glass' : ''}`;
           slot.el.setAttribute('data-lex-pos', position);
         } else {
           slot.box.className = `card-box full-card-wrapper${cardThemeClass}`;
@@ -1672,7 +1738,7 @@
         } else {
           // STYLE 1: Focus Hero Flashcard (Bold Transliteration as Biggest Element)
           slot.content.innerHTML = `
-            <div class="lexicon-focus-card">
+            <div class="lexicon-focus-card${style === 'glass' ? ' lexicon-glass' : ''}">
               ${strongId || pos ? `
               <div class="lexicon-meta-strip">
                 ${strongId ? `<span class="lexicon-strong-pill">${escapeHtml(strongId)}</span>` : ''}
@@ -1909,7 +1975,6 @@
         if (raw.sanctuaryTheme) applySanctuaryTheme(raw.sanctuaryTheme);
         return;
       }
-      if (raw.sanctuaryTheme) applySanctuaryTheme(raw.sanctuaryTheme);
       if (raw.serviceTimer) stageServiceTimer = raw.serviceTimer;
       let data = raw;
 
@@ -1939,6 +2004,22 @@
         };
       }
 
+      window.LATEST_STATE = data;
+      if (data.sanctuaryTheme) applySanctuaryTheme(data.sanctuaryTheme);
+      const presentationDimmer=document.getElementById('bg-dimmer-layer');
+      if(presentationDimmer) presentationDimmer.style.display=isLowerThirdLayout(data) ? 'none':'';
+      if (window.renderPresentationOutput?.(data,{isSanctuary,isStage,isExplicitLt,embedded:urlParams.has('embedded')})) {
+        lastProcessedTimestamp=data._timestamp || lastProcessedTimestamp;
+        lastRenderedKey=''; container.classList.remove('visible');
+        if (standbyEl) standbyEl.classList.add('hidden');
+        const hiddenOverlay=isExplicitLt || (!isStage && !(data.destinations || ['sanctuary','livestream']).includes(isSanctuary?'sanctuary':'livestream'));
+        if (bgLayer) bgLayer.style.display=hiddenOverlay || data.blackout ? 'none':'block';
+        if(presentationDimmer && hiddenOverlay) presentationDimmer.style.display='none';
+        document.documentElement.style.setProperty('background',hiddenOverlay ? 'transparent':'#000','important');
+        document.body.style.setProperty('background',hiddenOverlay ? 'transparent':'#000','important');
+        if (isStage && data.countdown) document.getElementById('stage-current-slide-text').textContent=window.PresentationModel.countdownView(data.countdown,data._serverTime || Date.now()).clock;
+        return;
+      }
       const isLex = Boolean(data.isLexicon || data.contentType === 'lexicon' || (data.slideId && data.slideId.startsWith('lexicon_')));
       const lexId = (data.lexiconData && (data.lexiconData.id || data.lexiconData.strongId)) || data.slideId || '';
       const lexWord = (data.lexiconData && data.lexiconData.englishWord) || data.englishWord || '';
@@ -1949,23 +2030,30 @@
       const songScaleLt = data.songScaleLt !== undefined ? data.songScaleLt : 1.4;
       const isLt = isLowerThirdLayout(data);
 
+      // Appearance changes update the existing cards even when slide content is unchanged.
+      window.LATEST_STATE = data;
+      ensureAlphaTransparent();
+      slots.forEach(slot => window.applyStreamAppearance?.(slot.box, data, isLt && !isLex && !isSanctuary && !isStage));
+
       const contentKey = isLex 
         ? `LEX|${lexId}|${lexWord}|${lexStyle}|${lexMode}|${lexPos}|${data.transparentBg ? 1 : 0}`
         : `${data.slideId || ''}|${data.text || ''}|${data.reference || ''}|${data.compare ? JSON.stringify(data.compareData) : ''}|${data.mode}|${data.transparentBg ? 1 : 0}|${data.textSize || 1}|${songScaleFull}|${songScaleLt}|${data.showSongTitleInDisplay ? 1 : 0}|${isLt ? 1 : 0}`;
+
+      const outputKey = `${contentKey}|${!!data.clear}|${!!data.blackout}|${data.projectorActive}|${data.livestreamActive}`;
 
       // Drop stale out-of-order or duplicate broadcast messages
       if (data._timestamp && typeof data._timestamp === 'number') {
         if (data._timestamp < lastProcessedTimestamp) {
           return;
         }
-        if (data._timestamp === lastProcessedTimestamp && lastRenderedKey === contentKey && container.classList.contains('visible')) {
+        if (data._timestamp === lastProcessedTimestamp && lastRenderedKey === outputKey && container.classList.contains('visible')) {
           return;
         }
         lastProcessedTimestamp = data._timestamp;
       }
 
       // If content is already rendered and visible, do nothing (prevents re-render blinking)
-      if (contentKey === lastRenderedKey && container.classList.contains('visible')) {
+      if (outputKey === lastRenderedKey && container.classList.contains('visible')) {
         return;
       }
 
@@ -2086,7 +2174,7 @@
         }
         incomingSlot.el.className = 'slide-slot';
         container.classList.add('visible');
-        lastRenderedKey = contentKey;
+        lastRenderedKey = outputKey;
         return;
       }
 
@@ -2097,7 +2185,7 @@
       container.classList.add('visible');
 
       activeSlotIndex = nextSlotIndex;
-      lastRenderedKey = contentKey;
+      lastRenderedKey = outputKey;
 
       transitionTimer = setTimeout(() => {
         currentActiveSlot.el.className = 'slide-slot';
@@ -2108,6 +2196,7 @@
 
     // High-Frequency Realtime Watchdog for OBS Browser Sources & Output Displays
     setInterval(() => {
+      if (isDraftPreview) return;
       if (window.location.protocol === 'file:') {
         try {
           const saved = localStorage.getItem('scriptureflow_live_state');

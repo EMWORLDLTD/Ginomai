@@ -17,6 +17,8 @@
     if (!deck || !window.state?.activeLiveSlideId) return false;
     // In medley mode, the entire medley is one engaged unit
     if (window.state.isMedleyMode) return true;
+    if (deck.type === 'media') return slideId.startsWith(window.state.activePresentation?.media?.assetId + '_page_');
+    if (deck.type === 'countdown') return slideId === window.state.activeLiveSlideId;
     const isBibleSlide = slideId.startsWith('bible_') || slideId.startsWith('medley_bible_') || slideId.startsWith('para_') || slideId.startsWith('hist_');
     if (deck.type === 'bible') {
       if (!isBibleSlide) return false;
@@ -34,6 +36,7 @@
   function unstageCard() {
     const cleanCard = (c) => {
       c.classList.remove('staged');
+      if (c.classList.contains('media-card')) {c.querySelectorAll('.staged-pill').forEach(el=>el.remove());return;}
       if (typeof window.cleanupLiveCardObserver === 'function') {
         window.cleanupLiveCardObserver(c);
       }
@@ -58,6 +61,11 @@
 
   function injectCardTakeLiveButton(card) {
     if (!card) return;
+    if (card.classList.contains('media-card')) {
+      const head=card.querySelector('.head-tag-row');
+      if(head && !head.querySelector('.staged-pill')) head.insertAdjacentHTML('beforeend','<span class="staged-pill">CUE</span>');
+      return;
+    }
 
     if (card.classList.contains('bento-single-card')) {
       // 1. Remove any pre-existing SVG shape or dock to guarantee a clean slate
@@ -113,6 +121,7 @@
     if (textEl) textEl.textContent = text;
     const prepEl = document.getElementById('prepared-slide');
     if (prepEl) prepEl.hidden = false;
+    window.syncPresentationControls?.();
 
     // Apply .staged class and inject the on-card Take Live action button
     if (typeof document.querySelectorAll === 'function') {
@@ -195,6 +204,7 @@
     prepared = null;
     const prepEl = document.getElementById('prepared-slide');
     if (prepEl) prepEl.hidden = true;
+    window.syncPresentationControls?.();
   };
 
   window.takePreparedSlide = () => {
@@ -272,7 +282,7 @@
       const response = await fetch('/api/output-status');
       if (!response.ok) throw new Error('Offline');
       const { outputs } = await response.json();
-      for (const [target, label] of [['sanctuary', 'Sanctuary'], ['livestream', 'Stream']]) {
+      for (const [target, label] of [['sanctuary', 'Projector'], ['livestream', 'Livestream']]) {
         const output = outputs.find(item => item.target === target);
         const element = document.getElementById(`${target}-connection`);
         const message = `${label}: ${output?.connected ? (output.received ? 'connected · received' : 'connected · syncing') : 'not connected'}`;
@@ -290,7 +300,7 @@
     } catch {
       for (const target of ['sanctuary', 'livestream']) {
         const element = document.getElementById(`${target}-connection`);
-        element.textContent = target === 'sanctuary' ? 'Sanctuary' : 'Stream';
+        element.textContent = target === 'sanctuary' ? 'Projector' : 'Livestream';
         element.title = `${element.textContent}: server disconnected`;
         element.setAttribute('aria-label', element.title);
         element.dataset.connected = 'false';

@@ -25,6 +25,8 @@
       listEl.classList.remove('drag-hover');
       if (cardEl) cardEl.classList.remove('drag-hover');
 
+      const mediaId=e.dataTransfer?.getData('application/presentation-id');
+      if (mediaId) {window.addPresentationAssetToAgenda?.(mediaId);return;}
       let songId = e.dataTransfer ? e.dataTransfer.getData('application/song-id') : null;
       let bibleBook = e.dataTransfer ? e.dataTransfer.getData('application/bible-book') : null;
       const srcIdxStr = e.dataTransfer ? e.dataTransfer.getData('application/agenda-index') : null;
@@ -140,6 +142,10 @@
       if (item.type === 'bible') {
         icoClass = 'scr';
         icoSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
+      } else if (item.type === 'countdown') {
+        icoSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+      } else if (item.type === 'media') {
+        icoSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m3 16 5-5 4 4 4-6 5 7"/></svg>';
       } else if (item.type === 'sermon') {
         icoClass = 'serm';
         icoSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
@@ -169,7 +175,7 @@
           e.dataTransfer.setData('application/bible-book', item.book || item.id);
         }
         e.dataTransfer.setData('application/agenda-index', String(idx));
-        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.effectAllowed = 'copyMove';
         row.classList.add('dragging');
       };
 
@@ -273,7 +279,12 @@
       };
 
       row.onclick = () => {
+        if (['media','countdown'].includes(item.type)) {window.openPresentationItem?.(item);return;}
         if (item.type === 'song') {
+          if (window.state.isMedleyMode) {
+            window.selectSingleViewSong(item.id);
+            return;
+          }
           const isDifferent = (window.state.activeSongId !== item.id);
           window.state.activeSongId = item.id;
           window.state.activeDeckType = 'song';
@@ -314,6 +325,7 @@
   // 2. BENTO LIBRARY RENDERER (BIBLE & SONGS WITH [1][2][3] SLOT BUTTONS & DRAG)
   // ─────────────────────────────────────────────────────────────────────────────
   function renderBentoLibrary(filterQuery = null) {
+    if (window.state?.currentTab === 'media') {window.renderMediaLibrary?.(filterQuery);return;}
     const listEl = document.getElementById('bento-library-list');
     if (!listEl) return;
     const savedScrollTop = listEl.scrollTop;
@@ -412,6 +424,10 @@
         };
 
         row.onclick = () => {
+          if (window.state.isMedleyMode) {
+            window.selectSingleViewSong(song.id);
+            return;
+          }
           if (!window.state) window.state = {};
           const isOpening = window.state.expandedBibleBook !== book;
           if (window.state.expandedBibleBook === book) {
@@ -888,6 +904,13 @@
     const extra = forceLive ? { takeLive: true } : {};
     const data = window._bentoSlideRegistry ? window._bentoSlideRegistry.get(slideId) : null;
     if (data && typeof window.projectSlide === 'function') {
+      if (window.state?.isMedleyMode && slideId.startsWith('medley_') && !slideId.startsWith('medley_bible_')) {
+        const song = (window.SONGS_DATABASE || []).find(item => {
+          const prefix = `medley_${item.id}_`;
+          return slideId.startsWith(prefix) && /^\d+(?:_c\d+)?$/.test(slideId.slice(prefix.length));
+        });
+        if (song) window.state.activeSongId = song.id;
+      }
       window.projectSlide(data.slideId, data.text, data.refStr, extra);
     } else if (typeof window.projectSlide === 'function') {
       const card = document.querySelector(`[data-slide-id="${slideId}"]`);
@@ -900,15 +923,17 @@
   };
 
   function renderBentoDeck() {
+    if (window.renderPresentationDeck?.()) return;
     if (liveCardResizeObserver) {
       try { liveCardResizeObserver.disconnect(); } catch (e) {}
     }
     const container = document.getElementById('bento-medley-container');
     if (!container) return;
+    const songScroll = new Map(Array.from(container.querySelectorAll('.bento-slot-col[data-song-id]')).map(col => [col.dataset.songId, col.querySelector('.bento-slides')?.scrollTop || 0]));
     if (window._bentoSlideRegistry) window._bentoSlideRegistry.clear();
 
     const state = window.state || {};
-    const isMedley = !!state.isMedleyMode;
+    let isMedley = !!state.isMedleyMode;
     const hasActiveItem = Boolean(state.activeLiveSlideId || state.liveEngagedDeck || (state.activeDeckType === 'song' && state.activeSongId) || (state.activeDeckType === 'bible' && state.activeBibleBook));
     const deckType = hasActiveItem ? (state.activeDeckType || (state.currentTab === 'bible' ? 'bible' : 'song')) : (state.currentTab === 'bible' ? 'bible' : 'song');
     const isBibleDeck = (deckType === 'bible');
@@ -925,6 +950,7 @@
     const strongsBtn = document.getElementById('bento-strongs-btn');
 
     const isEditing = Boolean(!isBibleDeck && state.isDeckEditingSong && state.isDeckEditingSong === state.activeSongId);
+    if (isEditing) isMedley = false;
     const deckCard = document.getElementById('bento-deck-card');
     if (deckCard) {
       deckCard.classList.toggle('in-split-editor', isEditing);
@@ -1047,6 +1073,10 @@
     container.className = isMedley ? 'bento-medley' : 'bento-single-deck';
 
     if (isMedley) {
+      // Single-deck drop handlers must not also handle a slot's bubbled drop.
+      container.ondragover = null;
+      container.ondragleave = null;
+      container.ondrop = null;
       // MEDLEY 3-COLUMN DECK
       if (isBibleDeck) {
         if (titleEl) {
@@ -1092,6 +1122,7 @@
           };
           col.ondrop = (e) => {
             e.preventDefault();
+            e.stopPropagation();
             col.classList.remove('drag-hover');
             const droppedBook = (e.dataTransfer ? e.dataTransfer.getData('application/bible-book') : null) ||
               (window.sfDraggedItem && window.sfDraggedItem.type === 'bible' ? window.sfDraggedItem.id : null) ||
@@ -1189,7 +1220,7 @@
           const song = (window.SONGS_DATABASE || []).find(s => s.id === songId);
 
           const isColLive = song && song.stanzas && song.stanzas.some((stanza, sIdx) => {
-            const maxLines = state.maxLinesPerSlide || 4;
+            const maxLines = state.maxLinesPerSlide ?? 0;
             const chunks = typeof window.splitStanzaIntoChunks === 'function' 
               ? window.splitStanzaIntoChunks(stanza, maxLines)
               : [{ ...stanza, chunkIndex: 0, totalChunks: 1, label: stanza.type }];
@@ -1200,6 +1231,8 @@
           col.className = `bento-slot-col ${isColLive ? 'active-song' : ''}`;
 
           // Drag & Drop for Song Medley Slot
+          if (song) col.dataset.songId = song.id;
+          col.classList.toggle('selected-song', Boolean(song && song.id === state.activeSongId));
           col.ondragover = (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';
@@ -1210,6 +1243,7 @@
           };
           col.ondrop = (e) => {
             e.preventDefault();
+            e.stopPropagation();
             col.classList.remove('drag-hover');
             const droppedSongId = (e.dataTransfer ? e.dataTransfer.getData('application/song-id') : null) ||
               (window.sfDraggedItem && window.sfDraggedItem.type === 'song' ? window.sfDraggedItem.id : null) ||
@@ -1221,7 +1255,7 @@
 
           let slidesHtml = '';
           if (song && song.stanzas) {
-            const maxLines = state.maxLinesPerSlide || 4;
+            const maxLines = state.maxLinesPerSlide ?? 0;
             song.stanzas.forEach((stanza, sIdx) => {
               const chunks = typeof window.splitStanzaIntoChunks === 'function' 
                 ? window.splitStanzaIntoChunks(stanza, maxLines)
@@ -1259,12 +1293,29 @@
           col.innerHTML = `
             <div class="bento-slot-col-head">
               <span class="bento-slot-badge">S${idx + 1}</span>
-              <span class="t">${song ? escapeHtml(song.title) : 'Empty Slot'}</span>
+              <span class="t" title="${song ? escapeHtml(song.title) : 'Empty Slot'}" ${song ? `onclick="event.stopPropagation(); window.selectSingleViewSong('${song.id}')"` : ''}>${song ? escapeHtml(song.title) : 'Empty Slot'}</span>
+              ${song ? `<button type="button" class="bento-slot-edit" title="Edit ${escapeHtml(song.title)}" aria-label="Edit song in slot S${idx + 1}" onclick="event.stopPropagation(); window.openSongEditor('${song.id}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>` : ''}
               <span class="change" onclick="event.stopPropagation(); window.openSongPicker(${idx}, event)">Change</span>
             </div>
             <div class="bento-slides">${slidesHtml}</div>
           `;
+          if (song) {
+            const header = col.querySelector('.bento-slot-col-head');
+            header.draggable = true;
+            header.ondragstart = e => {
+              window.sfIsInternalDrag = true;
+              window.sfDraggedItem = { type: 'song', id: song.id, song };
+              e.dataTransfer.setData('application/song-id', song.id);
+              e.dataTransfer.setData('text/plain', song.id);
+              e.dataTransfer.effectAllowed = 'copyMove';
+            };
+            header.ondragend = () => {
+              window.sfIsInternalDrag = false;
+              window.sfDraggedItem = null;
+            };
+          }
           container.appendChild(col);
+          if (song && songScroll.has(song.id)) col.querySelector('.bento-slides').scrollTop = songScroll.get(song.id);
         }
       }
 
@@ -3087,7 +3138,7 @@
       holdBtn.classList.toggle('active', !!state.isHoldLive);
       const label = holdBtn.querySelector('.btn-label');
       if (label) {
-        label.textContent = state.isHoldLive ? 'Locked' : 'Hold';
+        label.textContent = state.isHoldLive ? 'Release hold' : 'Hold live';
       }
       holdBtn.setAttribute('aria-pressed', String(!!state.isHoldLive));
       holdBtn.title = state.isHoldLive ? 'Release hold (Pinned live)' : 'Hold current slide live';
@@ -3162,6 +3213,7 @@
       modeDual.setAttribute('aria-pressed', String(isDual));
     }
     finishPreviewTransitions.forEach(finish => finish());
+    window.syncPresentationControls?.();
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -3218,6 +3270,8 @@
     const transSel = document.getElementById('bento-trans-sel');
     const searchInput = document.getElementById('bento-search-input');
     const curTab = window.state ? window.state.currentTab : 'songs';
+    const mediaTab=document.getElementById('bento-tab-media');
+    if(mediaTab) {mediaTab.classList.toggle('active',curTab==='media');mediaTab.setAttribute('aria-selected',String(curTab==='media'));}
 
     if (tabBible) {
       tabBible.classList.toggle('active', curTab === 'bible');
@@ -3239,7 +3293,7 @@
     }
 
     if (searchInput) {
-      searchInput.placeholder = curTab === 'bible' ? 'Filter books & chapters (Ctrl+L)...' : 'Search title, artist, lyric line (Ctrl+L)...';
+      searchInput.placeholder = curTab === 'media' ? 'Search media…' : curTab === 'bible' ? 'Filter books & chapters (Ctrl+L)...' : 'Search title, artist, lyric line (Ctrl+L)...';
     }
   }
 

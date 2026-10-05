@@ -41,8 +41,8 @@
 #bento-prev-card .bento-prev-box { height:auto !important; max-height:none !important; aspect-ratio:16 / 9; }
 #bento-prev-card #stage-appearance-panel { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:8px; flex:none; overflow:visible; padding:0; border:0; }
 #bento-prev-card .stage-appearance-row { margin:0; gap:6px; }
-#bento-prev-card .bento-stage-actions { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
-#bento-prev-card .bento-stage-actions .bento-sbtn { padding:7px 5px; font-size:10px; justify-content:center; min-width:0; }
+#bento-prev-card .bento-stage-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+#bento-prev-card .bento-stage-actions .bento-sbtn { padding:8px 6px; font-size:11px; justify-content:center; min-width:0; }
 #bento-prev-card .bento-trans-btn-trigger { min-height:30px; padding:5px 8px; flex-wrap:wrap; }
 #bento-prev-card .bento-trans-dropdown-wrapper.open { grid-column:1 / -1; }
 #bento-prev-card .bento-trans-dialog { max-height:240px; overflow-y:auto; }

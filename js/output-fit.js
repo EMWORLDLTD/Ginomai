@@ -24,7 +24,8 @@
         if (!box || !text || !text.dataset.preferredSize || !slot.clientHeight) return;
         const css = getComputedStyle(slot);
         const available = slot.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom);
-        const maxHeight = Math.max(1, available);
+        const bandHeight = Number(box.dataset.bandHeight);
+        const maxHeight = Math.max(1, bandHeight ? Math.min(available, innerHeight * bandHeight / 100) : available);
         box.style.minHeight = '0';
         box.style.boxSizing = 'border-box';
         box.style.maxHeight = maxHeight + 'px';
@@ -36,7 +37,12 @@
         let low = 1, high = Math.max(baseline, preferred);
         const fits = size => {
           text.style.fontSize = size + 'px';
-          return box.scrollHeight <= maxHeight + 1 && text.scrollWidth <= box.clientWidth && box.scrollWidth <= slot.clientWidth;
+          const boxCss = getComputedStyle(box);
+          const textBottom = text.getBoundingClientRect().bottom - box.getBoundingClientRect().top;
+          const bottomPadding = parseFloat(boxCss.paddingBottom) || 0;
+          const bottomBorder = parseFloat(boxCss.borderBottomWidth) || 0;
+          return textBottom + bottomPadding + bottomBorder <= maxHeight + 1 &&
+            box.scrollHeight <= maxHeight + 1 && text.scrollWidth <= box.clientWidth && box.scrollWidth <= slot.clientWidth;
         };
         if (!fits(high)) {
           for (let i = 0; i < 12; i++) {

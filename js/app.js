@@ -8,6 +8,10 @@ const REMOTE_MODE = new URLSearchParams(window.location.search).get('remote') ==
 // State Store
 const state = {
   currentTab: 'songs', // 'bible' | 'songs' (Default to SONGS library tab)
+  activeMediaId: null,
+  activeCountdownId: null,
+  mediaPageSelections: {},
+  activePresentation: null,
   activeDeckType: 'song', // 'song' | 'bible' (Center presentation deck content type)
   currentMode: 'full', // 'full' | 'lt'
   maxLinesPerSlide: 0, // Max lines per slide for auto-splitting (0 for Full/disabled, 2, 3, 4)
@@ -409,6 +413,10 @@ function restoreSavedWorkspaceState() {
 
       if (dash.currentTab) state.currentTab = dash.currentTab;
       if (dash.activeDeckType) state.activeDeckType = dash.activeDeckType;
+      state.activeMediaId=dash.activeMediaId || null;
+      state.activeCountdownId=dash.activeCountdownId || null;
+      state.mediaPageSelections=dash.mediaPageSelections || {};
+      state.activePresentation=dash.activePresentation || (['media','countdown'].includes(saved.contentType) ? {contentType:saved.contentType,media:saved.media,countdown:saved.countdown,playback:saved.playback,destinations:saved.destinations}:null);
       if (typeof dash.isMedleyMode === 'boolean') state.isMedleyMode = dash.isMedleyMode;
       if (Array.isArray(dash.medleySongIds)) state.medleySongIds = dash.medleySongIds;
       if (Array.isArray(dash.medleyVersionCodes)) state.medleyVersionCodes = dash.medleyVersionCodes;
@@ -544,7 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const previewTargetBtn = document.getElementById('preview-target-toggle-btn');
   if (previewTargetBtn) {
-    if (previewTargetMode === 'sanctuary') previewTargetBtn.textContent = 'Sanctuary';
+    if (previewTargetMode === 'sanctuary') previewTargetBtn.textContent = 'Projector';
     else if (previewTargetMode === 'dual') previewTargetBtn.textContent = 'Dual Output';
     else previewTargetBtn.textContent = 'Livestream';
     previewTargetBtn.classList.toggle('active', previewTargetMode === 'livestream');
@@ -903,7 +911,12 @@ function renderAgenda() {
     `;
 
     card.onclick = () => {
+      if (['media','countdown'].includes(item.type)) {window.openPresentationItem?.(item);return;}
       if (item.type === 'song') {
+        if (state.isMedleyMode) {
+          selectSingleViewSong(item.id);
+          return;
+        }
         const isDifferent = (state.activeSongId !== item.id);
         state.activeSongId = item.id;
         state.activeDeckType = 'song';
@@ -944,6 +957,7 @@ function switchLibraryTab(targetTab) {
   if (!targetTab) return;
   state.currentTab = targetTab;
   syncActiveTabUI();
+  if (targetTab === 'media') { renderLibrary(); return; }
 
   // Dynamic Search Input Placeholder & Reset
   const searchInput = document.getElementById('sidebar-search-input');
@@ -1248,8 +1262,11 @@ function setMedleyMode(isMedley) {
   if (!Array.isArray(state.medleyBibleSlots)) state.medleyBibleSlots = [];
 
   if (state.isMedleyMode) {
-    if (state.medleySongIds.filter(Boolean).length === 0 && state.activeSongId) {
-      state.medleySongIds[0] = state.activeSongId;
+    if (state.medleySongIds.filter(Boolean).length === 0) {
+      const songDb = window.SONGS_DATABASE || [];
+      const candidates = [state.activeSongId, ...(state.agendaItems || []).filter(item => item.type === 'song').map(item => item.id)];
+      state.medleySongIds = [...new Set(candidates.filter(id => songDb.some(song => song.id === id)))].slice(0, 3);
+      if (!state.activeSongId) state.activeSongId = state.medleySongIds[0] || null;
     }
     if (state.medleyBibleSlots.length === 0) {
       state.medleyBibleSlots = [
@@ -1292,8 +1309,8 @@ function setMedleyMode(isMedley) {
           if (label) label.textContent = ver;
         }
       }
-    } else if (state.currentTab === 'songs') {
-      if (state.activeLiveSlideId) {
+    } else if (state.activeDeckType === 'song') {
+      if (!state.medleySongIds.includes(state.activeSongId) && state.activeLiveSlideId) {
         const songDb = (typeof SONGS_DATABASE !== 'undefined') ? SONGS_DATABASE : (window.SONGS_DATABASE || []);
         const matchingSong = songDb.find(s =>
           state.activeLiveSlideId === s.id ||
@@ -1312,14 +1329,40 @@ function setMedleyMode(isMedley) {
   const bentoLbl = document.getElementById('bento-zoom-label');
   if (bentoLbl) bentoLbl.textContent = `${Math.round(targetZoom * 100)}%`;
 
-  if (typeof window.renderBentoDeck === 'function') {
-    window.renderBentoDeck();
-  }
   renderDeck(true);
   syncDashboardWorkspace();
 }
 
 function selectSingleViewSong(songId) {
+  if (!(window.SONGS_DATABASE || []).some(song => song.id === songId)) return;
+  if (state.isMedleyMode) {
+    const slots = state.medleySongIds || [];
+    if (!slots.includes(songId)) {
+      const emptySlot = [0, 1, 2].find(idx => !slots[idx]);
+      if (emptySlot === undefined) {
+        showToast('All medley slots are loaded. Use Change or drag onto a slot to replace a song.', 'info');
+        return;
+      }
+      swapMedleySong(emptySlot, songId, false);
+      return;
+    }
+    const needsDeckSwitch = state.activeDeckType !== 'song';
+    const wasEditing = Boolean(state.isDeckEditingSong);
+    state.activeSongId = songId;
+    state.activeDeckType = 'song';
+    state.currentTab = 'songs';
+    syncActiveTabUI();
+    if (wasEditing) closeDeckSplitEditor(false);
+    else if (needsDeckSwitch) renderDeck(true);
+    document.querySelectorAll('.bento-song-row, .library-item[data-song-id]').forEach(row => {
+      row.classList.toggle('active', row.dataset.songId === songId);
+    });
+    document.querySelectorAll('.bento-slot-col').forEach(col => {
+      col.classList.toggle('selected-song', col.dataset.songId === songId);
+    });
+    syncDashboardWorkspace();
+    return;
+  }
   const isDifferent = (state.activeSongId !== songId);
   state.activeSongId = songId;
   state.activeDeckType = 'song';
@@ -1334,9 +1377,11 @@ function selectSingleViewSong(songId) {
   renderDeck(true);
   syncDashboardWorkspace();
 }
+window.selectSingleViewSong = selectSingleViewSong;
 
 // Render Zone 2 Deck (Single View vs Medley Deck View for Bible / Songs)
 function renderDeck(resetScroll = false) {
+  if (window.renderPresentationDeck?.()) return;
   if (typeof window.renderBentoDeck === 'function') {
     window.renderBentoDeck();
   }
@@ -1558,7 +1603,7 @@ function renderDeck(resetScroll = false) {
 
         let stanzasHtml = '';
         if (song) {
-          const maxLines = state.maxLinesPerSlide || 4;
+          const maxLines = state.maxLinesPerSlide ?? 0;
           song.stanzas.forEach((stanza, sIdx) => {
             const chunks = splitStanzaIntoChunks(stanza, maxLines);
             chunks.forEach((chunk, cIdx) => {
@@ -2517,6 +2562,7 @@ function toggleCompareMode() {
 function toggleHoldLive() {
   if (REMOTE_MODE) { showToast('Hold live is controlled by the host.', 'info'); return; }
   state.isHoldLive = !state.isHoldLive;
+  window.syncPresentationControls?.();
   window.refreshBentoSplitLive?.();
   fetch('/api/hold', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ held: state.isHoldLive }) })
     .then(response => { if (!response.ok) throw new Error('Hold unavailable'); })
@@ -3370,7 +3416,11 @@ function broadcastState(override = {}, previewAlreadyUpdated = false) {
 
   const payload = {
     slideId: slideId,
-    contentType: override.contentType !== undefined ? override.contentType : (isLexicon ? 'lexicon' : (isBible ? 'bible' : 'song')),
+    contentType: override.contentType !== undefined ? override.contentType : isLexicon ? 'lexicon' : state.activePresentation?.contentType || (isBible ? 'bible' : 'song'),
+    media: state.activePresentation?.media || null,
+    countdown: state.activePresentation?.countdown || null,
+    playback: state.activePresentation?.playback || null,
+    destinations: state.activePresentation?.destinations || null,
     isBible: override.isBible !== undefined ? override.isBible : isBible,
     isLexicon: isLexicon,
     lexiconData: override.lexiconData !== undefined ? override.lexiconData : (isLexicon ? state.activeLexiconData : null),
@@ -3384,6 +3434,7 @@ function broadcastState(override = {}, previewAlreadyUpdated = false) {
     livestreamActive: state.livestreamActive,
     showSongTitleInDisplay: state.showSongTitleInDisplay,
     transparentBg: state.transparentBg,
+    streamAppearance: state.streamAppearance,
     transitionType: override.transitionType !== undefined ? override.transitionType : (state.transitionType || 'fade'),
     transitionDuration: override.transitionDuration !== undefined ? override.transitionDuration : (state.transitionDuration || 300),
     typography: state.typography,
@@ -3437,12 +3488,17 @@ function broadcastState(override = {}, previewAlreadyUpdated = false) {
   }
 
   if (!previewAlreadyUpdated) updateLivePreview(payload);
+  window.syncPresentationControls?.(payload);
 }
 
 function createDashboardSnapshot() {
   return {
     currentTab: state.currentTab,
     activeDeckType: state.activeDeckType,
+    activeMediaId: state.activeMediaId,
+    activeCountdownId: state.activeCountdownId,
+    mediaPageSelections: state.mediaPageSelections,
+    activePresentation: state.activePresentation,
     isMedleyMode: state.isMedleyMode,
     medleySongIds: state.medleySongIds,
     medleyVersionCodes: state.medleyVersionCodes,
@@ -3470,6 +3526,7 @@ function createDashboardSnapshot() {
     showMedleyView: state.showMedleyView,
     bibleMedleyChangeTarget: state.bibleMedleyChangeTarget || 'chapter',
     transparentBg: state.transparentBg,
+    streamAppearance: state.streamAppearance,
     transitionType: state.transitionType,
     transitionDuration: state.transitionDuration,
     typography: state.typography,
@@ -3613,7 +3670,7 @@ function setTransitionTypeSetting(type) {
     localStorage.setItem('sf_transition_type', type);
   } catch (e) { }
   syncTransitionSettingsUI();
-  broadcastState();
+  // The selected effect is used on the next projection; do not replay this slide.
 }
 
 function setTransitionDurationSetting(duration) {
@@ -3624,7 +3681,7 @@ function setTransitionDurationSetting(duration) {
     localStorage.setItem('sf_transition_duration', parsed);
   } catch (e) { }
   syncTransitionSettingsUI();
-  broadcastState();
+  // The selected effect is used on the next projection; do not replay this slide.
 }
 
 const TRANSITION_ICONS = {
@@ -3936,10 +3993,7 @@ function updateSongScaleFullSetting(val) {
   const readout = document.getElementById('setting-song-scale-full-readout');
   if (slider && parseFloat(slider.value) !== num) slider.value = num;
   if (readout) readout.textContent = `${num.toFixed(1)}x`;
-  broadcastState();
-  if (typeof window.syncBentoStagePreview === 'function') {
-    window.syncBentoStagePreview();
-  }
+  publishQuickTextScale();
 }
 window.updateSongScaleFullSetting = updateSongScaleFullSetting;
 
@@ -3951,10 +4005,7 @@ function updateSongScaleLtSetting(val) {
   const readout = document.getElementById('setting-song-scale-lt-readout');
   if (slider && parseFloat(slider.value) !== num) slider.value = num;
   if (readout) readout.textContent = `${num.toFixed(1)}x`;
-  broadcastState();
-  if (typeof window.syncBentoStagePreview === 'function') {
-    window.syncBentoStagePreview();
-  }
+  publishQuickTextScale();
 }
 window.updateSongScaleLtSetting = updateSongScaleLtSetting;
 
@@ -4125,18 +4176,30 @@ function syncCustomSelect(selectEl) {
   }
 }
 
+let quickTextScaleQueued=false;
+function publishQuickTextScale() {
+  const label=document.getElementById('bento-textscale-label');
+  if(label) label.textContent=getPreviewTextScaleControl().value.toFixed(1)+'x';
+  // Resident production frames receive this payload directly. Avoid repeating the
+  // legacy preview layout/video work for a text-size-only change.
+  const resident=document.getElementById('bento-single-prev-wrap')?.classList.contains('uses-output-renderer');
+  const publish=()=>broadcastState({clear:!!pendingLiveStorage?.clear,blackout:!!pendingLiveStorage?.blackout,transitionType:'cut'},!!resident);
+  if(!resident) {publish();return;}
+  if(quickTextScaleQueued) return;
+  quickTextScaleQueued=true;
+  // Keep payload serialization and transport outside the tactile state/DOM work.
+  queueMicrotask(()=>{quickTextScaleQueued=false;publish();});
+}
+
 function updateTextScale(val) {
   state.textSize = parseFloat(val);
   const readout = document.getElementById('preview-size-readout');
   if (readout) readout.textContent = `${state.textSize.toFixed(1)}x`;
-  broadcastState();
-
-  if (typeof window.syncBentoStagePreview === 'function') {
-    window.syncBentoStagePreview();
-  }
+  publishQuickTextScale();
 }
 
 function getPreviewTextScaleControl() {
+  if (state.activePresentation?.contentType === 'countdown') return {key:'textSize',value:state.textSize || 1,song:false,lowerThird:false};
   const id = String(state.activeLiveSlideId || '');
   const ref = state.activeLiveRef || '';
   const bible = id.startsWith('bible_') || id.startsWith('medley_bible_') ||
@@ -4144,13 +4207,16 @@ function getPreviewTextScaleControl() {
     (id.startsWith('ai_') && /\b\d+\s*:\s*\d+/.test(ref)) ||
     (state.currentTab === 'bible' && !id.includes('song'));
   const song = !bible && !id.startsWith('lexicon_') && Boolean(state.activeLiveText || id);
-  const lowerThird = ['livestream', 'lt', 'lowerthird'].includes(window.previewTargetMode);
+  const rule = window.themeManager?.obsModeRule || state.sanctuaryTheme?.obsModeRule || 'follow';
+  const lowerThird = ['livestream', 'lt', 'lowerthird'].includes(window.previewTargetMode) &&
+    (rule === 'always_lt' || (rule === 'follow' && state.currentMode === 'lt'));
   const key = song ? (lowerThird ? 'songScaleLt' : 'songScaleFull') : 'textSize';
   return { key, value: Number(state[key] ?? (song ? lowerThird ? 1.4 : 2.2 : 1)), song, lowerThird };
 }
 window.getPreviewTextScaleControl = getPreviewTextScaleControl;
 
 function adjustTextScale(delta) {
+  if (state.isHoldLive) { showToast('Release Hold live to change live text size.', 'info'); return; }
   const control = getPreviewTextScaleControl();
   const isSong = control.song;
   if (isSong) {
@@ -4175,15 +4241,7 @@ window.adjustTextScale = adjustTextScale;
 function setPreviewTargetMode(mode) {
   previewTargetMode = mode;
   window.previewTargetMode = mode;
-  try { localStorage.setItem('sf_preview_target_mode', mode); } catch (e) { }
-
-  if (mode === 'livestream' || mode === 'lt' || mode === 'lowerthird') {
-    state.currentMode = 'lt';
-  } else if (mode === 'dual') {
-    state.currentMode = 'dual';
-  } else {
-    state.currentMode = 'full';
-  }
+  try { localStorage.setItem('sf_preview_target_mode', mode); if(mode==='sanctuary'||mode==='livestream') localStorage.setItem('sf_style_target',mode); } catch (e) { }
 
   const iframe = document.getElementById('preview-iframe');
   if (iframe) {
@@ -4205,14 +4263,13 @@ function setPreviewTargetMode(mode) {
 
   const previewTargetBtn = document.getElementById('preview-target-toggle-btn');
   if (previewTargetBtn) {
-    if (previewTargetMode === 'sanctuary') previewTargetBtn.textContent = 'Sanctuary';
+    if (previewTargetMode === 'sanctuary') previewTargetBtn.textContent = 'Projector';
     else if (previewTargetMode === 'dual') previewTargetBtn.textContent = 'Dual Output';
     else previewTargetBtn.textContent = 'Livestream';
     previewTargetBtn.classList.toggle('active', previewTargetMode === 'livestream');
   }
 
-  broadcastState();
-
+  window.syncOutputPreviews?.();
   if (typeof window.syncBentoStagePreview === 'function') {
     window.syncBentoStagePreview();
   }
@@ -4339,7 +4396,7 @@ function renderSanctuaryThemesGrid() {
     if (existingIds.has(tid)) return;
     const isActive = (tid === curThemeId || (curThemeId === 'deep_celestial' && tid === 'celestial_motion'));
     const bgStyle = t.imageUrl ? `background-image: url('${t.imageUrl}'); background-size: cover; background-position: center;` : `background: ${t.previewGradient || t.bgCss};`;
-    const badgeLabel = t.imageUrl && /\.gif$/i.test(t.imageUrl) ? 'GIF' : t.type === 'video' ? 'Motion' : (t.type === 'image' ? 'Still' : 'Minimal');
+    const badgeLabel = t.category === 'colors' ? (t.badge === 'SOLID' ? 'Solid' : 'Gradient') : t.imageUrl && /\.gif$/i.test(t.imageUrl) ? 'GIF' : t.type === 'video' ? 'Motion' : (t.type === 'image' ? 'Still' : 'Minimal');
     const badgeType = t.type || 'gradient';
     const videoTag = t.videoUrl
       ? `<video class="sanctuary-theme-card-video" src="${t.videoUrl}" preload="auto" muted loop playsinline autoplay aria-hidden="true"></video>`
@@ -4572,6 +4629,7 @@ window.normalizeSearchText = normalizeSearchText;
 
 // Render Zone 1 Library (BIBLE vs SONGS Tabs)
 function renderLibrary(filterQuery = null) {
+  if (state.currentTab === 'media') { syncActiveTabUI(); window.renderMediaLibrary?.(filterQuery); return; }
   if (typeof syncActiveTabUI === 'function') {
     syncActiveTabUI();
   }
@@ -4841,6 +4899,10 @@ function createSongLibraryItem(song, agendaSet, showMedley, medley0, medley1, me
   `;
 
   item.onclick = () => {
+    if (state.isMedleyMode) {
+      selectSingleViewSong(song.id);
+      return;
+    }
     state.activeSongId = song.id;
     applySongBoundTheme(song.id);
     const parent = item.parentElement;
@@ -5097,25 +5159,9 @@ function openSongPicker(slotIndex, event) {
     input.oninput = (e) => renderSongPickerResults(e.target.value.trim().toLowerCase());
   }
 
-  const targetBtn = event ? (event.currentTarget || event.target) : document.querySelector(`.medley-change-btn[data-slot="${slotIndex}"]`);
-  if (targetBtn) {
-    const parentHeader = targetBtn.closest('.medley-col-header') || targetBtn.parentElement;
-    if (parentHeader) {
-      parentHeader.style.position = 'relative';
-      if (dialog.parentElement !== parentHeader) {
-        dialog.remove();
-        parentHeader.appendChild(dialog);
-      }
-    }
-  }
-
-  if (slotIndex >= 2) {
-    dialog.style.left = 'auto';
-    dialog.style.right = '0';
-  } else {
-    dialog.style.left = '0';
-    dialog.style.right = 'auto';
-  }
+  const targetBtn = event ? (event.currentTarget || event.target) : document.querySelector(`.medley-change-btn[data-slot="${slotIndex}"], .bento-slot-col:nth-child(${slotIndex + 1}) .change`);
+  // Keep the picker above the dismissal shield and outside clipped deck panels.
+  if (dialog.parentElement !== document.body) document.body.appendChild(dialog);
 
   const isAlreadyOpen = dialog.classList.contains('open') && dialog._openedForSlot === slotIndex;
   if (isAlreadyOpen) {
@@ -5124,6 +5170,13 @@ function openSongPicker(slotIndex, event) {
     dialog._openedForSlot = slotIndex;
     if (input) input.value = '';
     renderSongPickerResults('');
+    const rect = targetBtn ? targetBtn.getBoundingClientRect() : { left: 12, right: 302, bottom: 12 };
+    const width = dialog.offsetWidth || 290;
+    const height = dialog.offsetHeight || 320;
+    dialog.style.position = 'fixed';
+    dialog.style.left = `${Math.max(12, Math.min(slotIndex >= 2 ? rect.right - width : rect.left, window.innerWidth - width - 12))}px`;
+    dialog.style.right = 'auto';
+    dialog.style.top = `${Math.max(12, Math.min(rect.bottom + 6, window.innerHeight - height - 12))}px`;
     dialog.classList.add('open');
     dialog.style.zIndex = '100002';
     if (typeof window.openDismissShield === 'function') {
@@ -5134,10 +5187,8 @@ function openSongPicker(slotIndex, event) {
       }, 100001);
     }
     if (input) {
-      setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 50);
+      input.focus();
+      input.select();
     }
   }
 }
@@ -5193,8 +5244,8 @@ function renderSongPickerResults(query = '') {
     `;
     item.onclick = (e) => {
       e.stopPropagation();
-      swapMedleySong(state.activePickerSlot, song.id);
       closeSongPicker();
+      swapMedleySong(state.activePickerSlot, song.id, false);
     };
     fragment.appendChild(item);
   }
@@ -5492,11 +5543,21 @@ function selectBibleChapter(book, chapterNum) {
 
 function swapMedleySong(slotIndex, songId, allowToggle = true) {
   if (slotIndex >= 0 && slotIndex < 3) {
+    if (!(window.SONGS_DATABASE || []).some(song => song.id === songId)) return;
     if (!Array.isArray(state.medleySongIds)) state.medleySongIds = [null, null, null];
     if (allowToggle && state.medleySongIds[slotIndex] === songId) {
       state.medleySongIds[slotIndex] = null;
+      if (state.activeSongId === songId) state.activeSongId = state.medleySongIds.find(Boolean) || null;
     } else {
+      state.medleySongIds.forEach((id, idx) => {
+        if (idx !== slotIndex && id === songId) state.medleySongIds[idx] = null;
+      });
       state.medleySongIds[slotIndex] = songId;
+      state.activeSongId = songId;
+      state.activeDeckType = 'song';
+      state.currentTab = 'songs';
+      state.isDeckEditingSong = null;
+      syncActiveTabUI();
     }
     renderDeck();
     renderLibrary();
@@ -5554,6 +5615,12 @@ function updateActiveSlideVisuals(slideId) {
   const allBentoCards = document.querySelectorAll('.bento-slide-card, .bento-single-card');
   allBentoCards.forEach(c => {
     const isTarget = (c.dataset.slideId === slideId || c.id === `bento_card_${slideId}`);
+    if (c.classList.contains('media-card')) {
+      c.classList.toggle('live',isTarget);
+      const badge=c.querySelector('.live-pill');if(badge) badge.hidden=!isTarget;
+      if(isTarget) {c.classList.remove('staged');c.querySelectorAll('.staged-pill').forEach(node=>node.remove());}
+      return;
+    }
     if (!isTarget) {
       c.classList.remove('live');
       if (typeof window.cleanupLiveCardObserver === 'function') {
@@ -5569,6 +5636,7 @@ function updateActiveSlideVisuals(slideId) {
 
   const newLiveCards = document.querySelectorAll(`[data-slide-id="${slideId}"], #bento_card_${slideId}`);
   newLiveCards.forEach(c => {
+    if(c.classList.contains('media-card')) return;
     c.classList.add('live');
     if (c.classList.contains('bento-single-card')) {
       c.querySelectorAll('.bento-live-shape-svg, .bento-corner-dock').forEach(el => el.remove());
@@ -5615,6 +5683,10 @@ function updateActiveSlideVisuals(slideId) {
 
   document.querySelectorAll('.bento-slot-col').forEach(col => {
     col.classList.toggle('active-song', !!col.querySelector('.bento-slide-card.live'));
+    col.classList.toggle('selected-song', col.dataset.songId === state.activeSongId);
+  });
+  document.querySelectorAll('.bento-song-row').forEach(row => {
+    row.classList.toggle('active', row.dataset.songId === state.activeSongId);
   });
 
   // 5. Auto-scroll active card + 2-3 upcoming verses into view
@@ -5679,7 +5751,7 @@ function syncStateFromSlideId(slideId) {
 
   } else {
     // Song slide ID detection across all song databases (Genius, LRCLIB, SongLyrics, Custom, Hymns, etc.)
-    if (!state.isMedleyMode) {
+    {
       const songDb = (typeof SONGS_DATABASE !== 'undefined' ? SONGS_DATABASE : (window.SONGS_DATABASE || []));
       const matchedSong = songDb.slice().sort((a, b) => (b.id ? b.id.length : 0) - (a.id ? a.id.length : 0)).find(s => {
         if (!s || !s.id) return false;
@@ -5687,7 +5759,7 @@ function syncStateFromSlideId(slideId) {
       });
       if (matchedSong && matchedSong.id !== state.activeSongId) {
         state.activeSongId = matchedSong.id;
-        needsDeckRebuild = true;
+        needsDeckRebuild = !state.isMedleyMode;
       }
     }
   }
@@ -5704,6 +5776,7 @@ function applyProjectedSongTheme(slideId) {
 
 // Project Slide Live (Zero-latency instant reaction)
 function projectSlide(slideId, text, reference, extra = {}) {
+  if (extra.presentation) { window.projectPresentation?.(slideId,text,reference,extra); return; }
   if (state.isHoldLive) { showToast('Live output is held. Release Hold live to change slides.', 'warning'); return; }
   const draft = window.resolveBentoSplitSlide?.(slideId);
   if (draft === false) return;
@@ -5716,6 +5789,7 @@ function projectSlide(slideId, text, reference, extra = {}) {
     window.cancelPreparedSlide();
   }
 
+  state.activePresentation = null;
   state.activeLexiconData = null;
   const drawerProjBtn = document.getElementById('strongs-drawer-project-btn');
   if (drawerProjBtn) {

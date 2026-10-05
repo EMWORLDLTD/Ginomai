@@ -10,15 +10,16 @@ const packageMetadata = require('./package.json');
 const createAccessControl = require('./lib/access-control');
 const access = createAccessControl();
 const sanctuaryMedia = require('./lib/sanctuary-media')();
+const presentationMedia = require('./lib/presentation-media')();
 const softwareMigrator = require('./lib/software-migrator')(sanctuaryMedia);
 const outputs = require('./lib/output-status')();
 const semanticService = new (require('./lib/semantic-service.cjs'))();
 let outputRevision = 0;
 let held = false;
 function displayState(full = false) {
-  if (full) return currentState;
+  if (full) return {...currentState,_serverTime:Date.now()};
   const { dashboard, hostSpeechState, ...projected } = currentState;
-  return projected;
+  return {...projected,_serverTime:Date.now()};
 }
 
 const PORT = process.env.PORT || 8500;
@@ -224,6 +225,7 @@ const MIME_TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.mjs': 'application/javascript; charset=utf-8',
+  '.wasm': 'application/wasm',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -319,6 +321,16 @@ const server = http.createServer((req, res) => {
       semanticService.query(payload.text).then(result => json(200, { result })).catch(() => json(503, { error: 'Semantic retrieval unavailable or busy.' }));
     });
     return;
+  }
+  if (pathname === '/api/presentation-media' && req.method === 'GET') {
+    presentationMedia.list().then(items => json(200, {items})).catch(() => json(500, {error:'Could not read presentation media.'})); return;
+  }
+  if (['/api/presentation-media','/api/presentation-media/page'].includes(pathname) && req.method === 'POST') {
+    const action=pathname.endsWith('/page') ? 'page':'upload';
+    presentationMedia[action](req,reqUrl.searchParams).then(item=>json(201,{item})).catch(error=>{if(!res.destroyed) json(error.status || 500,{error:error.status ? error.message:'Could not save media. Check available disk space.'});}); return;
+  }
+  if (pathname.startsWith('/presentation/files/') && ['GET','HEAD'].includes(req.method)) {
+    presentationMedia.serve(req,res,pathname).catch(()=>{if(!res.headersSent) res.writeHead(500);res.end();}); return;
   }
   if (pathname === '/api/sanctuary-media' && req.method === 'GET') {
     sanctuaryMedia.list().then(items => json(200, { items })).catch(() => json(500, { error: 'Could not read uploaded backgrounds.' }));
@@ -2163,7 +2175,7 @@ const server = http.createServer((req, res) => {
   try { decodedPath = decodeURIComponent(pathname); } catch { res.writeHead(400); res.end('Bad path'); return; }
   const parts = decodedPath.replace(/\\/g, '/').split('/').filter(Boolean);
   const publicFolders = new Set(['css', 'js', 'Themes', 'themes', 'assets', 'bibles', 'lexicon', 'fonts', 'images', 'media', 'backgrounds']);
-  const publicPages = new Set(['index.html', 'display.html', 'operator.html', 'remote.html', 'favicon.ico']);
+  const publicPages = new Set(['index.html', 'landing.html', 'display.html', 'operator.html', 'remote.html', 'favicon.ico']);
   if (parts.some(part => part.startsWith('.')) || (parts.length && !publicFolders.has(parts[0]) && !(parts.length === 1 && publicPages.has(parts[0])))) {
     res.writeHead(403); res.end('Forbidden'); return;
   }

@@ -18,6 +18,11 @@ Next-Generation Church Presentation, Multi-Monitor Projection & Broadcast Media 
 
 ## Desktop Development & Building
 
+### Product landing page
+
+Open `http://localhost:8500/landing.html` with the development or studio server running.
+The landing page includes an interactive presentation preview and links to the studio.
+
 ### Browser development with automatic reload
 
 Run `npm run dev` and open `http://localhost:8500`. Saving frontend files
@@ -61,7 +66,13 @@ npm start
 ### Build Installers (Local)
 ```bash
 npm run dist:win
+npm run dist:mac:apple
+npm run dist:mac:intel
 ```
+
+The branded installers use Ginomia's compact feature showcase and offline setup.
+See [installer build and validation notes](docs/installer.md). Use
+`npm run installer:preview` for a read-only preview of the setup interface.
 
 ### Publish Over-The-Air (OTA) Release
 ```powershell

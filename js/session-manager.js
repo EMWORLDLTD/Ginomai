@@ -104,6 +104,10 @@
       if (!session || !window.state) return;
       const s = window.state;
       session.agendaItems = Array.isArray(s.agendaItems) ? JSON.parse(JSON.stringify(s.agendaItems)) : [];
+      session.activeMediaId=s.activeMediaId || null;
+      session.activeCountdownId=s.activeCountdownId || null;
+      session.presentationDeck=['media','countdown'].includes(s.activeDeckType) ? s.activeDeckType:null;
+      session.mediaPageSelections={...s.mediaPageSelections};
       session.activeSongId = s.activeSongId || null;
       session.activeBibleBook = s.activeBibleBook || '';
       session.activeBibleChapter = s.activeBibleChapter || 1;
@@ -218,7 +222,12 @@
       const s = window.state;
 
       s.agendaItems = Array.isArray(session.agendaItems) ? JSON.parse(JSON.stringify(session.agendaItems)) : [];
+      s.activeMediaId=session.activeMediaId || null;
+      s.activeCountdownId=session.activeCountdownId || null;
+      s.activeDeckType=session.presentationDeck || (s.activeDeckType==='media'||s.activeDeckType==='countdown' ? 'song':s.activeDeckType);
+      s.mediaPageSelections={...session.mediaPageSelections};
       s.activeSongId = session.activeSongId || null;
+      window.restorePresentationSelection?.();
       if (session.activeBibleBook) s.activeBibleBook = session.activeBibleBook;
       if (session.activeBibleChapter) s.activeBibleChapter = session.activeBibleChapter;
       if (Array.isArray(session.medleySongIds)) s.medleySongIds = [...session.medleySongIds];

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Install Ginomia</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="installer.css">
+  <script src="renderer.js" defer></script>
+</head>
+<body data-platform="win32">
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="monitor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="13" rx="2"/><path d="M8 21h8m-4-5v5"/></symbol>
+    <symbol id="book" viewBox="0 0 24 24"><path d="M12 5v16M12 5C8 2 5 3 3 4v16c3-1 6-1 9 1 3-2 6-2 9-1V4c-2-1-5-2-9 1Z"/></symbol>
+    <symbol id="music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+    <symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9m7 12h4"/></symbol>
+    <symbol id="chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="broadcast" viewBox="0 0 24 24"><path d="M5 5a10 10 0 0 0 0 14m14-14a10 10 0 0 1 0 14M8 8a6 6 0 0 0 0 8m8-8a6 6 0 0 1 0 8"/><circle cx="12" cy="12" r="2"/></symbol>
+  </defs></svg>
+  <header class="titlebar">
+    <div class="mac-controls" aria-label="Window controls"><button id="mac-close" class="traffic close" aria-label="Close installer"></button><button id="mac-minimize" class="traffic minimize" aria-label="Minimize installer"></button><span class="traffic zoom" aria-hidden="true"></span></div>
+    <div class="brand"><span class="brand-mark" aria-hidden="true">G</span><span id="window-title">Ginomia Setup</span></div>
+    <div class="windows-controls"><button id="minimize" aria-label="Minimize installer"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button><button id="close" aria-label="Close installer"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div>
+  </header>
+  <main>
+    <section class="showcase" aria-label="Ginomia features" aria-roledescription="carousel">
+      <article class="feature" id="feature-0" aria-label="1 of 3: Scripture detection">
+        <div class="feature-copy"><p class="eyebrow">Built for your service</p><h1>Scripture,<br><span>as it is spoken.</span></h1><p class="description">Live transcript. Scripture suggestions.<br>Ready to project.</p></div>
+        <div class="feature-art scripture-art" aria-hidden="true">
+          <div class="mini-card transcript"><div class="mini-heading">AI Live Feed</div><p>Let us turn to John chapter three, verse sixteen.</p><div class="waveform"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+          <svg class="connector"><use href="#arrow"/></svg>
+          <div class="mini-card suggestion"><div class="mini-heading"><svg><use href="#book"/></svg>Scripture</div><strong>John 3:16</strong><p>For God so loved the world…</p><div class="mini-project">Project</div></div>
+          <svg class="connector"><use href="#arrow"/></svg>
+          <div class="mini-card output"><div class="mini-heading"><svg><use href="#monitor"/></svg>Output preview</div><div class="verse-preview"><strong>John 3:16</strong><p>For God so loved the world</p></div></div>
+        </div>
+      </article>
+      <article class="feature" id="feature-1" aria-label="2 of 3: Every screen" hidden>
+        <div class="feature-copy"><p class="eyebrow">Ready for your next service</p><h1>One service.<br><span>Every screen.</span></h1><p class="description">Scripture, songs, and announcements.<br>Ready for every screen.</p></div>
+        <div class="feature-art service-art" aria-hidden="true">
+          <div class="mini-card agenda"><div class="mini-heading">Service agenda</div><div class="agenda-item"><svg><use href="#music"/></svg>Opening song</div><div class="agenda-item selected"><svg><use href="#book"/></svg>Scripture reading</div><div class="agenda-item"><svg><use href="#bell"/></svg>Announcements</div></div>
+          <svg class="connector"><use href="#arrow"/></svg>
+          <div class="screen-stack"><div class="mini-card"><div class="mini-heading"><svg><use href="#monitor"/></svg>Projector</div><div class="verse-preview"><strong>Psalm 100:2</strong><p>Serve the Lord with gladness</p></div></div><div class="mini-card"><div class="mini-heading"><svg><use href="#broadcast"/></svg>Livestream</div><div class="verse-preview livestream"><strong>Psalm 100:2</strong></div></div></div>
+        </div>
+      </article>
+      <article class="feature" id="feature-2" aria-label="3 of 3: Song library" hidden>
+        <div class="feature-copy"><p class="eyebrow">Keep the service flowing</p><h1>Your songs.<br><span>Ready to share.</span></h1><p class="description">Build your library. Arrange your service.<br>Project lyrics with a click.</p></div>
+        <div class="feature-art song-art" aria-hidden="true"><div class="mini-card song-library"><div class="mini-heading"><svg><use href="#music"/></svg>Song library</div><div class="agenda-item selected">Amazing Grace</div><div class="agenda-item">Great Is Thy Faithfulness</div><div class="agenda-item">Holy, Holy, Holy</div></div><svg class="connector"><use href="#arrow"/></svg><div class="mini-card song-output"><div class="mini-heading"><svg><use href="#monitor"/></svg>Output preview</div><div class="verse-preview"><strong>Amazing grace,<br>how sweet the sound</strong></div></div></div>
+      </article>
+      <div class="pagination" role="group" aria-label="Feature slides"><button data-feature="0" aria-label="Scripture detection" aria-pressed="true" class="active"></button><button data-feature="1" aria-label="Every screen" aria-pressed="false"></button><button data-feature="2" aria-label="Song library" aria-pressed="false"></button><button id="pause-slides" aria-label="Pause feature slides" aria-pressed="false">Pause</button></div>
+    </section>
+    <section class="installation" aria-label="Installation progress">
+      <div class="progress-heading"><h2 id="status-heading">Ready to install Ginomia</h2><span id="progress-value"></span></div>
+      <div id="progress-track" class="progress-track" role="progressbar" aria-label="Ginomia installation" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progress-fill"></span></div>
+      <p id="status-message" role="status" aria-live="polite">Everything you need for your next service.</p>
+      <div class="footer"><button id="details-toggle" class="text-button" aria-expanded="false" aria-controls="installation-details"><svg><use href="#chevron"/></svg>Details</button><label id="shortcut-option"><input type="checkbox" id="desktop-shortcut" checked>Desktop shortcut</label><button id="primary-action" class="primary-button">Install Ginomia</button></div>
+      <div id="installation-details" hidden><div class="location-row"><div><span class="detail-label">Install location</span><span id="install-location"></span></div><button id="change-location" class="text-button">Change</button></div><p id="version-label"></p></div>
+    </section>
+  </main>
+</body>
+</html>
