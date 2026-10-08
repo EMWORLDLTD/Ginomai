@@ -39,6 +39,9 @@ function setupEnvironment() {
     querySelectorAll() { return []; },
     querySelector() { return null; },
     appendChild() {},
+    replaceChildren() {},
+    insertBefore() {},
+    children: [],
     addEventListener() {},
     removeEventListener() {},
     click() {}
@@ -66,6 +69,8 @@ function setupEnvironment() {
     cancelAnimationFrame: () => {},
     setTimeout,
     clearTimeout,
+    addEventListener() {},
+    removeEventListener() {},
     URLSearchParams,
     location: { search: '' },
     window: {

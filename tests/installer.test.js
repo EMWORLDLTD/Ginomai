@@ -1,21 +1,21 @@
-'use strict';
+﻿'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { InstallEngine, sha256, inventory, copiedBytes, validateDirectory, run } = require('../electron/installer/install-engine');
-const { options, payloadConfig, wrapperConfig } = require('../scripts/build-desktop');
+const { options, payloadConfig, wrapperConfig, verifyPublishedContent } = require('../scripts/build-desktop');
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ginomia-installer-test-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ginomai-installer-test-'));
   t.after(() => fs.rm(root, { recursive:true, force:true }));
-  const source = path.join(root, 'resources', 'payload', 'Ginomia.app');
-  const directory = path.join(root, 'Applications', 'Ginomia.app');
+  const source = path.join(root, 'resources', 'payload', 'Ginomai.app');
+  const directory = path.join(root, 'Applications', 'Ginomai.app');
   await fs.mkdir(path.join(source, 'Contents', 'Resources'), { recursive:true });
   await fs.mkdir(path.join(source, 'Contents', 'MacOS'), { recursive:true });
-  await fs.writeFile(path.join(source, 'Contents', 'Resources', 'app.asar'), 'new-ginomia-app');
-  await fs.writeFile(path.join(source, 'Contents', 'MacOS', 'Ginomia'), '#!/bin/sh\nexit 0\n', { mode:0o755 });
+  await fs.writeFile(path.join(source, 'Contents', 'Resources', 'app.asar'), 'new-ginomai-app');
+  await fs.writeFile(path.join(source, 'Contents', 'MacOS', 'Ginomai'), '#!/bin/sh\nexit 0\n', { mode:0o755 });
   await fs.writeFile(path.join(source, 'Contents', 'Info.plist'), '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.ginomai.pro</string></dict></plist>');
   const manifest = { platform:'darwin', appId:'com.ginomai.pro', installedBytes:1024, signed:false, appSha256:await sha256(path.join(source, 'Contents', 'Resources', 'app.asar')) };
   return { root, source, directory, resources:path.join(root, 'resources'), manifest };
@@ -34,7 +34,7 @@ function fakeMacRunner(f, action) {
   };
 }
 
-test('platform build options and updater configuration stay separate from setup', () => {
+test('platform build options and updater configuration stay separate from setup', async () => {
   assert.equal(options([], 'darwin', 'arm64').platform, 'win32');
   assert.equal(options(['--mac'], 'darwin', 'arm64').arch, 'arm64');
   assert.equal(options(['--mac', '--arch', 'x64'], 'darwin').arch, 'x64');
@@ -43,7 +43,12 @@ test('platform build options and updater configuration stay separate from setup'
   const windows = options([], 'win32');
   const native = payloadConfig(windows, '/tmp/native');
   assert.ok(native.nsis.include.endsWith('windows.nsh'));
-  assert.equal(native.publish, null);
+  assert.equal(native.publish, undefined);
+  const { getConfig, validateConfiguration } = require('app-builder-lib/out/util/config/config');
+  const effective = await getConfig(path.resolve(__dirname, '..'), null, native);
+  await validateConfiguration(effective, new (require('builder-util').DebugLogger)(false));
+  assert.deepEqual(effective.publish, [{provider:'github', owner:'EMWORLDLTD', repo:'Ginomai'}]);
+  assert.equal(options(['--native-only'], 'win32').nativeOnly, true);
   const setup = wrapperConfig(windows, '/tmp/output', '/tmp/setup.exe', '/tmp/manifest', '3.0.0');
   assert.equal(setup.publish, null);
   assert.equal(setup.extraMetadata.version, '3.0.0');
@@ -51,15 +56,40 @@ test('platform build options and updater configuration stay separate from setup'
   assert.ok(setup.files.every(name => !name.includes('server')));
 });
 
+test('cloud builds retain KJV and remove optional Bibles only in the cloud configuration', () => {
+  const normal = payloadConfig(options([]), '/tmp/native');
+  const cloud = payloadConfig(options(['--cloud-content']), '/tmp/native');
+  assert.ok(!normal.files.includes('!lexicon/**'));
+  assert.ok(cloud.files.includes('!lexicon/**'));
+  assert.ok(cloud.files.includes('!bibles/!(KJV|manifest).json'));
+  assert.equal(require('../package.json').build.publish[0].repo, 'Ginomai');
+});
+
+test('cloud build verification rejects missing or incorrect published files', async () => {
+  const bytes = Buffer.from('verified-pack');
+  const crypto = require('node:crypto');
+  const file = { asset: 'NIV.json.gz', downloadBytes: bytes.length, compressedSha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+  const manifest = { baseUrl: 'https://example.test/content', packs: [{ code: 'NIV', files: [file] }] };
+  await verifyPublishedContent(manifest, async () => new Response(bytes));
+  await assert.rejects(verifyPublishedContent(manifest, async () => new Response('missing', { status: 404 })), /Publish/);
+  await assert.rejects(verifyPublishedContent(manifest, async () => new Response('wrong')), /does not match/);
+});
+
 test('installation paths reject roots, relative paths and command-line injection', () => {
-  for (const name of ['relative', '/', '/tmp/Other.app', '/tmp/Ginomia.app\n']) assert.throws(() => validateDirectory(name, 'darwin'));
+  for (const name of ['relative', '/', '/tmp/Other.app', '/tmp/Ginomai.app\n']) assert.throws(() => validateDirectory(name, 'darwin'));
   for (const name of ['relative', 'C:\\', 'C:\\Apps\\bad" /S', 'C:\\Apps\n']) assert.throws(() => validateDirectory(name, 'win32'));
-  assert.equal(validateDirectory('C:\\Users\\Test Name\\Ginomia', 'win32'), 'C:\\Users\\Test Name\\Ginomia');
+  assert.equal(validateDirectory('C:\\Users\\Test Name\\Ginomai', 'win32'), 'C:\\Users\\Test Name\\Ginomai');
 });
 
 test('byte progress measures copied files without following source symlinks', async t => {
   const f = await fixture(t);
-  await fs.symlink('/not-a-real-file', path.join(f.source, 'external-link'));
+  try {
+    await fs.symlink('/not-a-real-file', path.join(f.source, 'external-link'));
+  } catch (error) {
+    if (process.platform !== 'win32' || error.code !== 'EPERM') throw error;
+    t.skip('Windows requires developer mode or elevation to create file symlinks');
+    return;
+  }
   const files = await inventory(f.source);
   assert.ok(!files.some(file => file.path === 'external-link'));
   assert.equal(await copiedBytes(f.directory, files), 0);
@@ -74,12 +104,12 @@ test('Mac install verifies staged data before replacing the existing app', async
   const updates = [];
   const engine = new InstallEngine({ ...f, platform:'darwin', runner:fakeMacRunner(f), onProgress:value => updates.push(value) });
   await engine.install();
-  assert.equal(await fs.readFile(path.join(f.directory, 'Contents', 'Resources', 'app.asar'), 'utf8'), 'new-ginomia-app');
+  assert.equal(await fs.readFile(path.join(f.directory, 'Contents', 'Resources', 'app.asar'), 'utf8'), 'new-ginomai-app');
   assert.equal(engine.complete, true);
   assert.equal(engine.busy, false);
   assert.equal(updates.at(-1).percent, 100);
   assert.ok(updates.slice(0, -1).every(value => value.percent !== 100));
-  assert.deepEqual(await fs.readdir(path.dirname(f.directory)), ['Ginomia.app']);
+  assert.deepEqual(await fs.readdir(path.dirname(f.directory)), ['Ginomai.app']);
 });
 
 test('failed copy leaves the previous Mac app intact and permits retry', async t => {
@@ -143,8 +173,8 @@ test('Windows verifies its native payload, passes literal path arguments, and ho
   const engine = new InstallEngine({ ...f, platform:'darwin', onProgress:value => updates.push(value), runner:async (command, args) => {
     invocation = { command, args };
     await fs.mkdir(path.join(f.directory, 'resources'), { recursive:true });
-    await fs.writeFile(path.join(f.directory, 'resources', 'app.asar'), 'new-ginomia-app');
-    await fs.writeFile(path.join(f.directory, 'Ginomia.exe'), 'test-executable');
+    await fs.writeFile(path.join(f.directory, 'resources', 'app.asar'), 'new-ginomai-app');
+    await fs.writeFile(path.join(f.directory, 'Ginomai.exe'), 'test-executable');
   } });
   engine.platform = 'win32';
   await engine.install({ desktopShortcut:false });
@@ -166,5 +196,5 @@ test('native ditto copies a test bundle and preserves its executable mode and sy
   await engine.install();
   assert.equal(engine.complete, true);
   assert.equal(await fs.readlink(path.join(f.directory, 'Contents', 'Resources-link')), 'Resources');
-  assert.ok((await fs.stat(path.join(f.directory, 'Contents', 'MacOS', 'Ginomia'))).mode & 0o111);
+  assert.ok((await fs.stat(path.join(f.directory, 'Contents', 'MacOS', 'Ginomai'))).mode & 0o111);
 });

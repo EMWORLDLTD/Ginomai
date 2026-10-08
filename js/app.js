@@ -1,9 +1,10 @@
-// Ginomia - Master Control Engine
+// Ginomai - Master Control Engine
 'use strict';
 
 const CHANNEL_NAME = 'scriptureflow_sync';
 const syncChannel = new BroadcastChannel(CHANNEL_NAME);
 const REMOTE_MODE = new URLSearchParams(window.location.search).get('remote') === '1';
+window.isRemoteOperator = REMOTE_MODE;
 
 // State Store
 const state = {
@@ -160,7 +161,6 @@ function deleteSongEditor() {
   if (typeof deleteCurrentEditingSong === 'function') deleteCurrentEditingSong();
 }
 window.deleteSongEditor = deleteSongEditor;
-
 
 function setSongEditorModeSetting(mode) {
   state.songEditorMode = (mode === 'modal') ? 'modal' : 'split';
@@ -321,7 +321,6 @@ function performClearSongsOnly() {
 }
 window.performClearSongsOnly = performClearSongsOnly;
 
-
 function initThemeManager() {
   if (typeof ThemeManager !== 'undefined') {
     themeManager = new ThemeManager(state, (payload) => {
@@ -449,6 +448,13 @@ function restoreSavedWorkspaceState() {
   } catch (e) {
     console.warn('Could not restore saved workspace state', e);
   }
+  // Workspace navigation can be older than the last slide actually sent live.
+  if (!REMOTE_MODE) {
+    try {
+      const savedLive = JSON.parse(localStorage.getItem(LIVE_STATE_STORAGE_KEY) || 'null');
+      if (savedLive) restoreCommittedLiveState(savedLive);
+    } catch (_) {}
+  }
   syncMedleySettingsUI();
   syncTypographySettingsUI();
   syncTransitionSettingsUI();
@@ -487,12 +493,12 @@ window.onLibraryDataUpdated = function () {
 document.addEventListener('DOMContentLoaded', () => {
   initThemeManager();
   restoreSavedWorkspaceState();
+  if (!REMOTE_MODE) liveHydrationPromise = hydrateCommittedLiveState();
   if (typeof ensureBibleLoaded === 'function') {
     ensureBibleLoaded(state.bibleVersion || 'KJV');
   }
 
   initTabs();
-  initAgendaDragDrop();
   initSongPickerModal();
   initTranslationDropdown();
   initPanics();
@@ -503,7 +509,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initRemoteControl();
     updateOperatorHeaderUI();
   }
-  initSearchFilter();
   initKeyboardNav();
   initGlobalTooltips();
   initCustomSelects();
@@ -538,10 +543,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initDesktopIntegration();
 
   // Sync preview controls with restored state
-  const fullBtn = document.getElementById('preview-mode-full-btn');
-  const ltBtn = document.getElementById('preview-mode-lt-btn');
-  if (fullBtn) fullBtn.classList.toggle('active', previewTargetMode === 'sanctuary');
-  if (ltBtn) ltBtn.classList.toggle('active', previewTargetMode === 'livestream');
 
   const bentoFull = document.getElementById('bento-prev-mode-full');
   const bentoLt = document.getElementById('bento-prev-mode-lt');
@@ -568,100 +569,15 @@ document.addEventListener('DOMContentLoaded', () => {
   if (settingMedleyToggle) settingMedleyToggle.checked = !!state.showMedleyView;
   const settingBibleMedleyTarget = document.getElementById('setting-bible-medley-change-target');
   if (settingBibleMedleyTarget) settingBibleMedleyTarget.value = state.bibleMedleyChangeTarget || 'chapter';
-  const previewIframe = document.getElementById('preview-iframe');
-  if (previewIframe) {
-    const baseUrl = getBaseDisplayUrl();
-    previewIframe.src = `${baseUrl}?target=${previewTargetMode}&preview=1`;
-  }
 
   // Listen for sync request from newly opened OBS / Sanctuary output windows
   syncChannel.onmessage = (event) => {
     if (event.data && event.data.type === 'REQUEST_STATE') {
-      broadcastState();
+      replyToOutputStateRequest();
     }
   };
 
-  // Matrix Preview Auto-Scalers
-  scalePreviewIframe();
-  window.addEventListener('resize', scalePreviewIframe);
-  setTimeout(scalePreviewIframe, 300);
 });
-
-// HTML5 Drag & Drop Engine for Service Agenda
-let agendaDragCounter = 0;
-
-function initAgendaDragDrop() {
-  const card = document.querySelector('.sidebar-agenda-card');
-  const container = document.getElementById('agenda-items-list');
-  if (!container && !card) return;
-
-  const targetEl = card || container;
-
-  targetEl.ondragenter = (e) => {
-    e.preventDefault();
-    agendaDragCounter++;
-    targetEl.classList.add('drag-hover');
-    if (container) container.classList.add('drag-hover');
-  };
-
-  targetEl.ondragover = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    if (!targetEl.classList.contains('drag-hover')) {
-      targetEl.classList.add('drag-hover');
-      if (container) container.classList.add('drag-hover');
-    }
-  };
-
-  targetEl.ondragleave = () => {
-    agendaDragCounter = Math.max(0, agendaDragCounter - 1);
-    if (agendaDragCounter === 0) {
-      targetEl.classList.remove('drag-hover');
-      if (container) container.classList.remove('drag-hover');
-    }
-  };
-
-  targetEl.ondrop = (e) => {
-    e.preventDefault();
-    agendaDragCounter = 0;
-    targetEl.classList.remove('drag-hover');
-    if (container) container.classList.remove('drag-hover');
-
-    let songId = e.dataTransfer ? e.dataTransfer.getData('application/song-id') : null;
-    let bibleBook = e.dataTransfer ? e.dataTransfer.getData('application/bible-book') : null;
-    const sourceAgendaIdxStr = e.dataTransfer ? e.dataTransfer.getData('application/agenda-index') : null;
-
-    if (!songId && !bibleBook && window.sfDraggedItem) {
-      if (window.sfDraggedItem.type === 'song') songId = window.sfDraggedItem.id;
-      else if (window.sfDraggedItem.type === 'bible') bibleBook = window.sfDraggedItem.id;
-    }
-    if (!songId && !bibleBook && !sourceAgendaIdxStr && e.dataTransfer) {
-      const plain = e.dataTransfer.getData('text/plain');
-      if (plain) {
-        if (SONGS_DATABASE.some(s => s.id === plain)) songId = plain;
-        else if (typeof BIBLE_BOOKS !== 'undefined' && BIBLE_BOOKS.includes(plain)) bibleBook = plain;
-      }
-    }
-
-    if (sourceAgendaIdxStr !== '' && sourceAgendaIdxStr !== null && sourceAgendaIdxStr !== undefined) {
-      const fromIdx = parseInt(sourceAgendaIdxStr, 10);
-      if (!isNaN(fromIdx) && fromIdx >= 0 && fromIdx < state.agendaItems.length) {
-        const [movedItem] = state.agendaItems.splice(fromIdx, 1);
-        state.agendaItems.push(movedItem);
-        renderAgenda();
-        renderLibrary();
-        syncDashboardWorkspace();
-        return;
-      }
-    }
-
-    if (songId) {
-      addSongToAgenda(songId);
-    } else if (bibleBook) {
-      addBibleBookToAgenda(bibleBook);
-    }
-  };
-}
 
 function addBibleBookToAgenda(book, targetIndex = null) {
   const ver = state.bibleVersion || 'KJV';
@@ -766,180 +682,8 @@ function removeAgendaItem(index) {
 }
 
 function renderAgenda() {
-  if (typeof window.renderBentoAgenda === 'function') {
-    window.renderBentoAgenda();
-  }
-  if (window.sessionManager && typeof window.sessionManager.updateTopBarUi === 'function') {
-    window.sessionManager.updateTopBarUi();
-  }
-
-  // If Bento layout is active, skip rendering hidden Classic DOM elements
-  const currentThemeStyle = (window.themeManager && window.themeManager.currentStyle) || (document.body && document.body.getAttribute('data-theme-style')) || 'bento';
-  if (currentThemeStyle === 'bento') {
-    return;
-  }
-
-  const container = document.getElementById('agenda-items-list');
-  if (!container) return;
-  container.innerHTML = '';
-
-  if (state.agendaItems.length === 0) {
-    container.innerHTML = `
-      <div class="agenda-empty-state">
-        Drag songs from below or click "+ Item" to build Service Agenda
-      </div>
-    `;
-    return;
-  }
-
-  state.agendaItems.forEach((item, idx) => {
-    const card = document.createElement('div');
-    card.className = 'library-item agenda-list-item';
-    card.style.display = 'flex';
-    card.style.justifyContent = 'space-between';
-    card.style.alignItems = 'center';
-    card.style.opacity = '0.85';
-    card.setAttribute('draggable', 'true');
-
-    card.onmouseenter = () => { card.style.opacity = '1.0'; };
-    card.onmouseleave = () => { card.style.opacity = '0.85'; };
-
-    card.ondragstart = (e) => {
-      window.sfIsInternalDrag = true;
-      window.sfDraggedItem = { type: item.type, id: item.id, item, idx };
-      if (item.type === 'song') {
-        e.dataTransfer.setData('text/plain', item.id);
-        e.dataTransfer.setData('application/song-id', item.id);
-      } else if (item.type === 'bible') {
-        e.dataTransfer.setData('text/plain', item.book || item.id);
-        e.dataTransfer.setData('application/bible-book', item.book || item.id);
-      } else {
-        e.dataTransfer.setData('text/plain', item.id);
-      }
-      e.dataTransfer.setData('application/agenda-index', String(idx));
-      e.dataTransfer.effectAllowed = 'copyMove';
-      card.classList.add('dragging');
-    };
-
-    card.ondragend = () => {
-      window.sfIsInternalDrag = false;
-      window.sfDraggedItem = null;
-      card.classList.remove('dragging');
-      document.querySelectorAll('.agenda-list-item').forEach(el => {
-        el.classList.remove('drag-over-top', 'drag-over-bottom');
-      });
-      const agendaCard = document.querySelector('.sidebar-agenda-card') || document.getElementById('bento-agenda-card');
-      if (agendaCard) agendaCard.classList.remove('drag-hover');
-      if (container) container.classList.remove('drag-hover');
-    };
-
-    card.ondragover = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      const rect = card.getBoundingClientRect();
-      const midY = rect.top + rect.height / 2;
-      if (e.clientY < midY) {
-        card.classList.add('drag-over-top');
-        card.classList.remove('drag-over-bottom');
-      } else {
-        card.classList.add('drag-over-bottom');
-        card.classList.remove('drag-over-top');
-      }
-    };
-
-    card.ondragleave = (e) => {
-      card.classList.remove('drag-over-top', 'drag-over-bottom');
-    };
-
-    card.ondrop = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      card.classList.remove('drag-over-top', 'drag-over-bottom');
-      const agendaCard = document.querySelector('.sidebar-agenda-card') || document.getElementById('bento-agenda-card');
-      if (agendaCard) agendaCard.classList.remove('drag-hover');
-      if (container) container.classList.remove('drag-hover');
-
-      const rect = card.getBoundingClientRect();
-      const isBefore = e.clientY < (rect.top + rect.height / 2);
-      let targetIdx = isBefore ? idx : idx + 1;
-
-      const sourceAgendaIdxStr = e.dataTransfer ? e.dataTransfer.getData('application/agenda-index') : null;
-      if (sourceAgendaIdxStr !== '' && sourceAgendaIdxStr !== null && sourceAgendaIdxStr !== undefined) {
-        const fromIdx = parseInt(sourceAgendaIdxStr, 10);
-        if (!isNaN(fromIdx) && fromIdx >= 0 && fromIdx < state.agendaItems.length) {
-          if (fromIdx === idx) return;
-          const [movedItem] = state.agendaItems.splice(fromIdx, 1);
-          const finalTargetIdx = targetIdx > fromIdx ? targetIdx - 1 : targetIdx;
-          state.agendaItems.splice(finalTargetIdx, 0, movedItem);
-          renderAgenda();
-          renderLibrary();
-          syncDashboardWorkspace();
-          return;
-        }
-      }
-
-      let songId = e.dataTransfer ? e.dataTransfer.getData('application/song-id') : null;
-      let bibleBook = e.dataTransfer ? e.dataTransfer.getData('application/bible-book') : null;
-      if (!songId && !bibleBook && window.sfDraggedItem) {
-        if (window.sfDraggedItem.type === 'song') songId = window.sfDraggedItem.id;
-        else if (window.sfDraggedItem.type === 'bible') bibleBook = window.sfDraggedItem.id;
-      }
-      if (!songId && !bibleBook && e.dataTransfer) {
-        const plain = e.dataTransfer.getData('text/plain');
-        if (plain) {
-          if (SONGS_DATABASE.some(s => s.id === plain)) songId = plain;
-          else if (typeof BIBLE_BOOKS !== 'undefined' && BIBLE_BOOKS.includes(plain)) bibleBook = plain;
-        }
-      }
-
-      if (songId) {
-        addSongToAgenda(songId, targetIdx);
-      } else if (bibleBook) {
-        addBibleBookToAgenda(bibleBook, targetIdx);
-      }
-    };
-
-    card.innerHTML = `
-      <div style="display:flex; align-items:center; gap:8px; flex:1; overflow:hidden;">
-        <span style="font-family:var(--font-mono); font-size:10px; color:var(--text-dim); font-weight:500;">#${idx + 1}</span>
-        <span style="font-size:11.5px; font-weight:450; color:var(--text-starlight); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.title}</span>
-      </div>
-      <div style="display:flex; align-items:center; gap:4px;">
-        <button class="medley-assign-btn agenda-remove-btn" style="color:var(--text-dim); opacity:0.6; padding:2px 6px; font-size:10px;" onclick="event.stopPropagation(); removeAgendaItem(${idx})" title="Remove from Agenda"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-      </div>
-    `;
-
-    card.onclick = () => {
-      if (['media','countdown'].includes(item.type)) {window.openPresentationItem?.(item);return;}
-      if (item.type === 'song') {
-        if (state.isMedleyMode) {
-          selectSingleViewSong(item.id);
-          return;
-        }
-        const isDifferent = (state.activeSongId !== item.id);
-        state.activeSongId = item.id;
-        state.activeDeckType = 'song';
-        if (isDifferent) {
-          state.liveEngagedDeck = null;
-          if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
-        }
-        applySongBoundTheme(item.id);
-        state.currentTab = 'songs';
-        document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'songs'));
-        renderLibrary();
-        scrollActiveLibraryItemIntoView(item.id);
-        renderDeck(true);
-        syncDashboardWorkspace();
-      }
-    };
-
-    container.appendChild(card);
-  });
-
-  if (typeof window.renderBentoAgenda === 'function') {
-    window.renderBentoAgenda();
-  }
+  window.renderBentoAgenda?.();
+  window.sessionManager?.updateTopBarUi?.();
 }
 
 // Navigation & Workspace Tabs (Zone 1 Sidebar)
@@ -958,15 +702,6 @@ function switchLibraryTab(targetTab) {
   state.currentTab = targetTab;
   syncActiveTabUI();
   if (targetTab === 'media') { renderLibrary(); return; }
-
-  // Dynamic Search Input Placeholder & Reset
-  const searchInput = document.getElementById('sidebar-search-input');
-  const clearBtn = document.getElementById('sidebar-search-clear');
-  if (searchInput) {
-    searchInput.value = '';
-    searchInput.placeholder = (targetTab === 'songs') ? 'Search for lyrics (Ctrl+L)...' : 'Filter book, chapter or verse (Ctrl+L)...';
-  }
-  if (clearBtn) clearBtn.style.display = 'none';
 
   const bentoSearchInput = document.getElementById('bento-search-input');
   if (bentoSearchInput) {
@@ -1009,22 +744,14 @@ function initTabs() {
 
   syncActiveTabUI();
 
-  const searchInput = document.getElementById('sidebar-search-input');
-  if (searchInput) {
-    searchInput.placeholder = (state.currentTab === 'songs') ? 'Search for lyrics (Ctrl+L)...' : 'Filter book, chapter or verse (Ctrl+L)...';
-  }
 }
 window.initTabs = initTabs;
 
 function focusLibrarySearch() {
-  const isBento = document.body && document.body.getAttribute('data-theme-style') === 'bento';
-  const bentoInput = document.getElementById('bento-search-input');
-  const classicInput = document.getElementById('sidebar-search-input');
-
-  const target = (isBento && bentoInput) ? bentoInput : (classicInput || bentoInput);
+  const target = document.getElementById('bento-search-input');
   if (target) {
     target.focus();
-    if (typeof target.select === 'function') target.select();
+    target.select?.();
   }
 }
 window.focusLibrarySearch = focusLibrarySearch;
@@ -1116,8 +843,9 @@ function initKeyboardNav() {
       e.preventDefault();
       navigateLiveVerse(1);
     }
-    // ESCAPE / F1 -> Clear all outputs and close overlays
+    // Escape / F1 clear live output and its preview mirror together.
     else if (e.key === 'Escape' || e.key === 'F1') {
+      e.preventDefault();
       clearAllOutputs();
       closeCommandPalette();
       closeSettingsModal();
@@ -1277,11 +1005,6 @@ function setMedleyMode(isMedley) {
     }
   }
 
-  const singleBtn = document.getElementById('btn-single-mode');
-  const medleyBtn = document.getElementById('btn-medley-mode');
-  if (singleBtn) singleBtn.classList.toggle('active', !isMedley);
-  if (medleyBtn) medleyBtn.classList.toggle('active', isMedley);
-
   const segSingle = document.getElementById('bento-seg-single');
   const segMedley = document.getElementById('bento-seg-medley');
   if (segSingle) segSingle.classList.toggle('active', !isMedley);
@@ -1305,8 +1028,6 @@ function setMedleyMode(isMedley) {
         }
         if (ver && ver !== state.bibleVersion) {
           state.bibleVersion = ver;
-          const label = document.getElementById('active-version-label');
-          if (label) label.textContent = ver;
         }
       }
     } else if (state.activeDeckType === 'song') {
@@ -1381,608 +1102,16 @@ window.selectSingleViewSong = selectSingleViewSong;
 
 // Render Zone 2 Deck (Single View vs Medley Deck View for Bible / Songs)
 function renderDeck(resetScroll = false) {
-  if (window.renderPresentationDeck?.()) return;
-  if (typeof window.renderBentoDeck === 'function') {
-    window.renderBentoDeck();
-  }
-
-  // If Bento layout is active, skip rendering hidden Classic DOM elements
-  const currentThemeStyle = (window.themeManager && window.themeManager.currentStyle) || (document.body && document.body.getAttribute('data-theme-style')) || 'bento';
-  if (currentThemeStyle === 'bento') {
-    return;
-  }
-
-  const container = document.getElementById('deck-container');
-  const titleEl = document.getElementById('deck-title');
-  const compareBtn = document.getElementById('btn-compare-mode');
-  const editSongBtn = document.getElementById('btn-edit-song');
-
-  // Keep Single View and Medley Deck buttons strictly in sync with state.isMedleyMode
-  const singleBtn = document.getElementById('btn-single-mode');
-  const medleyBtn = document.getElementById('btn-medley-mode');
-  if (singleBtn) singleBtn.classList.toggle('active', !state.isMedleyMode);
-  if (medleyBtn) medleyBtn.classList.toggle('active', !!state.isMedleyMode);
-
-  const versionSwitcherWrap = document.getElementById('bible-version-switcher-wrap');
-  const comparePickerWrap = document.getElementById('compare-version-picker-wrap');
-  const sidebarVersionBar = document.getElementById('sidebar-bible-version-bar');
-
-  const hasActiveItem = Boolean(state.activeLiveSlideId || state.liveEngagedDeck || (state.activeDeckType === 'song' && state.activeSongId) || (state.activeDeckType === 'bible' && state.activeBibleBook));
-  const deckType = hasActiveItem ? (state.activeDeckType || (state.currentTab === 'bible' ? 'bible' : 'song')) : (state.currentTab === 'bible' ? 'bible' : 'song');
-  const isBibleDeck = (deckType === 'bible');
-
-  if (isBibleDeck) {
-    populateBibleVersionSelects();
-    if (versionSwitcherWrap) versionSwitcherWrap.style.display = state.isMedleyMode ? 'none' : 'flex';
-    if (comparePickerWrap) comparePickerWrap.style.display = (!state.isMedleyMode && state.isCompareMode) ? 'flex' : 'none';
-    if (compareBtn) {
-      compareBtn.style.display = state.isMedleyMode ? 'none' : 'inline-flex';
-      compareBtn.classList.toggle('active', state.isCompareMode);
-    }
-  } else {
-    if (versionSwitcherWrap) versionSwitcherWrap.style.display = 'none';
-    if (comparePickerWrap) comparePickerWrap.style.display = 'none';
-    if (compareBtn) compareBtn.style.display = 'none';
-  }
-
-  if (sidebarVersionBar) {
-    sidebarVersionBar.style.display = (state.currentTab === 'bible') ? 'flex' : 'none';
-  }
-
-  const classicStrongsBtn = document.getElementById('btn-strongs-mode');
-  if (classicStrongsBtn) {
-    classicStrongsBtn.style.display = isBibleDeck ? 'inline-flex' : 'none';
-    classicStrongsBtn.classList.toggle('active', Boolean(state.strongsMode));
-  }
-  const bentoStrongsBtn = document.getElementById('bento-strongs-btn');
-  if (bentoStrongsBtn) {
-    bentoStrongsBtn.style.display = isBibleDeck ? 'inline-flex' : 'none';
-    bentoStrongsBtn.classList.toggle('active', Boolean(state.strongsMode));
-  }
-
-  if (editSongBtn) {
-    editSongBtn.style.display = isBibleDeck ? 'none' : 'inline-flex';
-  }
-
-  const linesSwitcher = document.getElementById('deck-lines-switcher');
-  if (linesSwitcher) {
-    linesSwitcher.style.display = isBibleDeck ? 'none' : 'flex';
-    linesSwitcher.querySelectorAll('.btn-lines-opt').forEach(btn => {
-      btn.classList.toggle('active', parseInt(btn.dataset.lines, 10) === state.maxLinesPerSlide);
-    });
-  }
-
-  if (!container) return;
-  if (resetScroll) {
-    container.scrollTop = 0;
-  }
-  container.innerHTML = '';
-
-  if (state.isMedleyMode) {
-    const isBibleTab = isBibleDeck;
-
-    if (isBibleTab) {
-      if (!Array.isArray(state.medleyBibleSlots)) {
-        state.medleyBibleSlots = [];
-      }
-    } else {
-      if (!Array.isArray(state.medleySongIds)) {
-        state.medleySongIds = [];
-      }
-    }
-
-    if (titleEl) {
-      if (isBibleTab) {
-        titleEl.innerHTML = `
-          <span class="eyebrow-tag" style="gap:6px;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-            SCRIPTURE MEDLEY DECK
-          </span>
-          <span class="deck-title-hint">(Drag & drop scriptures below)</span>
-        `;
-      } else {
-        titleEl.innerHTML = `
-          <span class="eyebrow-tag" style="gap:6px;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="2.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            WORSHIP MEDLEY DECK
-          </span>
-          <span class="deck-title-hint">(Drag & drop songs below)</span>
-        `;
-      }
-    }
-
-    const grid = document.createElement('div');
-    grid.className = 'medley-3card-grid';
-
-    if (isBibleTab) {
-      // -------------------------------------------------------------
-      // BIBLE SCRIPTURE MEDLEY DECK (3 Independent Scripture Slots)
-      // -------------------------------------------------------------
-      state.medleyBibleSlots.forEach((slot, idx) => {
-        const book = slot?.book || null;
-        const chapter = slot?.chapter || 1;
-        const verCode = slot?.version || state.bibleVersion || 'KJV';
-        const colCard = document.createElement('div');
-        const verses = book ? getBibleVerses(book, chapter, verCode) : [];
-
-        colCard.ondragover = (e) => {
-          e.preventDefault();
-          colCard.classList.add('drag-hover');
-        };
-        colCard.ondragleave = () => {
-          colCard.classList.remove('drag-hover');
-        };
-        colCard.ondrop = (e) => {
-          e.preventDefault();
-          colCard.classList.remove('drag-hover');
-          const droppedBook = e.dataTransfer.getData('application/bible-book') || e.dataTransfer.getData('text/plain');
-          if (droppedBook) {
-            assignBibleBookToSlot(droppedBook, idx);
-          }
-        };
-
-        let versesHtml = '';
-        if (verses.length > 0) {
-          verses.forEach(v => {
-            const slideId = `medley_bible_s${idx}_${book}_${chapter}_${v.verse}`;
-            const refStr = `${book} ${chapter}:${v.verse} (${verCode})`;
-            const isLive = isBibleSlideLive(verCode, book, chapter, v.verse, idx);
-
-            if (window._bentoSlideRegistry) window._bentoSlideRegistry.set(slideId, { slideId, text: v.text, refStr });
-            versesHtml += `
-              <div id="card_${slideId}" data-slide-id="${slideId}" class="slide-card ${isLive ? 'live-active' : ''}" onclick="window.projectBentoSlide('${slideId}')">
-                <div class="slide-header">
-                  <span>VERSE ${v.verse}</span>
-                </div>
-                <div class="slide-body">${v.text.replace(/\n/g, '<br>')}</div>
-              </div>
-            `;
-          });
-        } else {
-          // Empty State Prompt for Bible Passage
-          versesHtml = `
-            <div style="padding:28px 14px; text-align:center; border:1px dashed rgba(255,255,255,0.12); border-radius:10px; background:rgba(7,10,17,0.35);">
-              <div style="display:flex; justify-content:center; margin-bottom:6px;">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#93C5FD" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              </div>
-              <div style="font-size:12.5px; font-weight:600; color:var(--text-starlight); margin-bottom:4px;">No Scripture Added</div>
-              <div style="font-size:11px; color:var(--text-muted); margin-bottom:12px; line-height:1.45;">Drag a Bible book here or click Select to pick a passage for Slot S${idx + 1}.</div>
-              <button class="mode-toggle-btn active" style="font-size:10px; margin:0 auto; padding:5px 12px; background:rgba(59,130,246,0.18); border-color:rgba(59,130,246,0.35); color:#93C5FD;" data-slot="${idx}" onclick="openBiblePassagePicker(${idx}, event)">+ Pick Scripture</button>
-            </div>
-          `;
-        }
-
-        const colIsActive = book && verses.some(v => isBibleSlideLive(verCode, book, chapter, v.verse, idx));
-        colCard.className = `medley-column-card ${colIsActive ? 'active-version active-song' : ''}`;
-
-        const changeTarget = state.bibleMedleyChangeTarget || 'chapter';
-        const isVersionAction = changeTarget === 'version';
-        const changeOnClick = isVersionAction ? `openVersionPicker(${idx}, event)` : `openBiblePassagePicker(${idx}, event)`;
-        const changeLabel = isVersionAction ? 'Version' : 'Change';
-        const changeTip = isVersionAction ? 'Switch Bible translation for this slot' : 'Select scripture book & chapter for this slot';
-
-        colCard.innerHTML = `
-          <div class="medley-col-header">
-            <div style="flex:1; min-width:0; overflow:hidden;">
-              <div class="medley-slot-tag" style="color:#93C5FD;">SCRIPTURE SLOT S${idx + 1}</div>
-              <div class="medley-song-title" style="cursor:pointer;" onclick="openBiblePassagePicker(${idx}, event)" title="Click to change book & chapter">${book ? `${book} ${chapter}` : 'Empty Slot'}</div>
-              <div class="medley-song-author" style="cursor:pointer; color:#60A5FA;" onclick="openVersionPicker(${idx}, event)" title="Click to switch translation">${verCode} Translation ▾</div>
-            </div>
-            <button class="medley-change-btn" data-slot="${idx}" onclick="${changeOnClick}" title="${changeTip}">${changeLabel}</button>
-          </div>
-          <div class="medley-stanzas-wrap">${versesHtml}</div>
-        `;
-        grid.appendChild(colCard);
-      });
-
-    } else {
-      // -------------------------------------------------------------
-      // SONGS MEDLEY DECK
-      // -------------------------------------------------------------
-      [0, 1, 2].forEach((idx) => {
-        const songId = state.medleySongIds[idx];
-        const song = SONGS_DATABASE.find(s => s.id === songId);
-        const colCard = document.createElement('div');
-
-        colCard.ondragover = (e) => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'copy';
-          colCard.classList.add('drag-hover');
-        };
-        colCard.ondragleave = () => {
-          colCard.classList.remove('drag-hover');
-        };
-        colCard.ondrop = (e) => {
-          e.preventDefault();
-          colCard.classList.remove('drag-hover');
-          const droppedSongId = e.dataTransfer.getData('application/song-id') || e.dataTransfer.getData('text/plain');
-          if (droppedSongId) {
-            swapMedleySong(idx, droppedSongId, false);
-          }
-        };
-
-        let stanzasHtml = '';
-        if (song) {
-          const maxLines = state.maxLinesPerSlide ?? 0;
-          song.stanzas.forEach((stanza, sIdx) => {
-            const chunks = splitStanzaIntoChunks(stanza, maxLines);
-            chunks.forEach((chunk, cIdx) => {
-              const slideId = (chunks.length > 1) ? `medley_${song.id}_${sIdx}_c${cIdx}` : `medley_${song.id}_${sIdx}`;
-              const refStr = `${song.title} (${chunk.label})`;
-              const isLive = isSongSlideLive(song.id, sIdx, chunks.length > 1 ? cIdx : null);
-
-              if (window._bentoSlideRegistry) window._bentoSlideRegistry.set(slideId, { slideId, text: chunk.text, refStr });
-              stanzasHtml += `
-                <div id="card_${slideId}" data-slide-id="${slideId}" class="slide-card ${isLive ? 'live-active' : ''}" onclick="window.projectBentoSlide('${slideId}')">
-                  <div class="slide-header">
-                    <span>${chunk.label}</span>
-                  </div>
-                  <div class="slide-body">${chunk.text.replace(/\n/g, '<br>')}</div>
-                </div>
-              `;
-            });
-          });
-
-          const colIsActive = song.stanzas.some((s, sIdx) => isSongSlideLive(song.id, sIdx));
-          colCard.className = `medley-column-card ${colIsActive ? 'active-song' : ''}`;
-
-          colCard.innerHTML = `
-            <div class="medley-col-header">
-              <div style="flex:1; min-width:0; overflow:hidden;">
-                <div class="medley-slot-tag">SONG SLOT S${idx + 1}</div>
-                <div class="medley-song-title">${song.title}</div>
-                <div class="medley-song-author">by ${song.author || 'Unknown'}</div>
-              </div>
-              <button class="medley-change-btn" data-slot="${idx}" onclick="openSongPicker(${idx}, event)">Change</button>
-            </div>
-            <div class="medley-stanzas-wrap">${stanzasHtml}</div>
-          `;
-        } else {
-          // Empty State Prompt for Songs
-          colCard.className = 'medley-column-card';
-          colCard.innerHTML = `
-            <div class="medley-col-header">
-              <div style="flex:1; min-width:0; overflow:hidden;">
-                <div class="medley-slot-tag">SONG SLOT S${idx + 1}</div>
-                <div class="medley-song-title" style="color:var(--text-dim); font-weight:500;">Empty Slot</div>
-              </div>
-              <button class="medley-change-btn" data-slot="${idx}" onclick="openSongPicker(${idx}, event)">Select</button>
-            </div>
-            <div style="padding:28px 14px; text-align:center; border:1px dashed rgba(255,255,255,0.12); border-radius:10px; background:rgba(7,10,17,0.35);">
-              <div style="display:flex; justify-content:center; margin-bottom:6px;">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F472B6" stroke-width="1.8"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-              </div>
-              <div style="font-size:12.5px; font-weight:600; color:var(--text-starlight); margin-bottom:4px;">No Song Added</div>
-              <div style="font-size:11px; color:var(--text-muted); margin-bottom:12px; line-height:1.45;">Drag a song here or click Select to pick a song for Slot S${idx + 1}.</div>
-              <button class="mode-toggle-btn active" style="font-size:10px; margin:0 auto; padding:5px 12px; background:rgba(236,72,153,0.18); border-color:rgba(236,72,153,0.35); color:#F472B6;" data-slot="${idx}" onclick="openSongPicker(${idx}, event)">+ Pick Song</button>
-            </div>
-          `;
-        }
-
-        grid.appendChild(colCard);
-      });
-    }
-
-    container.appendChild(grid);
-
-  } else {
-    // Single View (Bible OR Song)
-    if (isBibleDeck) {
-      const books = getBibleBooks(state.bibleVersion);
-      const verses = getBibleVerses(state.activeBibleBook, state.activeBibleChapter, state.bibleVersion);
-
-      if (!state.activeBibleBook || books.length === 0) {
-        if (titleEl) {
-          titleEl.innerHTML = `
-            <span class="eyebrow-tag" style="gap:6px;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              BIBLE PASSAGE DISPLAY
-            </span>
-          `;
-        }
-
-        if (books.length === 0) {
-          container.innerHTML = `
-            <div style="padding:48px 20px; text-align:center; border:1px dashed rgba(255,255,255,0.12); border-radius:12px; margin:16px; background:rgba(7,10,17,0.35);">
-              <div style="display:flex; justify-content:center; margin-bottom:10px;">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              </div>
-              <div style="font-size:15px; font-weight:600; color:var(--text-starlight); margin-bottom:6px;">No Bible Translations Installed</div>
-              <div style="font-size:12px; color:var(--text-muted); max-width:340px; margin:0 auto 16px; line-height:1.5;">Import your Bible JSON files or download translations directly from the Cloud Repository.</div>
-              <button class="mode-toggle-btn active" style="font-size:12px; padding:8px 18px; margin:0 auto;" onclick="openImportModal(); switchImportSubTab('bibles');">Launch Import Manager ↗</button>
-            </div>
-          `;
-        } else {
-          container.innerHTML = `
-            <div style="padding:48px 20px; text-align:center; border:1px dashed rgba(255,255,255,0.12); border-radius:12px; margin:16px; background:rgba(7,10,17,0.35);">
-              <div style="display:flex; justify-content:center; margin-bottom:10px;">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              </div>
-              <div style="font-size:15px; font-weight:600; color:var(--text-starlight); margin-bottom:6px;">No Scripture Passage Selected</div>
-              <div style="font-size:12px; color:var(--text-muted); max-width:380px; margin:0 auto 16px; line-height:1.5;">Select a Bible book and chapter from the left panel to load verses into the live slide deck.</div>
-            </div>
-          `;
-        }
-        return;
-      }
-
-      if (titleEl) {
-        const hintText = state.isCompareMode
-          ? `(${state.bibleVersion} vs ${state.compareBibleVersion})`
-          : `(${state.bibleVersion})`;
-
-        const allChapters = getBibleChapters(state.activeBibleBook, state.bibleVersion);
-        let chapterOptionsHtml = '';
-        allChapters.forEach(c => {
-          const cNum = parseInt(c, 10);
-          chapterOptionsHtml += `<option value="${cNum}" ${cNum === parseInt(state.activeBibleChapter, 10) ? 'selected' : ''}>Chapter ${cNum}</option>`;
-        });
-
-        titleEl.innerHTML = `
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span class="eyebrow-tag" style="gap:6px;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              ${(state.activeBibleBook || 'SCRIPTURE').toUpperCase()}
-            </span>
-            ${allChapters.length > 1 ? `
-              <select class="mode-toggle-btn" style="background:rgba(7,10,17,0.7); border:1px solid rgba(59,130,246,0.3); color:#93C5FD; font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:var(--radius-pill); cursor:pointer; outline:none;" onchange="selectBibleChapter('${state.activeBibleBook}', this.value)">
-                ${chapterOptionsHtml}
-              </select>
-            ` : `<span style="font-size:12px; font-weight:700; color:#93C5FD;">Chapter 1</span>`}
-            <span class="deck-title-hint">${hintText}</span>
-          </div>
-        `;
-      }
-
-      const grid = document.createElement('div');
-      grid.className = 'slides-grid';
-
-      const compareVerses = state.isCompareMode
-        ? getBibleVerses(state.activeBibleBook, state.activeBibleChapter, state.compareBibleVersion)
-        : [];
-
-      verses.forEach(v => {
-        if (state.isCompareMode) {
-          const compV = compareVerses.find(cv => cv.verse === v.verse);
-          const compText = compV ? compV.text : '';
-          const cleanText1 = (typeof stripStrongsTags === 'function') ? stripStrongsTags(v.text) : v.text;
-          const cleanText2 = (typeof stripStrongsTags === 'function') ? stripStrongsTags(compText) : compText;
-          const slideId = `bible_compare_${state.bibleVersion}_${state.compareBibleVersion}_${state.activeBibleBook}_${state.activeBibleChapter}_${v.verse}`;
-          const refStr = `${state.activeBibleBook} ${state.activeBibleChapter}:${v.verse} (${state.bibleVersion} vs ${state.compareBibleVersion})`;
-          const isLive = isBibleSlideLive(state.bibleVersion, state.activeBibleBook, state.activeBibleChapter, v.verse);
-
-          const card = document.createElement('div');
-          card.id = `card_${slideId}`;
-          card.dataset.slideId = slideId;
-          card.className = `slide-card ${isLive ? 'live-active' : ''}`;
-
-          const comparePayload = {
-            ver1: { code: state.bibleVersion, text: cleanText1 },
-            ver2: { code: state.compareBibleVersion, text: cleanText2 }
-          };
-
-          const trigger = (e) => {
-            if (e && e.button !== undefined && e.button !== 0) return;
-            projectSlide(slideId, cleanText1, refStr, { compareData: comparePayload });
-          };
-          card.onclick = trigger;
-          card.ondblclick = () => projectSlide(slideId, cleanText1, refStr, { compareData: comparePayload, takeLive: true });
-          card.innerHTML = `
-            <div class="slide-header">
-              <span>Verse ${v.verse}</span>
-            </div>
-            <div class="slide-body" style="display:flex; flex-direction:column; gap:8px;">
-              <div>
-                <span style="font-size:10px; font-weight:700; color:#60A5FA; text-transform:uppercase; letter-spacing:0.04em;">[${state.bibleVersion}]</span>
-                <div style="margin-top:2px; font-size:12px; line-height:1.4;">${escapeHtml(cleanText1)}</div>
-              </div>
-              <div style="border-top:1px solid rgba(255,255,255,0.06); padding-top:6px;">
-                <span style="font-size:10px; font-weight:700; color:#F472B6; text-transform:uppercase; letter-spacing:0.04em;">[${state.compareBibleVersion}]</span>
-                <div style="margin-top:2px; font-size:12px; line-height:1.4; color:var(--text-muted);">${escapeHtml(cleanText2) || '(Not available in this version)'}</div>
-              </div>
-            </div>
-          `;
-          grid.appendChild(card);
-        } else {
-          const slideId = `bible_${state.bibleVersion}_${state.activeBibleBook}_${state.activeBibleChapter}_${v.verse}`;
-          const refStr = `${state.activeBibleBook} ${state.activeBibleChapter}:${v.verse} (${state.bibleVersion})`;
-          const isLive = isBibleSlideLive(state.bibleVersion, state.activeBibleBook, state.activeBibleChapter, v.verse);
-          const cleanText = (typeof stripStrongsTags === 'function') ? stripStrongsTags(v.text) : v.text;
-
-          const card = document.createElement('div');
-          card.id = `card_${slideId}`;
-          card.dataset.slideId = slideId;
-          card.className = `slide-card ${isLive ? 'live-active' : ''}`;
-          const trigger = (e) => {
-            if (e && e.button !== undefined && e.button !== 0) return;
-            projectSlide(slideId, cleanText, refStr, { compareData: null });
-          };
-          card.onclick = trigger;
-          card.ondblclick = () => projectSlide(slideId, cleanText, refStr, { compareData: null, takeLive: true });
-          let verseBodyHtml = escapeHtml(cleanText);
-          if (state.strongsMode) {
-            let taggedText = v.text;
-            if (typeof BIBLE_DATABASE !== 'undefined' && BIBLE_DATABASE['KJV_STRONGS'] && BIBLE_DATABASE['KJV_STRONGS'][state.activeBibleBook] && BIBLE_DATABASE['KJV_STRONGS'][state.activeBibleBook][state.activeBibleChapter]) {
-              const tv = BIBLE_DATABASE['KJV_STRONGS'][state.activeBibleBook][state.activeBibleChapter].find(item => item.verse === v.verse);
-              if (tv && tv.text) taggedText = tv.text;
-            }
-            if (typeof window.formatStrongsVerseHtml === 'function') {
-              verseBodyHtml = window.formatStrongsVerseHtml(taggedText);
-            }
-          }
-
-          card.innerHTML = `
-            <div class="slide-header">
-              <span>Verse ${v.verse}</span>
-            </div>
-            <div class="slide-body">${verseBodyHtml}</div>
-          `;
-          grid.appendChild(card);
-        }
-      });
-      container.appendChild(grid);
-
-    } else {
-      // SONGS Tab Selected in Zone 1: Render Vertical Stanza List View
-      const song = SONGS_DATABASE.find(s => s.id === state.activeSongId) || SONGS_DATABASE[0];
-
-      if (!song || SONGS_DATABASE.length === 0) {
-        if (titleEl) {
-          titleEl.innerHTML = `
-            <span class="eyebrow-tag" style="gap:6px;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="2.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-              WORSHIP SONG LYRICS
-            </span>
-          `;
-        }
-        container.innerHTML = `
-          <div style="padding:48px 20px; text-align:center; border:1px dashed rgba(255,255,255,0.1); border-radius:12px; margin:16px; background:rgba(7,10,17,0.3);">
-            <div style="display:flex; justify-content:center; margin-bottom:10px;">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="1.8"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            </div>
-            <div style="font-size:15px; font-weight:600; color:var(--text-starlight); margin-bottom:6px;">Your Worship Songbook is Empty</div>
-            <div style="font-size:12px; color:var(--text-muted); max-width:360px; margin:0 auto 16px; line-height:1.5;">Drag & drop your song files (.txt, .xml, .json) or copy/paste lyrics into the importer to create slide cards.</div>
-            <button class="mode-toggle-btn active" style="font-size:12px; padding:8px 18px; margin:0 auto; background:var(--accent-pink-gradient); color:white;" onclick="openImportModal(); switchImportSubTab('songs');">Import Song Lyrics ↗</button>
-          </div>
-        `;
-        return;
-      }
-
-      if (titleEl && song) {
-        titleEl.innerHTML = `
-          <span class="eyebrow-tag" style="gap:6px; max-width:70%; overflow:hidden;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="2.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            <span class="inline-editable-title" 
-              style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:uppercase;"
-              ondblclick="makeElementEditable(this)"
-              onblur="this.contentEditable='false'; saveInlineSongTitle('${song.id}', this.innerText)" 
-              onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}" 
-              title="${song.title} (Double-click to rename)">${song.title}</span>
-          </span>
-          <span class="deck-title-hint">by ${song.author || 'Unknown'}</span>
-        `;
-      }
-
-      // If songs are in medley slots, add a quick Slot Switcher Bar in Single View
-      const validMedleySlots = (state.medleySongIds || []).filter(id => Boolean(id));
-      if (validMedleySlots.length > 0) {
-        const slotBar = document.createElement('div');
-        slotBar.className = 'single-view-slot-bar';
-        slotBar.style.cssText = 'display:flex; align-items:center; gap:6px; margin-bottom:10px; padding:4px 6px; background:rgba(10,14,23,0.5); border:1px solid rgba(255,255,255,0.08); border-radius:8px; flex-shrink:0;';
-
-        let slotButtons = '';
-        state.medleySongIds.forEach((mId, mIdx) => {
-          if (!mId) return;
-          const mSong = SONGS_DATABASE.find(s => s.id === mId);
-          if (!mSong) return;
-          const isSelected = mSong.id === song.id;
-          const isLive = mSong.stanzas && mSong.stanzas.some((_, sIdx) => isSongSlideLive(mSong.id, sIdx));
-          slotButtons += `
-            <button class="mode-toggle-btn ${isSelected ? 'active' : ''}" style="font-size:11px; padding:4px 10px; border-radius:6px; display:flex; align-items:center; gap:6px; flex:1; max-width:240px; overflow:hidden;" onclick="selectSingleViewSong('${mSong.id}')">
-              <span style="font-family:var(--font-mono); font-weight:700; color:var(--accent-pink-light); font-size:10px;">S${mIdx + 1}</span>
-              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${mSong.title}</span>
-              ${isLive ? '<span style="width:6px; height:6px; border-radius:50%; background:#10B981; flex-shrink:0;"></span>' : ''}
-            </button>
-          `;
-        });
-
-        slotBar.innerHTML = `
-          <span style="font-family:var(--font-mono); font-size:9.5px; font-weight:700; color:var(--text-dim); padding:0 4px; letter-spacing:0.06em; flex-shrink:0;">SLOTS:</span>
-          ${slotButtons}
-        `;
-        container.appendChild(slotBar);
-      }
-
-      const listContainer = document.createElement('div');
-      listContainer.className = 'song-stanzas-list-view';
-
-      const maxLines = state.maxLinesPerSlide || 4;
-      song.stanzas.forEach((stanza, sIdx) => {
-        const chunks = splitStanzaIntoChunks(stanza, maxLines);
-        chunks.forEach((chunk, cIdx) => {
-          const slideId = (chunks.length > 1) ? `${song.id}_${sIdx}_c${cIdx}` : `${song.id}_${sIdx}`;
-          const isLive = isSongSlideLive(song.id, sIdx, chunks.length > 1 ? cIdx : null);
-
-          const card = document.createElement('div');
-          card.id = `card_${slideId}`;
-          card.dataset.slideId = slideId;
-          card.className = `song-stanza-list-card ${isLive ? 'live-active' : ''}`;
-
-          const trigger = (e) => {
-            if (e && e.button !== undefined && e.button !== 0) return;
-            if (e && (e.target.isContentEditable || e.target.getAttribute('contenteditable') === 'true')) return;
-
-            if (state.isEditingMode) {
-              state.isEditingMode = false;
-              return;
-            }
-
-            projectSlide(
-              slideId,
-              chunk.text,
-              `${song.title} (${chunk.label})`
-            );
-          };
-          card.onclick = trigger;
-          card.ondblclick = (e) => {
-            const targetEl = e.target.closest('.song-stanza-inner-box, .song-stanza-label') || card.querySelector('.song-stanza-inner-box');
-            if (targetEl) {
-              makeElementEditable(targetEl);
-            }
-          };
-
-          card.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <div class="song-stanza-label"
-                onblur="this.contentEditable='false'; saveInlineStanzaType('${song.id}', ${sIdx}, this.innerText)"
-                onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
-                title="Single-click projects • Double-click to rename tag">${chunk.label}</div>
-            </div>
-            <div class="song-stanza-inner-box"
-              onblur="this.contentEditable='false'; saveInlineStanzaText('${song.id}', ${sIdx}, this.innerText)">${chunk.text.replace(/\n/g, '<br>')}</div>
-          `;
-          listContainer.appendChild(card);
-        });
-      });
-
-      container.appendChild(listContainer);
-    }
-  }
-
-  // Safety net: Guarantee deck container is never left pitch black/empty
-  const hasChildren = (typeof container.hasChildNodes === 'function' ? container.hasChildNodes() : (container.children && container.children.length > 0));
-  if (!hasChildren || !container.innerHTML.trim()) {
-    container.innerHTML = `
-      <div style="padding:48px 24px; text-align:center; border:1.5px dashed rgba(255,255,255,0.14); border-radius:14px; background:rgba(7,10,17,0.4); margin:16px;">
-        <div style="width:52px; height:52px; border-radius:50%; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); display:flex; align-items:center; justify-content:center; margin:0 auto 14px;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-        </div>
-        <div style="font-size:16px; font-weight:700; color:var(--text-starlight); margin-bottom:6px;">Slide Deck Workspace Empty</div>
-        <div style="font-size:12.5px; color:var(--text-muted); max-width:420px; margin:0 auto 16px; line-height:1.5;">
-          Select a song or Bible passage from the left sidebar library to populate slide cards here for live projection.
-        </div>
-      </div>
-    `;
-  }
-
-  if (typeof window.renderBentoDeck === 'function') {
-    window.renderBentoDeck();
-  }
-
-  if (typeof window.syncStagedCardVisuals === 'function') {
-    window.syncStagedCardVisuals();
-  }
-
-  scrollToActiveSlide();
+  window.renderBentoDeck?.();
 }
 
 function scrollActiveLibraryItemIntoView(itemId) {
   if (!itemId) return;
-  const libraryList = document.getElementById('library-list');
+  const libraryList = document.getElementById('bento-library-list');
   if (!libraryList) return;
 
   const activeEl = libraryList.querySelector(`[data-song-id="${itemId}"]`) ||
-    libraryList.querySelector(`.library-item.active`);
+    libraryList.querySelector('.bento-lib-item.active');
   if (!activeEl) return;
 
   const containerRect = libraryList.getBoundingClientRect();
@@ -2029,7 +1158,7 @@ function scrollElementIntoContainerView(element, container, options = {}) {
   if (options.includeNextSibling) {
     let sibling = element.nextElementSibling;
     while (sibling) {
-      if (sibling.classList && (sibling.classList.contains('slide-card') || sibling.classList.contains('song-stanza-list-card') || sibling.classList.contains('bento-single-card') || sibling.classList.contains('bento-slide-card'))) {
+      if (sibling.classList && (sibling.classList.contains('bento-single-card') || sibling.classList.contains('bento-slide-card'))) {
         targetBottom = sibling.getBoundingClientRect ? sibling.getBoundingClientRect().bottom : targetBottom;
         break;
       }
@@ -2051,25 +1180,12 @@ function scrollElementIntoContainerView(element, container, options = {}) {
 
 function scrollToActiveSlide(options = {}) {
   if (state.isDeckEditingSong && window.refreshBentoSplitLive?.(true)) return;
-  requestAnimationFrame(() => {
-    // 1. Classic Theme Deck Scroll
-    const container = document.getElementById('deck-container');
-    const activeCard = document.querySelector('#deck-container .slide-card.live-active, #deck-container .song-stanza-list-card.live-active, #deck-container .slide-card.live, #deck-container .song-stanza-list-card.live');
-    if (container && container.classList) {
-      container.classList.toggle('has-live-active', !!activeCard);
-    }
-    if (activeCard) {
-      const medleyWrap = (typeof activeCard.closest === 'function') ? activeCard.closest('.medley-stanzas-wrap') : null;
-      if (medleyWrap) {
-        scrollElementIntoContainerView(activeCard, medleyWrap, { center: true, ...options });
-      } else if (container) {
-        scrollElementIntoContainerView(activeCard, container, { center: true, ...options });
-      }
-    }
-
+  if (REMOTE_MODE) options = { ...options, behavior: 'instant' };
+  const scroll = () => {
     // 2. Bento Theme Deck Scroll (Single View & Medley Columns)
     const bentoContainer = document.getElementById('bento-medley-container');
-    const bentoActiveCard = document.querySelector('#bento-medley-container .bento-single-card.live, #bento-medley-container .bento-slide-card.live, #bento-medley-container .bento-card-pulse');
+    const bentoActiveCard = document.querySelector('#bento-medley-container .bento-single-card.live, #bento-medley-container .bento-slide-card.live')
+      || document.querySelector('#bento-medley-container .bento-card-pulse');
     if (bentoActiveCard) {
       const bentoSlidesWrap = (typeof bentoActiveCard.closest === 'function') ? bentoActiveCard.closest('.bento-slides') : null;
       if (bentoSlidesWrap) {
@@ -2078,7 +1194,9 @@ function scrollToActiveSlide(options = {}) {
         scrollElementIntoContainerView(bentoActiveCard, bentoContainer, { center: true, ...options });
       }
     }
-  });
+  };
+  if (REMOTE_MODE) scroll();
+  else requestAnimationFrame(scroll);
 }
 
 // Available Bible Translations & Universal Bible Accessors
@@ -2137,6 +1255,14 @@ function getBibleTranslations() {
     }
   } catch (e) {}
 
+  if (typeof CLOUD_REPOSITORIES !== 'undefined') {
+    for (const bible of CLOUD_REPOSITORIES.bibles || []) {
+      if (!bible.code.endsWith('_STRONGS') && !added.has(bible.code) && (bible.installed || bible.cloudAvailable)) {
+        base.push({ code: bible.code, title: bible.name });
+        added.add(bible.code);
+      }
+    }
+  }
   return base;
 }
 
@@ -2151,37 +1277,6 @@ function populateBibleVersionSelects() {
     state.compareBibleVersion = translations.length > 1 ? translations[1].code : translations[0].code;
   }
 
-  const singleSel = document.getElementById('single-bible-version-select');
-  const compareSel = document.getElementById('compare-bible-version-select');
-  const sidebarSel = document.getElementById('sidebar-bible-version-select');
-  const sidebarText = document.getElementById('sidebar-bible-version-text');
-
-  const optionsHtml = translations.map(t => `<option value="${t.code}">${t.code}</option>`).join('');
-
-  if (singleSel && singleSel.innerHTML !== optionsHtml) {
-    singleSel.innerHTML = optionsHtml;
-    singleSel.value = state.bibleVersion;
-  } else if (singleSel) {
-    singleSel.value = state.bibleVersion;
-  }
-
-  if (sidebarSel && sidebarSel.innerHTML !== optionsHtml) {
-    sidebarSel.innerHTML = optionsHtml;
-    sidebarSel.value = state.bibleVersion;
-  } else if (sidebarSel) {
-    sidebarSel.value = state.bibleVersion;
-  }
-
-  if (sidebarText) {
-    sidebarText.textContent = state.bibleVersion;
-  }
-
-  if (compareSel && compareSel.innerHTML !== optionsHtml) {
-    compareSel.innerHTML = optionsHtml;
-    compareSel.value = state.compareBibleVersion;
-  } else if (compareSel) {
-    compareSel.value = state.compareBibleVersion;
-  }
 }
 
 function getBibleBooks(verCode = state.bibleVersion) {
@@ -2355,7 +1450,7 @@ function initTranslationDropdown() {
   // Close dropdowns on outside click
   document.addEventListener('click', (e) => {
     const dialog = document.getElementById('translation-dropdown-dialog');
-    const btn = document.getElementById('sidebar-bible-version-btn') || document.getElementById('bible-version-btn');
+    const btn = document.getElementById('bento-trans-sel');
     if (dialog && dialog.classList.contains('open')) {
       if (!dialog.contains(e.target) && (!btn || !btn.contains(e.target))) {
         closeTranslationDropdown();
@@ -2364,14 +1459,14 @@ function initTranslationDropdown() {
 
     const songDialog = document.getElementById('medley-song-dialog');
     if (songDialog && songDialog.classList.contains('open')) {
-      if (!songDialog.contains(e.target) && !e.target.closest('.medley-change-btn')) {
+      if (!songDialog.contains(e.target) && !e.target.closest('.bento-slot-col .change')) {
         closeSongPicker();
       }
     }
 
     const versionDialog = document.getElementById('medley-version-dialog');
     if (versionDialog && versionDialog.classList.contains('open')) {
-      if (!versionDialog.contains(e.target) && !e.target.closest('.medley-change-btn')) {
+      if (!versionDialog.contains(e.target) && !e.target.closest('.bento-slot-col .change')) {
         closeVersionPicker();
       }
     }
@@ -2389,7 +1484,7 @@ function initTranslationDropdown() {
 function toggleTranslationDropdown(e) {
   if (e) e.stopPropagation();
   const dialog = document.getElementById('translation-dropdown-dialog');
-  const btn = document.getElementById('sidebar-bible-version-btn') || document.getElementById('bible-version-btn');
+  const btn = document.getElementById('bento-trans-sel');
   const bentoBtn = document.getElementById('bento-trans-sel');
   const input = document.getElementById('translation-search-input');
   if (!dialog) return;
@@ -2435,7 +1530,7 @@ function toggleTranslationDropdown(e) {
 
 function closeTranslationDropdown() {
   const dialog = document.getElementById('translation-dropdown-dialog');
-  const btn = document.getElementById('sidebar-bible-version-btn') || document.getElementById('bible-version-btn');
+  const btn = document.getElementById('bento-trans-sel');
   const bentoBtn = document.getElementById('bento-trans-sel');
   if (dialog) dialog.classList.remove('open');
   if (btn) btn.classList.remove('open');
@@ -2446,7 +1541,7 @@ function closeTranslationDropdown() {
 }
 
 // Version Switcher & Compare Mode
-async function ensureBibleLoaded(ver = state.bibleVersion || 'KJV') {
+async function ensureBibleLoaded(ver = state.bibleVersion || 'KJV', allowDownload = false) {
   if (!ver || typeof BIBLE_DATABASE === 'undefined') return false;
   const upper = ver.toUpperCase().trim();
   if (BIBLE_DATABASE[upper] && Object.keys(BIBLE_DATABASE[upper]).length > 0) return true;
@@ -2476,7 +1571,11 @@ async function ensureBibleLoaded(ver = state.bibleVersion || 'KJV') {
 
   // Fallback 2: auto-fetch translation JSON on demand
   try {
-    const resp = await fetch(`/bibles/${upper}.json`);
+    let resp = await fetch(`/bibles/${upper}.json`);
+    if (resp.status === 404 && allowDownload && typeof window.ensureContentPack === 'function') {
+      if (!await window.ensureContentPack(upper)) return false;
+      resp = await fetch(`/bibles/${upper}.json`);
+    }
     if (resp.ok) {
       const data = await resp.json();
       if (data && typeof data === 'object') {
@@ -2490,6 +1589,7 @@ async function ensureBibleLoaded(ver = state.bibleVersion || 'KJV') {
     }
   } catch (e) {
     console.warn(`Could not load ${upper} on demand:`, e);
+    if (allowDownload) showToast(e.message, 'error');
   }
   return false;
 }
@@ -2497,25 +1597,26 @@ window.ensureBibleLoaded = ensureBibleLoaded;
 
 async function changeBibleVersion(ver) {
   if (!ver) return;
+  const previousVersion = state.bibleVersion;
   state.bibleVersion = ver;
 
   // Sync select & custom button elements
-  const singleSel = document.getElementById('single-bible-version-select');
-  if (singleSel) singleSel.value = ver;
-  const sideSel = document.getElementById('sidebar-bible-version-select');
-  if (sideSel) sideSel.value = ver;
-  const sidebarText = document.getElementById('sidebar-bible-version-text');
-  if (sidebarText) {
-    sidebarText.textContent = ver;
-  }
   const bentoVerText = document.getElementById('bento-active-version-label');
   if (bentoVerText) {
     bentoVerText.textContent = ver;
   }
-  const label = document.getElementById('active-version-label');
-  if (label) label.textContent = ver;
 
-  await ensureBibleLoaded(ver);
+  if (!await ensureBibleLoaded(ver, true)) {
+    if (state.bibleVersion === ver) {
+      state.bibleVersion = previousVersion;
+      for (const id of ['bento-active-version-label']) {
+        const element = document.getElementById(id);
+        if (element) element.textContent = previousVersion;
+      }
+    }
+    return;
+  }
+  if (state.bibleVersion !== ver) return;
 
   const books = getBibleBooks(ver);
   if (!state.activeBibleBook || !books.includes(state.activeBibleBook)) {
@@ -2532,11 +1633,16 @@ async function changeBibleVersion(ver) {
 
 async function setCompareVersion(ver) {
   if (!ver) return;
+  const previousVersion = state.compareBibleVersion;
   state.compareBibleVersion = ver;
-  const compSel = document.getElementById('compare-bible-version-select');
-  if (compSel) compSel.value = ver;
 
-  await ensureBibleLoaded(ver);
+  if (!await ensureBibleLoaded(ver, true)) {
+    if (state.compareBibleVersion === ver) {
+      state.compareBibleVersion = previousVersion;
+    }
+    return;
+  }
+  if (state.compareBibleVersion !== ver) return;
 
   renderDeck();
   if (state.activeLiveSlideId && state.isCompareMode) reprojectCurrentLive();
@@ -2545,14 +1651,6 @@ async function setCompareVersion(ver) {
 
 function toggleCompareMode() {
   state.isCompareMode = !state.isCompareMode;
-  const btn = document.getElementById('btn-compare-mode');
-  if (btn) {
-    btn.classList.toggle('active', state.isCompareMode);
-  }
-  const comparePickerWrap = document.getElementById('compare-version-picker-wrap');
-  if (comparePickerWrap) {
-    comparePickerWrap.style.display = state.isCompareMode ? 'flex' : 'none';
-  }
   renderDeck();
   if (state.activeLiveSlideId) reprojectCurrentLive();
   else syncDashboardWorkspace();
@@ -2560,29 +1658,18 @@ function toggleCompareMode() {
 
 // Hold / Lock Live Slide
 function toggleHoldLive() {
-  if (REMOTE_MODE) { showToast('Hold live is controlled by the host.', 'info'); return; }
+  if (REMOTE_MODE) {
+    state.isHoldLive = !state.isHoldLive;
+    window.syncPresentationControls?.();
+    sendRemoteCommand({type:'SET_HOLD',enabled:state.isHoldLive});
+    return;
+  }
   state.isHoldLive = !state.isHoldLive;
   window.syncPresentationControls?.();
   window.refreshBentoSplitLive?.();
   fetch('/api/hold', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ held: state.isHoldLive }) })
     .then(response => { if (!response.ok) throw new Error('Hold unavailable'); })
     .catch(() => showToast('Could not update remote Hold. Check the server connection.', 'error'));
-  const btn = document.getElementById('btn-hold-toggle');
-  if (btn) {
-    btn.classList.toggle('held', state.isHoldLive);
-    btn.classList.toggle('active', state.isHoldLive);
-    const lockIcon = document.getElementById('hold-lock-icon');
-    const textEl = document.getElementById('hold-text');
-    if (lockIcon) {
-      lockIcon.innerHTML = state.isHoldLive
-        ? `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>`
-        : `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>`;
-    }
-    if (textEl) {
-      textEl.textContent = state.isHoldLive ? 'HELD' : 'HOLD';
-    }
-  }
-
   if (typeof window.syncBentoStagePreview === 'function') {
     window.syncBentoStagePreview();
   }
@@ -2760,30 +1847,27 @@ function navigateLiveMedleySlot(dir) {
   }
 
   // Fallback: try DOM clicking if element exists
-  const isBento = document.body && document.body.getAttribute('data-theme-style') === 'bento';
-  const container = isBento ? document.getElementById('bento-medley-container') : document.getElementById('deck-container');
+  const container = document.getElementById('bento-medley-container');
   if (!container) return;
-  const cols = Array.from(container.querySelectorAll(isBento ? '.bento-slot-col' : '.medley-column-card'));
+  const cols = Array.from(container.querySelectorAll('.bento-slot-col'));
   if (!cols.length) return;
-  let curColIdx = cols.findIndex(c => c.classList.contains('active-song') || c.querySelector('.bento-slide-card.live, .slide-card.live-active'));
+  let curColIdx = cols.findIndex(c => c.classList.contains('active-song') || c.querySelector('.bento-slide-card.live'));
   if (curColIdx === -1) curColIdx = 0;
 
   let targetColIdx = curColIdx + dir;
   if (targetColIdx >= 0 && targetColIdx < cols.length) {
     const targetCol = cols[targetColIdx];
-    const cards = Array.from(targetCol.querySelectorAll(isBento ? '.bento-slide-card' : '.slide-card'));
+    const cards = Array.from(targetCol.querySelectorAll('.bento-slide-card'));
     if (cards.length > 0) {
       cards[0].click();
     }
   }
 }
 
-// Navigate Next / Prev Slide Across Bento & Classic Themes
+// Navigate Next / Prev Slide
 function navigateLiveVerse(dir) {
   if (state.isHoldLive) return;
   if (window.navigateBentoSplitDraft?.(dir)) return;
-
-  const isBento = document.body && document.body.getAttribute('data-theme-style') === 'bento';
 
   // ─────────────────────────────────────────────────────────────
   // 1. MEDLEY MODE NAVIGATION (3 COLUMNS)
@@ -2932,14 +2016,9 @@ function navigateLiveVerse(dir) {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // 2. SINGLE VIEW NAVIGATION (Bento or Classic)
+  // 2. SINGLE VIEW NAVIGATION
   // ─────────────────────────────────────────────────────────────
-  let visibleCards = [];
-  if (isBento) {
-    visibleCards = Array.from(document.querySelectorAll('#bento-medley-container .bento-single-card[data-slide-id]:not(.bento-add-song-card), #bento-medley-container .bento-slide-card[data-slide-id]:not(.bento-add-song-card)'));
-  } else {
-    visibleCards = Array.from(document.querySelectorAll('#deck-container .slide-card[data-slide-id]:not(.bento-add-song-card), #deck-container .song-stanza-list-card[data-slide-id]:not(.bento-add-song-card)'));
-  }
+  const visibleCards = Array.from(document.querySelectorAll('#bento-medley-container .bento-single-card[data-slide-id]:not(.bento-add-song-card), #bento-medley-container .bento-slide-card[data-slide-id]:not(.bento-add-song-card)'));
 
   if (visibleCards.length > 0) {
     const activeIdx = visibleCards.findIndex(c => c.classList.contains('live') || c.classList.contains('live-active') || c.classList.contains('staged'));
@@ -3015,17 +2094,6 @@ function navigateSlide(direction) {
 }
 
 // Auto-scale Stage Preview Iframe
-function scalePreviewIframe() {
-  const wrap = document.querySelector('.preview-stage-wrap');
-  const scaler = document.getElementById('preview-scaler');
-  if (!wrap || !scaler) return;
-  const wrapWidth = wrap.clientWidth;
-  if (wrapWidth > 0) {
-    const scale = wrapWidth / 1920;
-    scaler.style.transform = `scale(${scale})`;
-  }
-}
-
 // Dynamic Output Link Resolver & Remote Routing
 /* hoisted */
 let serverBoundPort = 8500;
@@ -3078,17 +2146,28 @@ function getBaseDisplayUrl(overrideIp = '') {
   return `${baseOrigin}${path}`;
 }
 
-function updateOutputLinksModal(overrideIp = '') {
+function getOutputUrl(targetType, overrideIp = '') {
   const baseUrl = getBaseDisplayUrl(overrideIp);
+  const shortNames = {
+    obs: 'live', livestream: 'livestream', sanctuary: 'projector', stage: 'stage', auto: 'auto',
+    '?target=livestream&layout=lt': 'overlay'
+  };
+  if (baseUrl.startsWith('http') && Object.prototype.hasOwnProperty.call(shortNames, targetType)) {
+    return baseUrl.replace(/display\.html$/, shortNames[targetType]);
+  }
+  return targetType.includes('?') ? `${baseUrl}${targetType}` : `${baseUrl}?target=${targetType}`;
+}
+
+function updateOutputLinksModal(overrideIp = '') {
 
   const inputSanctuary = document.getElementById('url-sanctuary');
   const inputLivestream = document.getElementById('url-livestream');
   const inputAuto = document.getElementById('url-auto');
   const inputRemote = document.getElementById('url-remote');
 
-  if (inputSanctuary) inputSanctuary.value = `${baseUrl}?target=sanctuary`;
-  if (inputLivestream) inputLivestream.value = `${baseUrl}?target=livestream`;
-  if (inputAuto) inputAuto.value = `${baseUrl}?target=auto`;
+  if (inputSanctuary) inputSanctuary.value = getOutputUrl('sanctuary', overrideIp);
+  if (inputLivestream) inputLivestream.value = getOutputUrl('livestream', overrideIp);
+  if (inputAuto) inputAuto.value = getOutputUrl('auto', overrideIp);
   if (inputRemote) inputRemote.value = getRemoteControlUrl(overrideIp);
 
   // Update QR image & text if visible
@@ -3140,17 +2219,12 @@ function refreshBroadcastHubOperators() {
 
     const badge = document.getElementById('hub-operators-badge');
     const countPill = document.getElementById('hub-operators-count-pill');
-    const headerBadge = document.getElementById('remote-operator-count');
     const opCard = document.getElementById('hub-operators-card');
     const list = document.getElementById('hub-operators-list');
 
     if (badge) {
       badge.style.display = count > 0 ? 'inline-block' : 'none';
       badge.textContent = `${count} Online`;
-    }
-    if (headerBadge) {
-      headerBadge.style.display = count > 0 ? 'inline-block' : 'none';
-      headerBadge.textContent = count;
     }
     if (countPill) countPill.textContent = `${count} Active`;
 
@@ -3180,6 +2254,7 @@ function refreshBroadcastHubOperators() {
 
 function getRemoteControlUrl(overrideIp = '') {
   const displayUrl = getBaseDisplayUrl(overrideIp);
+  if (displayUrl.startsWith('http')) return displayUrl.replace(/display\.html$/, 'remote');
   return displayUrl.replace('display.html', 'index.html?remote=1');
 }
 
@@ -3196,9 +2271,8 @@ function resetLanIpHost() {
 }
 
 function openOutputLink(targetType) {
-  const baseUrl = getBaseDisplayUrl('');
-  const finalUrl = targetType.includes('?') ? `${baseUrl}${targetType}` : `${baseUrl}?target=${targetType}`;
-  const previewName = 'GinomiaOutput_' + targetType.replace(/[^a-z0-9]/gi, '_');
+  const finalUrl = getOutputUrl(targetType);
+  const previewName = 'GinomaiOutput_' + targetType.replace(/[^a-z0-9]/gi, '_');
   window.open(finalUrl, previewName);
 }
 
@@ -3235,8 +2309,7 @@ function copyRemoteControlLink(btnElement) {
 }
 
 function copyOutputLink(targetType, btnElement) {
-  const baseUrl = getBaseDisplayUrl(customLanIp);
-  const targetUrl = targetType.includes('?') ? `${baseUrl}${targetType}` : `${baseUrl}?target=${targetType}`;
+  const targetUrl = getOutputUrl(targetType, customLanIp);
 
   const copySuccess = () => {
     showToast(`Copied ${targetType.toUpperCase()} Link to Clipboard!`, 'success');
@@ -3265,41 +2338,23 @@ function copyOutputLink(targetType, btnElement) {
 }
 
 function fallbackCopy(targetType, callback) {
-  const inputEl = document.getElementById(`url-${targetType}`);
-  if (inputEl) {
-    inputEl.select();
-    document.execCommand('copy');
-    if (callback) callback();
-  }
+  const inputEl = document.createElement('textarea');
+  inputEl.value = targetType === 'remote' ? getRemoteControlUrl(customLanIp) : getOutputUrl(targetType, customLanIp);
+  inputEl.style.cssText = 'position:fixed;left:-9999px;top:0;';
+  document.body.appendChild(inputEl);
+  inputEl.select();
+  const copied = document.execCommand('copy');
+  inputEl.remove();
+  if (copied && callback) callback();
 }
 
 // Stage Preview Controls
 /* hoisted */
 
-function togglePreviewTargetMode() {
-  previewTargetMode = (previewTargetMode === 'sanctuary') ? 'livestream' : 'sanctuary';
-  window.previewTargetMode = previewTargetMode;
-  state.currentMode = (previewTargetMode === 'livestream') ? 'lt' : 'full';
-  const iframe = document.getElementById('preview-iframe');
-  const btn = document.getElementById('preview-target-toggle-btn');
-
-  if (iframe) {
-    const baseUrl = getBaseDisplayUrl();
-    iframe.src = `${baseUrl}?target=${previewTargetMode}&preview=1`;
-  }
-
-  if (btn) {
-    btn.textContent = (previewTargetMode === 'sanctuary') ? 'Full Display' : 'Lower-Third';
-    btn.classList.toggle('active', previewTargetMode === 'livestream');
-  }
-
-  broadcastState();
-}
-
 function openPopoutPreview() {
   const baseUrl = getBaseDisplayUrl();
   const popUrl = `${baseUrl}?target=${previewTargetMode}`;
-  window.open(popUrl, 'GinomiaProPreviewPopout', 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no');
+  window.open(popUrl, 'GinomaiProPreviewPopout', 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no');
 }
 
 // Global Toast Notification Engine
@@ -3338,13 +2393,7 @@ function showToast(message, type = 'info') {
 // Helper for Stage Confidence Monitor: Anticipate next slide
 function getNextSlideAnticipation(activeSlideId) {
   if (!activeSlideId) return null;
-  const isBento = document.body && document.body.getAttribute('data-theme-style') === 'bento';
-  let visibleCards = [];
-  if (isBento) {
-    visibleCards = Array.from(document.querySelectorAll('#bento-medley-container [data-slide-id]:not(.bento-add-song-card), #deck-container [data-slide-id]:not(.bento-add-song-card)'));
-  } else {
-    visibleCards = Array.from(document.querySelectorAll('#deck-container [data-slide-id]:not(.bento-add-song-card)'));
-  }
+  const visibleCards = Array.from(document.querySelectorAll('#bento-medley-container [data-slide-id]:not(.bento-add-song-card)'));
   if (!visibleCards || visibleCards.length === 0) return null;
 
   const currentIdx = visibleCards.findIndex(c => c.getAttribute('data-slide-id') === activeSlideId);
@@ -3355,8 +2404,8 @@ function getNextSlideAnticipation(activeSlideId) {
       const reg = window._bentoSlideRegistry.get(nextSlideId);
       return { text: reg.text || '', reference: reg.refStr || '' };
     }
-    const textEl = nextCard.querySelector('.ln, .slide-text, .bento-slide-text, .song-stanza-text');
-    const labelEl = nextCard.querySelector('.tag, .slide-label, .bento-slide-label, .song-stanza-badge, .bento-slide-header');
+    const textEl = nextCard.querySelector('.ln, .slide-text, .bento-slide-text');
+    const labelEl = nextCard.querySelector('.tag, .slide-label, .bento-slide-label, .bento-slide-header');
     const text = textEl ? textEl.textContent.trim() : (nextCard.getAttribute('data-text') || '');
     const reference = labelEl ? labelEl.textContent.trim() : (nextCard.getAttribute('data-ref') || '');
     if (text) {
@@ -3396,6 +2445,66 @@ window.controlServiceTimer = function(action) {
 // Broadcast Live State Change
 let liveStorageTimer;
 let pendingLiveStorage;
+let liveHydrationPromise = null;
+let liveStateHydrated = false;
+
+function restoreCommittedLiveState(payload) {
+  pendingLiveStorage = payload;
+  state.activeLiveSlideId = payload.clear || payload.blackout ? null : (payload.slideId || null);
+  state.activeLiveText = payload.text || '';
+  state.activeLiveRef = payload.reference || '';
+  state.activeLexiconData = payload.isLexicon ? payload.lexiconData : null;
+  state.compareData = payload.compareData || null;
+  state.activePresentation = ['media', 'countdown'].includes(payload.contentType)
+    ? { contentType: payload.contentType, media: payload.media, countdown: payload.countdown,
+        playback: payload.playback, destinations: payload.destinations } : null;
+  for (const [key, value] of Object.entries({ currentMode: payload.mode, projectorActive: payload.projectorActive,
+    livestreamActive: payload.livestreamActive, transparentBg: payload.transparentBg, streamAppearance: payload.streamAppearance,
+    isCompareMode: payload.compare, compareBibleVersion: payload.compareVersion, serviceTimer: payload.serviceTimer })) {
+    if (value !== undefined) state[key] = value;
+  }
+}
+
+async function hydrateCommittedLiveState() {
+  const initial = pendingLiveStorage;
+  try {
+    if (window.location.protocol !== 'file:') {
+      const response = await fetch('/api/state');
+      if (!response.ok) throw new Error('Live state unavailable');
+      const payload = await response.json();
+      // An explicit action during loading always wins over this delayed read.
+      if (pendingLiveStorage === initial) {
+        if (payload._outputRevision > 0 || !initial) restoreCommittedLiveState(payload);
+        else if (initial) {
+          await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(initial) });
+        }
+      }
+    }
+  } catch (_) {
+    // Keep the committed local snapshot when the server is temporarily unavailable.
+  } finally {
+    liveStateHydrated = true;
+  }
+  if (pendingLiveStorage) {
+    updateActiveSlideVisuals(state.activeLiveSlideId);
+    updateLivePreview(pendingLiveStorage);
+    window.syncPresentationControls?.(pendingLiveStorage);
+    clearTimeout(liveStorageTimer);
+    liveStorageTimer = setTimeout(flushCommittedLiveStorage, 80);
+  }
+}
+
+async function replyToOutputStateRequest() {
+  if (liveHydrationPromise) await liveHydrationPromise;
+  if (pendingLiveStorage) syncChannel.postMessage(pendingLiveStorage);
+}
+
+function flushCommittedLiveStorage() {
+  if (!pendingLiveStorage || REMOTE_MODE) return;
+  try { localStorage.setItem(LIVE_STATE_STORAGE_KEY, JSON.stringify(pendingLiveStorage)); } catch (_) {}
+}
+window.addEventListener('pagehide', flushCommittedLiveStorage);
+
 function broadcastState(override = {}, previewAlreadyUpdated = false) {
   if (REMOTE_MODE) {
     if (override.clear) sendRemoteCommand({ type: 'CLEAR' });
@@ -3404,6 +2513,13 @@ function broadcastState(override = {}, previewAlreadyUpdated = false) {
     return;
   }
   const independentUpdate = override.alert !== undefined || override.serviceTimer !== undefined;
+  const projection = override.slideId !== undefined || override.text !== undefined || override.contentType !== undefined;
+  if (!liveStateHydrated && !projection && !override.clear && !override.blackout) {
+    if (independentUpdate && liveHydrationPromise) {
+      liveHydrationPromise.then(() => broadcastState(override, previewAlreadyUpdated));
+    }
+    return;
+  }
   if (state.isHoldLive && !independentUpdate && !override.clear && !override.blackout) return;
 
   const slideId = override.slideId !== undefined ? override.slideId : (state.activeLiveSlideId || '');
@@ -3453,24 +2569,33 @@ function broadcastState(override = {}, previewAlreadyUpdated = false) {
     textAutoScale: state.textAutoScale,
     bg: state.background,
     sanctuaryTheme: (window.themeManager && typeof window.themeManager.getSanctuaryPayload === 'function') ? window.themeManager.getSanctuaryPayload() : (state.sanctuaryTheme || null),
-    clear: override.clear || false,
-    clearBg: override.clearBg || false,
-    blackout: override.blackout || false,
+    clear: override.clear !== undefined ? !!override.clear : projection ? false : !!pendingLiveStorage?.clear,
+    clearBg: override.clearBg !== undefined ? !!override.clearBg : projection ? false : !!pendingLiveStorage?.clearBg,
+    blackout: override.blackout !== undefined ? !!override.blackout : projection ? false : !!pendingLiveStorage?.blackout,
     dashboard: createDashboardSnapshot(),
-    _timestamp: Date.now()
+    _timestamp: Math.max(Date.now(), (pendingLiveStorage?._timestamp || 0) + 1)
   };
+
+  // Appearance changes preserve committed content, including lexicon overrides.
+  if (!projection && !override.clear && !override.blackout && pendingLiveStorage) {
+    if (payload.slideId !== pendingLiveStorage.slideId || payload.contentType !== pendingLiveStorage.contentType) {
+      for (const key of ['media', 'countdown', 'playback', 'destinations', 'compareData']) payload[key] = pendingLiveStorage[key];
+    }
+    for (const key of ['slideId', 'text', 'reference', 'contentType', 'isBible', 'isLexicon', 'lexiconData',
+      'lexiconStyle', 'lexiconDisplayMode', 'concordancePosition', 'lexiconPosition', 'englishWord']) {
+      payload[key] = pendingLiveStorage[key];
+    }
+  }
 
   // Alerts and timers preserve the last transmitted slide, including clear/blackout.
   if (independentUpdate && pendingLiveStorage) {
-    Object.assign(payload, pendingLiveStorage, override, { _timestamp: Date.now() });
+    Object.assign(payload, pendingLiveStorage, override, { _timestamp: payload._timestamp });
   }
 
   // 1. Save state to localStorage for cross-window hydration using isolated key
   pendingLiveStorage = payload;
   clearTimeout(liveStorageTimer);
-  liveStorageTimer = setTimeout(() => {
-    try { localStorage.setItem('scriptureflow_live_state', JSON.stringify(pendingLiveStorage)); } catch (e) { }
-  }, 80);
+  liveStorageTimer = setTimeout(flushCommittedLiveStorage, 80);
 
   // 2. Broadcast via BroadcastChannel & Server Sync (Host only)
   if (!REMOTE_MODE) {
@@ -3536,6 +2661,11 @@ function createDashboardSnapshot() {
 }
 
 function applyDashboardPatch(patch = {}) {
+  const changed = key => patch[key] !== undefined && JSON.stringify(patch[key]) !== JSON.stringify(state[key]);
+  const deckChanged = ['activeDeckType', 'isMedleyMode', 'activeSongId', 'activeBibleBook', 'activeBibleChapter',
+    'bibleVersion', 'compareBibleVersion', 'isCompareMode', 'maxLinesPerSlide', 'medleySongIds', 'medleyVersionCodes', 'medleyBibleSlots'].some(changed);
+  const libraryChanged = deckChanged || changed('currentTab');
+  const agendaChanged = changed('agendaItems');
   const allowed = ['currentTab', 'activeDeckType', 'isMedleyMode', 'activeSongId', 'activeBibleBook', 'activeBibleChapter', 'activeLiveSlideId', 'activeLiveText', 'activeLiveRef', 'currentMode', 'maxLinesPerSlide', 'textSize', 'songScaleFull', 'songScaleLt', 'textAutoScale', 'bibleVersion', 'compareBibleVersion', 'isCompareMode', 'projectorActive', 'livestreamActive', 'showSongTitleInDisplay', 'showBibleMedleyButtons', 'showMedleyView', 'bibleMedleyChangeTarget', 'transparentBg', 'transitionType', 'transitionDuration', 'background', 'autoProject'];
   allowed.forEach(key => {
     if (patch[key] !== undefined) state[key] = patch[key];
@@ -3557,32 +2687,44 @@ function applyDashboardPatch(patch = {}) {
     }
   }
   const sizeSlider = document.getElementById('preview-size-slider');
-  const sizeReadout = document.getElementById('preview-size-readout');
   const transparent = document.getElementById('preview-transparent-bg-toggle');
   const settingsTransparent = document.getElementById('setting-transparent-bg-toggle');
-  const autoProject = document.getElementById('auto-project-btn');
   const previewAutoToggle = document.getElementById('preview-auto-project-toggle');
   if (sizeSlider) sizeSlider.value = state.textSize;
-  if (sizeReadout) sizeReadout.textContent = `${Number(state.textSize).toFixed(1)}x`;
   if (transparent) transparent.checked = state.transparentBg;
   if (settingsTransparent) settingsTransparent.checked = state.transparentBg;
   syncTransparentBtnUI();
   syncMedleySettingsUI();
   if (previewAutoToggle) previewAutoToggle.checked = !!state.autoProject;
-  if (autoProject) {
-    autoProject.classList.toggle('active', state.autoProject);
-    const label = autoProject.querySelector('.auto-project-label');
-    if (label) label.textContent = `Auto Project: ${state.autoProject ? 'On' : 'Off'}`;
-  }
   document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === state.currentTab));
-  const singleButton = document.getElementById('btn-single-mode');
-  const medleyButton = document.getElementById('btn-medley-mode');
-  if (singleButton) singleButton.classList.toggle('active', !state.isMedleyMode);
-  if (medleyButton) medleyButton.classList.toggle('active', state.isMedleyMode);
-  renderAgenda();
-  renderLibrary();
-  renderDeck();
+  if (agendaChanged) renderAgenda();
+  if (libraryChanged) renderLibrary();
+  if (deckChanged) renderDeck();
+  updateActiveSlideVisuals(state.activeLiveSlideId);
 }
+
+// Called only by the protected desktop updater, before any windows are closed.
+window.prepareDesktopUpdateRestart = async function prepareDesktopUpdateRestart(save = false) {
+  const blockers = [];
+  if (window.sermonManager?.isRecordingSermon) blockers.push('Sermon recording');
+  if (state.aiSpeechRequested || state.aiListening || speechAi?.isListening) blockers.push('AI microphone');
+  if (blockers.length) return { ok: true, blockers };
+  if (!save) return { ok: true, blockers: [] };
+  try {
+    if (_syncWorkspaceTimer) { clearTimeout(_syncWorkspaceTimer); _syncWorkspaceTimer = null; }
+    clearTimeout(liveStorageTimer);
+    const dashboard = createDashboardSnapshot();
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({ dashboard }));
+    if (pendingLiveStorage) localStorage.setItem(LIVE_STATE_STORAGE_KEY, JSON.stringify(pendingLiveStorage));
+    if (window.sessionManager && !window.sessionManager.saveCurrentSessionSnapshot(null, true)) throw new Error('Could not save the service session.');
+    const response = await fetch('/api/workspace', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dashboard }), signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) throw new Error('Could not save the workspace.');
+    return { ok: true, blockers: [] };
+  } catch (_) { return { ok: false, error: 'Could not save the workspace. Restart has been prevented. Retry or export your service first.' }; }
+};
 
 function syncDashboardWorkspace(immediate = false) {
   const doSync = () => {
@@ -3593,7 +2735,10 @@ function syncDashboardWorkspace(immediate = false) {
       window.sessionManager.notifyAgendaChanged();
     }
     if (!REMOTE_MODE) {
-      broadcastState();
+      fetch('/api/workspace', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dashboard: createDashboardSnapshot() })
+      }).catch(() => {});
     }
   };
 
@@ -3613,10 +2758,6 @@ function toggleTransparencyLive() {
 window.toggleTransparencyLive = toggleTransparencyLive;
 
 function syncTransparentBtnUI() {
-  const btn = document.getElementById('btn-transparent-toggle');
-  if (btn) {
-    btn.classList.toggle('active', !!state.transparentBg);
-  }
 }
 
 function toggleTransparentBg(isTransparent) {
@@ -4144,6 +3285,12 @@ function initModalBackdropDismiss() {
     backdrop.addEventListener('mousedown', (e) => {
       if (e.target === backdrop) {
         if (backdrop.id === 'sanctuary-theme-modal-backdrop' || backdrop.id === 'sf-custom-dialog-backdrop') return;
+        if (backdrop.id === 'operator-join-modal-backdrop') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          closeOperatorJoinModal();
+          return;
+        }
         backdrop.classList.remove('open');
         backdrop.style.display = '';
       }
@@ -4193,8 +3340,6 @@ function publishQuickTextScale() {
 
 function updateTextScale(val) {
   state.textSize = parseFloat(val);
-  const readout = document.getElementById('preview-size-readout');
-  if (readout) readout.textContent = `${state.textSize.toFixed(1)}x`;
   publishQuickTextScale();
 }
 
@@ -4207,7 +3352,7 @@ function getPreviewTextScaleControl() {
     (id.startsWith('ai_') && /\b\d+\s*:\s*\d+/.test(ref)) ||
     (state.currentTab === 'bible' && !id.includes('song'));
   const song = !bible && !id.startsWith('lexicon_') && Boolean(state.activeLiveText || id);
-  const rule = window.themeManager?.obsModeRule || state.sanctuaryTheme?.obsModeRule || 'follow';
+  const rule = window.themeManager?.obsModeRule || state.sanctuaryTheme?.obsModeRule || 'always_lt';
   const lowerThird = ['livestream', 'lt', 'lowerthird'].includes(window.previewTargetMode) &&
     (rule === 'always_lt' || (rule === 'follow' && state.currentMode === 'lt'));
   const key = song ? (lowerThird ? 'songScaleLt' : 'songScaleFull') : 'textSize';
@@ -4242,17 +3387,6 @@ function setPreviewTargetMode(mode) {
   previewTargetMode = mode;
   window.previewTargetMode = mode;
   try { localStorage.setItem('sf_preview_target_mode', mode); if(mode==='sanctuary'||mode==='livestream') localStorage.setItem('sf_style_target',mode); } catch (e) { }
-
-  const iframe = document.getElementById('preview-iframe');
-  if (iframe) {
-    const baseUrl = getBaseDisplayUrl();
-    const iframeTarget = (mode === 'dual') ? 'sanctuary' : mode;
-    iframe.src = `${baseUrl}?target=${iframeTarget}&preview=1`;
-  }
-  const fullBtn = document.getElementById('preview-mode-full-btn');
-  const ltBtn = document.getElementById('preview-mode-lt-btn');
-  if (fullBtn) fullBtn.classList.toggle('active', previewTargetMode === 'sanctuary');
-  if (ltBtn) ltBtn.classList.toggle('active', previewTargetMode === 'livestream');
 
   const bentoFull = document.getElementById('bento-prev-mode-full');
   const bentoLt = document.getElementById('bento-prev-mode-lt');
@@ -4474,10 +3608,7 @@ function toggleTextAutoScale(isAuto) {
 }
 
 function updateLivePreview(payload) {
-  const iframe = document.getElementById('preview-iframe');
-  if (iframe && iframe.contentWindow && iframe.contentWindow.applyState) {
-    iframe.contentWindow.applyState(payload);
-  }
+  if (REMOTE_MODE) window.updateOutputPreviews?.(payload);
   if (typeof window.syncBentoStagePreview === 'function') {
     window.syncBentoStagePreview();
   }
@@ -4511,9 +3642,11 @@ function normalizeSearchText(text) {
   if (!text) return '';
   return String(text)
     .toLowerCase()
-    .replace(/[\u2018\u2019`]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[^a-z0-9\s']/g, ' ')
+    .normalize('NFKD')
+    .replace(/(\p{Script=Latin})\p{M}+/gu, '$1')
+    .normalize('NFC')
+    .replace(/['\u2018\u2019`]/g, '')
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -4540,17 +3673,50 @@ function extractSnippetAroundMatch(stanzaText, queryTokens) {
   return bestLine;
 }
 
-// Fast Search Indexing for Songs
+// Cache normalized lyrics and words without persisting derived data in the songbook.
+const songSearchCache = new WeakMap();
+let lastSongSearchQuery = null;
+
+function prepareSongSearchQuery(rawQuery) {
+  if (rawQuery && typeof rawQuery === 'object') return rawQuery;
+  const raw = String(rawQuery || '');
+  if (lastSongSearchQuery?.raw === raw) return lastSongSearchQuery;
+  const text = normalizeSearchText(raw);
+  const tokens = [...new Set(text.split(/\s+/).filter(Boolean))];
+  lastSongSearchQuery = { raw, text, tokens, singleWord: text && !text.includes(' ') };
+  return lastSongSearchQuery;
+}
+
+function getSongSearchData(song) {
+  const stanzas = song.stanzas || [];
+  const cached = songSearchCache.get(song);
+  if (cached && cached.title === song.title && cached.author === song.author &&
+      cached.rawStanzas.length === stanzas.length &&
+      stanzas.every((stanza, i) => (stanza.text || '') === cached.rawStanzas[i])) return cached;
+  const rawStanzas = stanzas.map(stanza => stanza.text || '');
+  const normalizedStanzas = rawStanzas.map(normalizeSearchText);
+  const title = normalizeSearchText(song.title);
+  const author = normalizeSearchText(song.author);
+  const text = [title, author, ...normalizedStanzas].filter(Boolean).join(' ');
+  const data = {
+    title: song.title, author: song.author, rawStanzas, normalizedStanzas, text,
+    titleText: title, authorText: author,
+    metadataWords: `${title} ${author}`.split(/\s+/).filter(Boolean),
+    stanzaWords: normalizedStanzas.map(text => new Set(text.split(/\s+/).filter(Boolean))),
+    words: new Set(text.split(/\s+/).filter(Boolean))
+  };
+  songSearchCache.set(song, data);
+  return data;
+}
+
 function getSongSearchIndex(song) {
   if (!song) return '';
-  if (song._searchIndex) return song._searchIndex;
-  const lyrics = (song.stanzas || []).map(s => s.text || '').join(' ');
-  song._searchIndex = normalizeSearchText(`${song.title || ''} ${song.author || ''} ${lyrics}`);
-  return song._searchIndex;
+  return getSongSearchData(song).text;
 }
 
 function invalidateSongSearchIndex(song) {
   if (song) {
+    songSearchCache.delete(song);
     delete song._searchIndex;
     delete song._matchedSnippet;
   }
@@ -4559,66 +3725,53 @@ function invalidateSongSearchIndex(song) {
 // Resilient matching across song title, author, and full-text lyrics
 function matchSongQuery(song, rawQuery) {
   if (!song || !rawQuery) return false;
-  const qClean = normalizeSearchText(rawQuery);
+  song._matchedSnippet = '';
+  const query = prepareSongSearchQuery(rawQuery);
+  const qClean = query.text;
   if (!qClean) return false;
+  const data = getSongSearchData(song);
+  const qTokens = query.tokens;
+  const firstStanza = data.rawStanzas[0] || '';
 
   // 1. Direct title or author match
-  const titleNorm = normalizeSearchText(song.title);
-  if (titleNorm && (titleNorm.includes(qClean) || qClean.includes(titleNorm))) {
-    song._matchedSnippet = (song.stanzas && song.stanzas[0] ? song.stanzas[0].text : '');
-    return true;
-  }
-
-  const authorNorm = normalizeSearchText(song.author);
-  if (authorNorm && authorNorm.includes(qClean)) {
-    song._matchedSnippet = (song.stanzas && song.stanzas[0] ? song.stanzas[0].text : '');
+  const containsPhrase = text => query.singleWord
+    ? text.includes(qClean)
+    : (` ${text}`).includes(` ${qClean}`);
+  if (containsPhrase(data.titleText) || containsPhrase(data.authorText)) {
+    song._matchedSnippet = firstStanza;
     return true;
   }
 
   // 2. Full-text lyrics match across stanzas (handling line breaks, punctuation, and contractions)
-  const qTokens = qClean.split(/\s+/).filter(w => w.length > 1);
-  const stanzas = song.stanzas || [];
-
-  for (const st of stanzas) {
-    const rawStText = st.text || '';
-    const stNorm = normalizeSearchText(rawStText);
+  for (let i = 0; i < data.normalizedStanzas.length; i++) {
+    const rawStText = data.rawStanzas[i];
+    const stNorm = data.normalizedStanzas[i];
     if (!stNorm) continue;
 
     // Direct continuous phrase match in stanza
-    if (stNorm.includes(qClean)) {
+    if (containsPhrase(stNorm)) {
       song._matchedSnippet = extractSnippetAroundMatch(rawStText, qTokens);
       return true;
     }
-
-    // Token set overlap for multi-word phrase queries (e.g. 3+ words)
-    if (qTokens.length >= 3) {
-      let matchedCount = 0;
-      for (const t of qTokens) {
-        if (stNorm.includes(t)) matchedCount++;
-      }
-      if (matchedCount === qTokens.length || (matchedCount / qTokens.length) >= 0.75) {
-        song._matchedSnippet = extractSnippetAroundMatch(rawStText, qTokens);
-        return true;
-      }
-    }
-  }
-
-  // 3. Whole-song search index check
-  const fullIndex = getSongSearchIndex(song);
-  if (fullIndex.includes(qClean)) {
-    song._matchedSnippet = (song.stanzas && song.stanzas[0] ? song.stanzas[0].text : '');
-    return true;
-  }
-
-  if (qTokens.length >= 3) {
-    let matchedCount = 0;
-    for (const t of qTokens) {
-      if (fullIndex.includes(t)) matchedCount++;
-    }
-    if ((matchedCount / qTokens.length) >= 0.8) {
-      song._matchedSnippet = (song.stanzas && song.stanzas[0] ? song.stanzas[0].text : '');
+    // Retain forgiving lyric searches, counting unique whole words only.
+    if (qTokens.length >= 3 && qTokens.filter(token => data.stanzaWords[i].has(token)).length / qTokens.length >= 0.75) {
+      song._matchedSnippet = extractSnippetAroundMatch(rawStText, qTokens);
       return true;
     }
+  }
+
+  // 3. Words can span title, artist, and stanzas, in any order.
+  // Unique, whole words keep short titles and repeated substrings from inflating matches.
+  const hits = qTokens.filter(token => data.words.has(token)).length;
+  if (hits === qTokens.length || (qTokens.length >= 3 && hits / qTokens.length >= 0.8)) {
+    song._matchedSnippet = extractSnippetAroundMatch(data.rawStanzas.join('\n'), qTokens) || firstStanza;
+    return true;
+  }
+  // Allow the final title/artist word to be unfinished while typing.
+  if (qTokens.length >= 2 && qTokens.every((token, i) => data.metadataWords.some(word =>
+      i === qTokens.length - 1 ? word.startsWith(token) : word === token))) {
+    song._matchedSnippet = firstStanza;
+    return true;
   }
 
   return false;
@@ -4627,7 +3780,64 @@ function matchSongQuery(song, rawQuery) {
 window.matchSongQuery = matchSongQuery;
 window.normalizeSearchText = normalizeSearchText;
 
-// Render Zone 1 Library (BIBLE vs SONGS Tabs)
+// Keep existing song rows and materialize at most one batch of new rows per render.
+function renderSongLibraryRows(container, songs, options) {
+  let cache = container._songLibraryRows;
+  if (!cache) {
+    container.replaceChildren();
+    cache = container._songLibraryRows = { rows: new Map(), query: null, limit: 80 };
+  }
+  const catalog = new Set(options.catalog.map(song => song.id));
+  for (const [id, entry] of cache.rows) {
+    if (!catalog.has(id)) { entry.row.remove(); cache.rows.delete(id); }
+  }
+  if (cache.query !== options.query) {
+    cache.query = options.query;
+    cache.limit = 80;
+    container.scrollTop = 0;
+  }
+
+  const showRows = () => {
+    if (container._songLibraryRows !== cache) return;
+    const desired = songs.slice(0, cache.limit).map(song => {
+      const signature = options.signature(song);
+      let entry = cache.rows.get(song.id);
+      if (!entry || entry.song !== song || entry.signature !== signature) {
+        if (entry) entry.row.remove();
+        entry = { song, signature, row: options.createRow(song) };
+        cache.rows.set(song.id, entry);
+      }
+      options.updateRow(entry.row, song);
+      return entry.row;
+    });
+    if (!songs.length) {
+      if (!cache.empty) cache.empty = document.createElement('div');
+      if (cache.emptyHtml !== options.emptyHtml) {
+        cache.empty.innerHTML = options.emptyHtml;
+        cache.emptyHtml = options.emptyHtml;
+      }
+      desired.push(cache.empty);
+    }
+    const keep = new Set(desired);
+    for (const child of Array.from(container.children)) {
+      if (!keep.has(child)) child.remove();
+    }
+    desired.forEach((row, i) => {
+      const current = container.children[i];
+      if (current !== row) container.insertBefore(row, current || null);
+    });
+  };
+  showRows();
+  container.onscroll = () => {
+    if (cache.limit < songs.length && container.scrollTop + container.clientHeight >= container.scrollHeight - 150) {
+      cache.limit += 80;
+      showRows();
+    }
+  };
+}
+window.renderSongLibraryRows = renderSongLibraryRows;
+
+// Render the Bento library (BIBLE vs SONGS Tabs)
 function renderLibrary(filterQuery = null) {
   if (state.currentTab === 'media') { syncActiveTabUI(); window.renderMediaLibrary?.(filterQuery); return; }
   if (typeof syncActiveTabUI === 'function') {
@@ -4637,8 +3847,7 @@ function renderLibrary(filterQuery = null) {
   // Preserve active search query if not explicitly passed
   if (filterQuery === null || filterQuery === undefined) {
     const bentoInput = document.getElementById('bento-search-input');
-    const sideInput = document.getElementById('sidebar-search-input');
-    const input = (bentoInput && bentoInput.value) ? bentoInput : (sideInput && sideInput.value ? sideInput : (bentoInput || sideInput));
+    const input = bentoInput;
     filterQuery = (input && input.value) ? input.value : '';
   }
 
@@ -4646,284 +3855,6 @@ function renderLibrary(filterQuery = null) {
     window.renderBentoLibrary(filterQuery);
   }
 
-  // If Bento layout is active, skip rendering hidden Classic DOM elements
-  const currentThemeStyle = (window.themeManager && window.themeManager.currentStyle) || (document.body && document.body.getAttribute('data-theme-style')) || 'bento';
-  if (currentThemeStyle === 'bento') {
-    return;
-  }
-
-  const container = document.getElementById('library-list');
-  if (!container) return;
-
-  // Clear any existing scroll listener so it never leaks between tabs
-  container.onscroll = null;
-  if (typeof container.replaceChildren === 'function') {
-    container.replaceChildren();
-  } else {
-    container.innerHTML = '';
-  }
-
-  if (state.currentTab === 'bible') {
-    if (!state.bibleVersion) {
-      const translations = getBibleTranslations();
-      if (translations.length > 0) state.bibleVersion = translations[0].code;
-    }
-    const books = getBibleBooks(state.bibleVersion);
-    if (books.length === 0) {
-      container.innerHTML = `
-        <div style="padding:24px 12px; text-align:center; color:var(--text-muted); font-size:11.5px; line-height:1.5;">
-          <div style="display:flex; justify-content:center; margin-bottom:6px;">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-          </div>
-          <div style="font-weight:600; color:var(--text-starlight); margin-bottom:4px;">No Bibles Installed</div>
-          <div style="font-size:10.5px; color:var(--text-muted); margin-bottom:12px;">Import a Bible translation file (.json, .xml, .usfm, .csv, .txt) or download from Online Bibles Hub.</div>
-          <button class="mode-toggle-btn active" style="margin:0 auto; font-size:10.5px; padding:5px 12px;" onclick="openImportModal(); switchImportSubTab('bibles');">+ Add Bible</button>
-        </div>
-      `;
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-    const b0 = state.medleyBibleSlots && state.medleyBibleSlots[0] ? state.medleyBibleSlots[0].book : null;
-    const b1 = state.medleyBibleSlots && state.medleyBibleSlots[1] ? state.medleyBibleSlots[1].book : null;
-    const b2 = state.medleyBibleSlots && state.medleyBibleSlots[2] ? state.medleyBibleSlots[2].book : null;
-
-    books.forEach(book => {
-      if (filterQuery && !book.toLowerCase().includes(filterQuery)) return;
-      const isExpanded = state.expandedBibleBook === book;
-      const isBookActive = state.activeBibleBook === book;
-      const chapters = getBibleChapters(book, state.bibleVersion);
-
-      const wrap = document.createElement('div');
-      wrap.className = `bible-book-item-wrap ${isExpanded ? 'expanded' : ''}`;
-
-      const item = document.createElement('div');
-      item.className = `library-item ${isBookActive ? 'active' : ''}`;
-      item.draggable = true;
-      item.ondragstart = (e) => {
-        window.sfIsInternalDrag = true;
-        window.sfDraggedItem = { type: 'bible', id: book, book };
-        e.dataTransfer.setData('text/plain', book);
-        e.dataTransfer.setData('application/bible-book', book);
-        e.dataTransfer.setData('application/item-type', 'bible');
-        e.dataTransfer.effectAllowed = 'copyMove';
-        item.classList.add('dragging');
-      };
-      item.ondragend = () => {
-        window.sfIsInternalDrag = false;
-        window.sfDraggedItem = null;
-        item.classList.remove('dragging');
-      };
-
-      let slotsHtml = '';
-      if (state.showBibleMedleyButtons) {
-        slotsHtml = `
-          <button class="medley-assign-btn ${b0 === book ? 'active' : ''}" onclick="event.stopPropagation(); toggleBibleBookChapters('${book}', 0)" title="Pick chapter for Slot S1">S1</button>
-          <button class="medley-assign-btn ${b1 === book ? 'active' : ''}" onclick="event.stopPropagation(); toggleBibleBookChapters('${book}', 1)" title="Pick chapter for Slot S2">S2</button>
-          <button class="medley-assign-btn ${b2 === book ? 'active' : ''}" onclick="event.stopPropagation(); toggleBibleBookChapters('${book}', 2)" title="Pick chapter for Slot S3">S3</button>
-        `;
-      }
-
-      item.innerHTML = `
-        <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:6px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-weight:500; font-size:12px; color:var(--text-starlight);">${book}</span>
-          <div style="display:flex; align-items:center; gap:6px;">
-            <span style="font-family:var(--font-mono); font-size:10px; opacity:0.6;">${state.bibleVersion}</span>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.5; transition:transform 0.15s ease; ${isExpanded ? 'transform:rotate(180deg);' : ''}"><path d="m6 9 6 6 6-6"/></svg>
-          </div>
-        </div>
-        ${slotsHtml ? `<div style="display:flex; align-items:center; gap:4px; margin-left:4px;">${slotsHtml}</div>` : ''}
-      `;
-
-      item.onclick = () => {
-        toggleBibleBookChapters(book, state.isMedleyMode ? (state.activePickerSlot || 0) : null);
-      };
-
-      wrap.appendChild(item);
-
-      if (isExpanded) {
-        const drawer = document.createElement('div');
-        drawer.className = 'bible-chapter-drawer';
-
-        let targetSlotLabel = '';
-        if (state.isMedleyMode && state.chapterTargetSlot !== null && state.chapterTargetSlot !== undefined) {
-          targetSlotLabel = `<span style="color:#F472B6; font-size:9.5px; font-weight:700; margin-left:4px;">[Target: Slot S${state.chapterTargetSlot + 1}]</span>`;
-        }
-
-        let buttonsHtml = '';
-        chapters.forEach(chStr => {
-          const chNum = parseInt(chStr, 10);
-          const isChActive = isBookActive && state.activeBibleChapter === chNum;
-
-          let slotMatchTag = '';
-          if (state.isMedleyMode && state.medleyBibleSlots) {
-            state.medleyBibleSlots.forEach((slot, sIdx) => {
-              if (slot && slot.book === book && slot.chapter === chNum) {
-                slotMatchTag = `S${sIdx + 1}`;
-              }
-            });
-          }
-
-          buttonsHtml += `
-            <button type="button" class="bible-chapter-btn ${isChActive ? 'active' : ''} ${slotMatchTag ? 'in-slot' : ''}" onclick="event.stopPropagation(); selectBibleChapter('${book}', ${chNum})" title="${book} Chapter ${chNum} ${slotMatchTag ? `(In Slot ${slotMatchTag})` : ''}">
-              ${chNum}
-            </button>
-          `;
-        });
-
-        drawer.innerHTML = `
-          <div class="bible-chapter-drawer-header">
-            <div class="bible-chapter-drawer-title">
-              <span>Select Chapter</span>${targetSlotLabel}
-            </div>
-            <div style="font-size:9.5px; opacity:0.6;">${chapters.length} Chs</div>
-          </div>
-          <div class="bible-chapter-grid">
-            ${buttonsHtml}
-          </div>
-        `;
-        wrap.appendChild(drawer);
-      }
-
-      fragment.appendChild(wrap);
-    });
-    container.appendChild(fragment);
-
-  } else if (state.currentTab === 'songs') {
-    if (SONGS_DATABASE.length === 0) {
-      container.innerHTML = `
-        <div style="padding:24px 12px; text-align:center; color:var(--text-muted); font-size:11.5px; line-height:1.5;">
-          <div style="display:flex; justify-content:center; margin-bottom:6px;">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="1.8"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-          </div>
-          <div style="font-weight:600; color:var(--text-starlight); margin-bottom:4px;">Songbook Empty</div>
-          <div style="font-size:10.5px; color:var(--text-muted); margin-bottom:12px;">Import song lyrics (.txt, .xml, .json) or search online lyrics.</div>
-          <button class="mode-toggle-btn active" style="margin:0 auto; font-size:10.5px; padding:5px 12px; background:var(--accent-pink-gradient); color:white;" onclick="openImportModal(); switchImportSubTab('songs');">+ Import Songs</button>
-        </div>
-      `;
-      return;
-    }
-
-    const q = (filterQuery || '').trim();
-    const filteredSongs = q
-      ? SONGS_DATABASE.filter(song => matchSongQuery(song, q))
-      : SONGS_DATABASE;
-
-    if (filteredSongs.length === 0) {
-      container.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:11.5px;">No matching lyrics found</div>`;
-      return;
-    }
-
-    // Render initial batch of songs with lazy progressive infinite scroll
-    const agendaSet = new Set((state.agendaItems || []).map(item => item.id));
-    const medley0 = state.medleySongIds[0];
-    const medley1 = state.medleySongIds[1];
-    const medley2 = state.medleySongIds[2];
-    const showMedley = state.showMedleyView;
-    const activeId = state.activeSongId;
-
-    const BATCH_SIZE = 80;
-    const initialBatch = filteredSongs.slice(0, BATCH_SIZE);
-
-    const fragment = document.createDocumentFragment();
-    for (let i = 0; i < initialBatch.length; i++) {
-      fragment.appendChild(createSongLibraryItem(initialBatch[i], agendaSet, showMedley, medley0, medley1, medley2, activeId));
-    }
-    container.appendChild(fragment);
-
-    // Progressively append next chunks when scrolling near bottom
-    let loadedCount = initialBatch.length;
-    container.onscroll = () => {
-      if (state.currentTab !== 'songs') return;
-      if (loadedCount >= filteredSongs.length) return;
-      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 150) {
-        const nextBatch = filteredSongs.slice(loadedCount, loadedCount + BATCH_SIZE);
-        const nextFrag = document.createDocumentFragment();
-        for (let i = 0; i < nextBatch.length; i++) {
-          nextFrag.appendChild(createSongLibraryItem(nextBatch[i], agendaSet, showMedley, medley0, medley1, medley2, activeId));
-        }
-        container.appendChild(nextFrag);
-        loadedCount += nextBatch.length;
-      }
-    };
-  }
-
-  if (typeof window.renderBentoLibrary === 'function') {
-    window.renderBentoLibrary(filterQuery);
-  }
-}
-
-function createSongLibraryItem(song, agendaSet, showMedley, medley0, medley1, medley2, activeId) {
-  const item = document.createElement('div');
-  item.className = `library-item ${activeId === song.id ? 'active' : ''}`;
-  item.dataset.songId = song.id;
-  item.setAttribute('draggable', 'true');
-
-  item.ondragstart = (e) => {
-    window.sfIsInternalDrag = true;
-    window.sfDraggedItem = { type: 'song', id: song.id, song };
-    e.dataTransfer.setData('text/plain', song.id);
-    e.dataTransfer.setData('application/song-id', song.id);
-    e.dataTransfer.setData('application/item-type', 'song');
-    e.dataTransfer.effectAllowed = 'copyMove';
-    item.classList.add('dragging');
-  };
-  item.ondragend = () => {
-    window.sfIsInternalDrag = false;
-    window.sfDraggedItem = null;
-    item.classList.remove('dragging');
-  };
-
-  const firstLine = song.stanzas && song.stanzas[0] ? song.stanzas[0].text.split('\n')[0] : song.title;
-
-  let slotsHtml = '';
-  if (showMedley) {
-    slotsHtml = `
-      <button class="medley-assign-btn ${medley0 === song.id ? 'active' : ''}" onclick="event.stopPropagation(); assignSongToSlot('${song.id}', 0)" title="${medley0 === song.id ? 'Remove from Medley Slot 1' : 'Assign to Medley Slot 1'}">S1</button>
-      <button class="medley-assign-btn ${medley1 === song.id ? 'active' : ''}" onclick="event.stopPropagation(); assignSongToSlot('${song.id}', 1)" title="${medley1 === song.id ? 'Remove from Medley Slot 2' : 'Assign to Medley Slot 2'}">S2</button>
-      <button class="medley-assign-btn ${medley2 === song.id ? 'active' : ''}" onclick="event.stopPropagation(); assignSongToSlot('${song.id}', 2)" title="${medley2 === song.id ? 'Remove from Medley Slot 3' : 'Assign to Medley Slot 3'}">S3</button>
-    `;
-  }
-
-  const isInAgenda = agendaSet ? agendaSet.has(song.id) : (state.agendaItems || []).some(item => item.id === song.id);
-
-  item.innerHTML = `
-    <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:8px;">
-      <div style="font-weight:400; font-size:12px; color:var(--text-starlight); letter-spacing:-0.01em;">${song.title}</div>
-      <div style="font-size:10px; font-weight:400; color:var(--text-muted); opacity:0.65; overflow:hidden; text-overflow:ellipsis;">${firstLine}</div>
-    </div>
-    <div style="display:flex; align-items:center; gap:4px;">
-      ${slotsHtml}
-      <button class="medley-assign-btn ${isInAgenda ? 'in-agenda' : ''}" onclick="event.stopPropagation(); toggleSongAgendaFromButton(this, '${song.id}')" title="${isInAgenda ? 'In Service Agenda (Click to remove)' : 'Add to Service Agenda'}">${isInAgenda ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '+'}</button>
-    </div>
-  `;
-
-  item.onclick = () => {
-    if (state.isMedleyMode) {
-      selectSingleViewSong(song.id);
-      return;
-    }
-    state.activeSongId = song.id;
-    applySongBoundTheme(song.id);
-    const parent = item.parentElement;
-    if (parent) {
-      parent.querySelectorAll('.library-item.active').forEach(el => el.classList.remove('active'));
-      item.classList.add('active');
-      scrollActiveLibraryItemIntoView(song.id);
-    }
-    renderDeck(true);
-    syncDashboardWorkspace();
-  };
-
-  return item;
-}
-
-function toggleSongAgendaFromButton(btn, songId) {
-  toggleSongAgenda(songId);
-  const isInAgenda = (state.agendaItems || []).some(item => item.id === songId);
-  btn.classList.toggle('in-agenda', isInAgenda);
-  btn.innerHTML = isInAgenda ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : '+';
-  btn.title = isInAgenda ? 'In Service Agenda (Click to remove)' : 'Add to Service Agenda';
 }
 
 let catalogSyncTimer = null;
@@ -4963,8 +3894,6 @@ function syncRemoteCatalog() {
     }).catch(() => { lastCatalogSignature = ''; });
   }, 1000);
 }
-
-
 
 // Global Edit History Stack for Undo/Redo (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z)
 const editHistoryStack = [];
@@ -5028,107 +3957,24 @@ function applyEditHistorySnapshot(entry, actionName) {
   isUndoRedoAction = false;
 }
 
-function makeElementEditable(el) {
-  state.isEditingMode = true;
-
-  // Record current song state before user modifies text
-  const songId = state.activeSongId;
-  recordEditState(songId, 'Pre-edit snapshot');
-
-  el.contentEditable = 'true';
-  el.focus();
-  try {
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-  } catch (e) { }
-}
-
-// Inline Editing Direct Save Handlers with Auto-Delete & Auto-Save
-function saveInlineSongTitle(songId, newTitle) {
-  const cleanTitle = (newTitle || '').trim();
-  const song = SONGS_DATABASE.find(s => s.id === songId);
-  if (!song) return;
-
-  if (!cleanTitle) {
-    // Revert to original title if left completely empty
-    renderDeck();
-    showToast('Title cannot be empty', 'info');
-    return;
-  }
-
-  if (song.title !== cleanTitle) {
-    recordEditState(songId, `Renamed song to "${cleanTitle}"`);
-    window.libraryImporter.updateSong(songId, { title: cleanTitle });
-    renderLibrary();
-    renderDeck();
-  }
-}
-
-function saveInlineStanzaType(songId, stanzaIndex, newType) {
-  const cleanType = (newType || '').trim();
-  const song = SONGS_DATABASE.find(s => s.id === songId);
-  if (!song || !song.stanzas[stanzaIndex]) return;
-
-  if (!cleanType) {
-    renderDeck();
-    return;
-  }
-
-  recordEditState(songId, `Renamed tag to "${cleanType}"`);
-  song.stanzas[stanzaIndex].type = cleanType;
-  window.libraryImporter.updateSong(songId, { stanzas: song.stanzas });
-}
-
-function saveInlineStanzaText(songId, stanzaIndex, newText) {
-  const cleanText = (newText || '').trim();
-  const song = SONGS_DATABASE.find(s => s.id === songId);
-  if (!song) return;
-
-  // IF LYRICS ARE COMPLETELY DELETED: AUTO-DELETE THIS STANZA SLIDE
-  if (!cleanText) {
-    if (song.stanzas.length <= 1) {
-      showToast('Cannot delete the last remaining stanza', 'info');
-      renderDeck();
-      return;
-    }
-
-    recordEditState(songId, `Deleted stanza slide #${stanzaIndex + 1}`);
-    song.stanzas.splice(stanzaIndex, 1);
-    window.libraryImporter.updateSong(songId, { stanzas: song.stanzas });
-
-    renderDeck();
-    return;
-  }
-
-  // IF TEXT CHANGED: UPDATE STANZA
-  if (song.stanzas[stanzaIndex] && song.stanzas[stanzaIndex].text !== cleanText) {
-    recordEditState(songId, `Updated ${song.stanzas[stanzaIndex].type}`);
-    song.stanzas[stanzaIndex].text = cleanText;
-    window.libraryImporter.updateSong(songId, { stanzas: song.stanzas });
-  }
-}
-
 // Medley Bible & Songs Custom Dialog Popovers
 function initSongPickerModal() {
   document.addEventListener('click', (e) => {
     const sDialog = document.getElementById('medley-song-dialog');
     if (sDialog && sDialog.classList.contains('open')) {
-      if (!sDialog.contains(e.target) && !e.target.closest('.medley-change-btn, .mode-toggle-btn')) {
+      if (!sDialog.contains(e.target) && !e.target.closest('.bento-slot-col .change')) {
         closeSongPicker();
       }
     }
     const vDialog = document.getElementById('medley-version-dialog');
     if (vDialog && vDialog.classList.contains('open')) {
-      if (!vDialog.contains(e.target) && !e.target.closest('.medley-change-btn, .mode-toggle-btn')) {
+      if (!vDialog.contains(e.target) && !e.target.closest('.bento-slot-col .change')) {
         closeVersionPicker();
       }
     }
     const bDialog = document.getElementById('medley-bible-dialog');
     if (bDialog && bDialog.classList.contains('open')) {
-      if (!bDialog.contains(e.target) && !e.target.closest('.medley-change-btn, .mode-toggle-btn')) {
+      if (!bDialog.contains(e.target) && !e.target.closest('.bento-slot-col .change')) {
         closeBiblePassagePicker();
       }
     }
@@ -5159,7 +4005,7 @@ function openSongPicker(slotIndex, event) {
     input.oninput = (e) => renderSongPickerResults(e.target.value.trim().toLowerCase());
   }
 
-  const targetBtn = event ? (event.currentTarget || event.target) : document.querySelector(`.medley-change-btn[data-slot="${slotIndex}"], .bento-slot-col:nth-child(${slotIndex + 1}) .change`);
+  const targetBtn = event ? (event.currentTarget || event.target) : document.querySelector(`.bento-slot-col:nth-child(${slotIndex + 1}) .change`);
   // Keep the picker above the dismissal shield and outside clipped deck panels.
   if (dialog.parentElement !== document.body) document.body.appendChild(dialog);
 
@@ -5274,9 +4120,9 @@ function openVersionPicker(slotIndex, event) {
     input.oninput = (e) => renderVersionPickerResults(e.target.value.trim().toLowerCase());
   }
 
-  const targetBtn = event ? (event.currentTarget || event.target) : document.querySelector(`.medley-change-btn[data-slot="${slotIndex}"]`);
+  const targetBtn = event ? (event.currentTarget || event.target) : document.querySelector(`.bento-slot-col:nth-child(${slotIndex + 1}) .change`);
   if (targetBtn) {
-    const parentHeader = targetBtn.closest('.medley-col-header') || targetBtn.parentElement;
+    const parentHeader = targetBtn.closest('.bento-slot-col-head') || targetBtn.parentElement;
     if (parentHeader) {
       parentHeader.style.position = 'relative';
       if (dialog.parentElement !== parentHeader) {
@@ -5390,9 +4236,9 @@ function openBiblePassagePicker(slotIndex, event) {
     input.oninput = (e) => renderBiblePassagePickerResults(e.target.value.trim().toLowerCase());
   }
 
-  const targetBtn = event ? (event.currentTarget || event.target) : document.querySelector(`.medley-change-btn[data-slot="${slotIndex}"]`);
+  const targetBtn = event ? (event.currentTarget || event.target) : document.querySelector(`.bento-slot-col:nth-child(${slotIndex + 1}) .change`);
   if (targetBtn) {
-    const parentHeader = targetBtn.closest('.medley-col-header') || targetBtn.parentElement;
+    const parentHeader = targetBtn.closest('.bento-slot-col-head') || targetBtn.parentElement;
     if (parentHeader) {
       parentHeader.style.position = 'relative';
       if (dialog.parentElement !== parentHeader) {
@@ -5581,36 +4427,6 @@ function swapMedleyVersion(slotIndex, versionCode) {
 }
 
 function updateActiveSlideVisuals(slideId) {
-  const deckContainer = document.getElementById('deck-container');
-  if (deckContainer) {
-    // 1. Remove live-active class from previous cards
-    deckContainer.querySelectorAll('.live-active').forEach(el => {
-      if (el.id !== `card_${slideId}` && el.dataset.slideId !== slideId) {
-        el.classList.remove('live-active');
-      }
-    });
-
-    // 2. Add live-active to target card
-    const targetCard = document.getElementById(`card_${slideId}`) ||
-      deckContainer.querySelector(`[data-slide-id="${slideId}"]`);
-    if (targetCard) {
-      targetCard.classList.add('live-active');
-    }
-  }
-
-  // 3. Highlight active song in library list in-place
-  const libraryList = document.getElementById('library-list');
-  if (libraryList && state.activeSongId) {
-    libraryList.querySelectorAll('.library-item.active').forEach(el => {
-      if (el.dataset.songId !== state.activeSongId) el.classList.remove('active');
-    });
-    const activeSongEl = libraryList.querySelector(`[data-song-id="${state.activeSongId}"]`);
-    if (activeSongEl) {
-      activeSongEl.classList.add('active');
-      scrollActiveLibraryItemIntoView(state.activeSongId);
-    }
-  }
-
   // 4. Instant In-Place Bento Live State Update (0ms, no DOM teardown)
   const allBentoCards = document.querySelectorAll('.bento-slide-card, .bento-single-card');
   allBentoCards.forEach(c => {
@@ -5699,6 +4515,10 @@ function syncStateFromSlideId(slideId) {
   if (!slideId) return false;
   let needsDeckRebuild = false;
   if (slideId.startsWith('medley_bible_') || slideId.startsWith('bible_')) {
+    if (state.activeDeckType !== 'bible') {
+      state.activeDeckType = 'bible';
+      needsDeckRebuild = true;
+    }
     const parts = slideId.split('_');
     let ver, book, ch;
     if (parts[0] === 'medley' && parts[1] === 'bible') {
@@ -5730,15 +4550,13 @@ function syncStateFromSlideId(slideId) {
     }
     if (ver && ver !== state.bibleVersion && !slideId.startsWith('bible_compare_') && !state.isMedleyMode) {
       state.bibleVersion = ver;
-      const label = document.getElementById('active-version-label');
-      if (label) label.textContent = ver;
     }
     if (!state.isMedleyMode) {
       if (book && book !== state.activeBibleBook) {
         state.activeBibleBook = book;
         needsDeckRebuild = true;
       }
-      if (ch && !isNaN(ch) && ch !== state.activeBibleChapter) {
+      if (ch && !isNaN(ch) && ch !== Number(state.activeBibleChapter)) {
         state.activeBibleChapter = ch;
         needsDeckRebuild = true;
       }
@@ -5760,6 +4578,10 @@ function syncStateFromSlideId(slideId) {
       if (matchedSong && matchedSong.id !== state.activeSongId) {
         state.activeSongId = matchedSong.id;
         needsDeckRebuild = !state.isMedleyMode;
+      }
+      if (matchedSong && state.activeDeckType !== 'song') {
+        state.activeDeckType = 'song';
+        needsDeckRebuild = true;
       }
     }
   }
@@ -5835,55 +4657,14 @@ function projectSlide(slideId, text, reference, extra = {}) {
     }
   }
 
-  if (REMOTE_MODE) {
-    state.activeLiveSlideId = slideId;
-    state.activeLiveText = text;
-    state.activeLiveRef = reference;
-    state.activeDeckType = isBible ? 'bible' : 'song';
-    const needsDeckRebuild = syncStateFromSlideId(slideId);
-    if (needsDeckRebuild) {
-      renderDeck();
-    }
-    state.liveEngagedDeck = isBible
-      ? { type: 'bible', book: state.activeBibleBook, chapter: state.activeBibleChapter }
-      : { type: 'song', songId: state.activeSongId };
-    updateActiveSlideVisuals(slideId);
-    updateLivePreview({
-      slideId: slideId,
-      contentType: isBible ? 'bible' : 'song',
-      isBible: isBible,
-      mode: state.currentMode,
-      projectorActive: state.projectorActive,
-      livestreamActive: state.livestreamActive,
-      showSongTitleInDisplay: state.showSongTitleInDisplay,
-      transparentBg: state.transparentBg,
-      typography: state.typography,
-      text: text,
-      reference: reference,
-      version: state.bibleVersion,
-      compare: state.isCompareMode,
-      compareVersion: state.compareBibleVersion,
-      compareData: state.compareData,
-      textSize: state.textSize,
-      textAutoScale: state.textAutoScale,
-      bg: state.background,
-      clear: false,
-      blackout: false
-    });
-    if (typeof window.syncBentoStagePreview === 'function') {
-      window.syncBentoStagePreview();
-    }
-    sendRemoteCommand({ type: 'PROJECT', slideId, text, reference, compareData: state.compareData });
-    return;
-  }
-
   state.activeLiveSlideId = slideId;
   state.activeLiveText = text;
   state.activeLiveRef = reference;
+  const previousDeckType = state.activeDeckType;
   state.activeDeckType = isBible ? 'bible' : 'song';
 
   // 1. Sync state metadata first so activeSongId / activeBibleBook / activeBibleChapter are updated from slideId
-  const needsDeckRebuild = syncStateFromSlideId(slideId);
+  const needsDeckRebuild = syncStateFromSlideId(slideId) || previousDeckType !== state.activeDeckType;
   if (needsDeckRebuild) {
     renderDeck();
   }
@@ -5895,8 +4676,12 @@ function projectSlide(slideId, text, reference, extra = {}) {
   // 2. Instantaneous 0ms in-place visual update (reacts before mouse-up finishes)
   updateActiveSlideVisuals(slideId);
 
+  const operatorRequestId = REMOTE_MODE ? 'operator_' + Date.now() + '_' + Math.random().toString(36).slice(2) : undefined;
+  if (REMOTE_MODE) window.pendingRemoteProjection = {id:operatorRequestId,startedAt:Date.now()};
+
   // 2. Instantaneous local Stage Preview update on Host
   updateLivePreview({
+    _operatorRequestId: operatorRequestId,
     slideId: slideId,
     contentType: isBible ? 'bible' : 'song',
     isBible: isBible,
@@ -5919,6 +4704,16 @@ function projectSlide(slideId, text, reference, extra = {}) {
     blackout: false
   });
 
+  if (REMOTE_MODE) {
+    sendRemoteCommand({ type: 'PROJECT', slideId, text, reference, contentType: isBible ? 'bible' : 'song', compareData: state.compareData, _operatorRequestId:operatorRequestId });
+    return;
+  }
+  if (extra.committedLiveState) {
+    // The server has already committed this operator projection to every output.
+    restoreCommittedLiveState(extra.committedLiveState);
+    syncDashboardWorkspace();
+    return;
+  }
   applyProjectedSongTheme(slideId);
 
   // 3. Immediately broadcast to OBS, Displays, and local preview (0ms delay)
@@ -5931,11 +4726,6 @@ function projectSlide(slideId, text, reference, extra = {}) {
     blackout: false
   }, true);
 
-  // If projection targets a different chapter/song not currently in deck, rebuild deck
-  if (needsDeckRebuild) {
-    renderDeck();
-  }
-
   // 5. Update history asynchronously
   const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   state.scriptureHistory.unshift({ reference, text, time: now });
@@ -5945,92 +4735,39 @@ function projectSlide(slideId, text, reference, extra = {}) {
 }
 
 function sendRemoteCommand(command) {
+  const generation = remoteSessionGeneration;
   fetch('/api/control', {
+    signal: AbortSignal.timeout(10000),
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...command, _fromRemote: true })
   }).then(async response => {
+    if (generation !== remoteSessionGeneration) return;
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      if (data.sessionOffline || response.status === 403) {
-        if (typeof setRemoteSessionLocked === 'function') setRemoteSessionLocked(true);
+      if (generation !== remoteSessionGeneration) return;
+      if (data.sessionOffline) {
+        syncRemoteOperatorSession({ enabled: false, revision: data.revision });
         showToast('Studio session has not been started by the host yet.', 'warning');
+      } else if (data.pairingRequired) {
+        window.sfOperatorPaired = false;
+        setRemoteSessionLocked(false);
+        openOperatorJoinModal(false);
+        showToast('Enter the pairing code from the host Broadcast Hub to reconnect.', 'warning');
+        refreshRemoteOperatorSession().catch(() => {});
       } else {
-        showToast('Action denied by studio', 'warning');
+        showToast(data.error || 'Action denied by studio', 'warning');
       }
       return;
     }
     if (typeof setRemoteSessionLocked === 'function') setRemoteSessionLocked(false);
   }).catch(() => {
+    if (generation !== remoteSessionGeneration) return;
     showToast('Cannot reach the studio computer', 'warning');
   });
 }
 
 // Sidebar Search Filter Input (Debounced for 60fps typing)
-let _sidebarSearchTimer = null;
-
-function clearSidebarSearch() {
-  const input = document.getElementById('sidebar-search-input');
-  const clearBtn = document.getElementById('sidebar-search-clear');
-  if (input) {
-    input.value = '';
-    input.focus();
-  }
-  if (clearBtn) {
-    clearBtn.style.display = 'none';
-  }
-  renderLibrary('');
-}
-
-function updateSearchClearBtn() {
-  const input = document.getElementById('sidebar-search-input');
-  const clearBtn = document.getElementById('sidebar-search-clear');
-  if (!input || !clearBtn) return;
-  clearBtn.style.display = input.value.trim().length > 0 ? 'flex' : 'none';
-}
-
-function initSearchFilter() {
-  const input = document.getElementById('sidebar-search-input');
-  if (!input) return;
-
-  updateSearchClearBtn();
-
-  input.oninput = (e) => {
-    updateSearchClearBtn();
-    clearTimeout(_sidebarSearchTimer);
-    const query = e.target.value.trim().toLowerCase();
-    _sidebarSearchTimer = setTimeout(() => {
-      renderLibrary(query);
-
-      if (state.currentTab === 'bible' && query) {
-        const books = getBibleBooks(state.bibleVersion);
-        books.forEach(book => {
-          if (query.includes(book.toLowerCase())) {
-            state.activeBibleBook = book;
-            const nums = query.match(/\d+/g);
-            if (nums && nums.length >= 1) {
-              const ch = parseInt(nums[0], 10);
-              const chVerses = getBibleVerses(book, ch, state.bibleVersion);
-              if (chVerses.length > 0) {
-                state.activeBibleChapter = ch;
-              }
-            }
-            renderDeck();
-            if (nums && nums.length >= 2) {
-              const vNum = parseInt(nums[1], 10);
-              const vObj = getBibleVerses(book, state.activeBibleChapter, state.bibleVersion).find(v => v.verse === vNum);
-              if (vObj) {
-                const slideId = `bible_${book}_${state.activeBibleChapter}_${vNum}`;
-                projectSlide(slideId, vObj.text, `${book} ${state.activeBibleChapter}:${vNum} (${state.bibleVersion})`);
-              }
-            }
-          }
-        });
-      }
-    }, 100);
-  };
-}
-
 function switchAiTab(tabName) {
   state.activeAiTab = (tabName === 'songs' || tabName === 'transcript' || tabName === 'detected' || tabName === 'history') ? tabName : 'flow';
   ['flow', 'detected', 'songs', 'transcript', 'history'].forEach(t => {
@@ -6397,7 +5134,7 @@ window.performDetectionAction = function(item, action) {
 function syncSpeechAiStatusControls() {
   const ready = !!state.aiListening;
   const requested = !!state.aiSpeechRequested;
-  ['ai-mic-btn', 'bento-mic-btn'].forEach(id => {
+  ['bento-mic-btn'].forEach(id => {
     const button = document.getElementById(id);
     button?.classList.toggle('active', ready);
     button?.setAttribute('aria-pressed', String(requested));
@@ -6410,10 +5147,9 @@ function syncSpeechAiStatusControls() {
   });
   const label = document.getElementById('bento-mic-btn-text');
   if (label) label.textContent = ready ? 'AI mic active' : requested ? 'AI mic connecting' : 'AI mic off';
-  document.getElementById('mic-signal-indicator')?.classList.toggle('live-active', ready);
   document.getElementById('bento-ai-live-dot')?.classList.toggle('active', ready);
   if (!ready) {
-    ['ai-transcript-text', 'bento-ai-transcript-text'].forEach(id => {
+    ['bento-ai-transcript-text'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.textContent = state.aiSpeechMessage || 'Turn on AI Mic to begin.';
     });
@@ -6441,6 +5177,7 @@ function handleSpeechAiStatus({ status, message, isRequested, isListening }) {
 
 // Speech AI Setup & Handlers
 function initSpeechAi() {
+  if (REMOTE_MODE) return;
   if (window.SpeechAiEngine && !speechAi) {
     speechAi = new window.SpeechAiEngine({
       getScriptureVerses: (book, chapter, version) => getBibleVerses(book, chapter, version || state.bibleVersion || 'KJV'),
@@ -6472,9 +5209,6 @@ function initSpeechAi() {
         if (window.sermonManager) {
           window.sermonManager.addUtterance(transcript, isFinal);
         }
-        // Classic theme transcript box
-        const textEl = document.getElementById('ai-transcript-text');
-        if (textEl) textEl.textContent = `"${transcript}"`;
         window.syncBentoAiHud?.();
         broadcastSpeechAiUpdate({ transcript, isFinal });
       },
@@ -6485,14 +5219,6 @@ function initSpeechAi() {
     if (selectedAudioDeviceId && typeof speechAi.setAudioDeviceId === 'function') {
       speechAi.selectedDeviceId = selectedAudioDeviceId;
     }
-  }
-
-  const micBtn = document.getElementById('ai-mic-btn');
-  if (micBtn) {
-    micBtn.classList.toggle('active', !!state.aiListening);
-    micBtn.title = state.aiListening ? 'AI Mic: Active (Listening)' : 'AI Mic: Off (Click to start)';
-    const dot = micBtn.querySelector('.ai-dot');
-    if (dot) dot.style.background = state.aiListening ? '#22C55E' : '#64748B';
   }
 
   // Sync bento topbar mic button with current listening state
@@ -6516,6 +5242,14 @@ function initSpeechAi() {
 }
 
 function toggleSpeechAi() {
+  if (REMOTE_MODE) {
+    const enabled = !(state.aiSpeechRequested || state.aiListening);
+    state.aiSpeechRequested = enabled;
+    if (!enabled) state.aiListening = false;
+    syncSpeechAiStatusControls();
+    sendRemoteCommand({ type: 'SET_SPEECH_AI', enabled });
+    return;
+  }
   // Stopping must remain available during reconnects, even if settings changed.
   if (speechAi && speechAi.isListening) {
     speechAi.stop();
@@ -6536,10 +5270,6 @@ function toggleSpeechAi() {
     if (!key) {
       openAiSettingsTab();
       showToast('Please enter your Deepgram API Key in Settings to start.', 'warning');
-      const transcriptBox = document.getElementById('ai-transcript-text');
-      if (transcriptBox) {
-        transcriptBox.textContent = 'Deepgram API Key required. Please configure in Studio Preferences → AI Speech Engine.';
-      }
       return;
     }
   }
@@ -6706,11 +5436,6 @@ function toggleAutoProject(explicitVal) {
   window.syncBentoAiHud?.();
 
   // 1. Sync header button
-  const btn = document.getElementById('auto-project-btn');
-  if (btn) {
-    btn.classList.toggle('active', state.autoProject);
-    btn.title = `Auto-Project: ${state.autoProject ? 'On (Hands-Free)' : 'Off (Click to enable)'}`;
-  }
 
   // 2. Sync Live Preview switch
   const previewToggle = document.getElementById('preview-auto-project-toggle');
@@ -6767,8 +5492,7 @@ function projectDetectedVerse(detected, explicitText) {
   if (!text) text = `[${detected.rawReference}]`;
 
   const isRange = detected.endVerse && detected.endVerse > detected.verse;
-  const isClassic = window.themeManager?.currentStyle === 'classic';
-  const slidePrefix = isClassic || isRange ? `bible_${version}` : 'bible';
+  const slidePrefix = isRange ? `bible_${version}` : 'bible';
   const slideId = isRange
     ? `${slidePrefix}_${detected.book}_${detected.chapter}_${detected.verse}_${detected.endVerse}`
     : `${slidePrefix}_${detected.book}_${detected.chapter}_${detected.verse}`;
@@ -6808,9 +5532,6 @@ function simulateAiSpeech(phrase) {
   const clean = phrase.trim();
   if (!clean) return;
 
-  const textEl = document.getElementById('ai-transcript-text');
-  if (textEl) textEl.textContent = `"${clean}"`;
-
   if (speechAi) {
     speechAi.simulateTranscript(clean);
   } else {
@@ -6835,26 +5556,7 @@ function checkRemoteServerStatus() {
 }
 
 function toggleRemoteServer() {
-  const targetState = !isRemoteServerActive;
-  fetch('/api/remote-server/toggle', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled: targetState })
-  })
-    .then(res => res.json())
-    .then(data => {
-      isRemoteServerActive = !!data.enabled;
-      updateRemoteServerUI(isRemoteServerActive);
-      if (isRemoteServerActive) {
-        showToast('Remote Server Started! Operator link is active.', 'success');
-        syncRemoteCatalog();
-      } else {
-        showToast('Remote Server Stopped.', 'info');
-      }
-    })
-    .catch(() => {
-      showToast('Could not reach server to toggle remote mode.', 'warning');
-    });
+  return toggleSession();
 }
 
 function updateRemoteServerUI(enabled) {
@@ -6869,9 +5571,11 @@ function initRemoteControl() {
   if (REMOTE_MODE && !window.sfOperatorPaired) return;
   checkRemoteServerStatus();
   controlEventSource?.close();
+  const generation = remoteSessionGeneration;
   const commands = new (window.AppEventSource || EventSource)('/api/control-events');
   controlEventSource = commands;
   commands.onmessage = (event) => {
+    if (commands !== controlEventSource || (REMOTE_MODE && generation !== remoteSessionGeneration)) return;
     try { applyRemoteCommand(JSON.parse(event.data)); } catch (error) { console.warn('Ignored remote command', error); }
   };
 }
@@ -6883,9 +5587,65 @@ function setRemoteSessionLocked(locked) {
   }
 }
 
+function resetRemoteOperatorConnection() {
+  remoteSessionGeneration++;
+  operatorJoinController?.abort();
+  operatorJoinController = null;
+  operatorJoinRequest = null;
+  window.sfOperatorPaired = false;
+  controlEventSource?.close();
+  currentOperatorSse?.close();
+  remoteLiveEventSource?.close();
+  controlEventSource = currentOperatorSse = remoteLiveEventSource = null;
+  const button = document.getElementById('operator-join-submit-btn');
+  if (button) { button.disabled = false; button.textContent = 'Connect to Studio'; }
+}
+
+async function refreshRemoteOperatorSession() {
+  const generation = remoteSessionGeneration;
+  const response = await fetch('/api/session', { signal: AbortSignal.timeout(10000) });
+  if (!response.ok) throw new Error('Cannot check the studio session');
+  const session = await response.json();
+  // A poll issued before successful pairing cannot undo that pairing.
+  if (generation !== remoteSessionGeneration && (!Number.isFinite(session.revision) || session.revision <= remoteSessionRevision)) return;
+  syncRemoteOperatorSession(session);
+  return session;
+}
+
+function syncRemoteOperatorSession(session) {
+  if (!REMOTE_MODE || typeof session?.enabled !== 'boolean') return;
+  if (Number.isFinite(session.revision)) {
+    if (session.revision < remoteSessionRevision) return;
+    if (remoteSessionRevision >= 0 && session.revision > remoteSessionRevision) {
+      resetRemoteOperatorConnection();
+      pairingRetryUntil = 0;
+      const code = document.getElementById('operator-pairing-code');
+      if (code) code.value = '';
+    }
+    remoteSessionRevision = session.revision;
+  }
+  if (operatorJoinRequest && session.enabled) return;
+  if (!session.enabled || session.paired === false) {
+    resetRemoteOperatorConnection();
+  }
+  setRemoteSessionLocked(!session.enabled);
+  if (!session.enabled) {
+    closeOperatorJoinModal();
+  } else if (session.paired === false) {
+    const modal = document.getElementById('operator-join-modal-backdrop');
+    if (modal && modal.style.display === 'none') openOperatorJoinModal(false);
+  } else if (!window.sfOperatorPaired) {
+    joinAndSyncOperatorSession();
+  }
+}
+
 function applyHostSpeechAiUpdate(msg) {
   if (!msg) return;
+  const revision = msg.hostSpeechState?.updatedAt;
+  if (revision && revision <= (window.lastRemoteSpeechUpdate || 0)) return;
+  if (revision) window.lastRemoteSpeechUpdate = revision;
   const speechState = msg.fullSync && msg.hostSpeechState ? msg.hostSpeechState : msg;
+  if (speechState.sermon) window.sermonManager?.applyHostState(speechState.sermon);
   if (speechState.status !== undefined) state.aiSpeechStatus = speechState.status;
   if (speechState.message !== undefined) state.aiSpeechMessage = speechState.message;
   if (speechState.isRequested !== undefined) state.aiSpeechRequested = !!speechState.isRequested;
@@ -6945,66 +5705,6 @@ function applyHostSpeechAiUpdate(msg) {
     }
   }
 
-  // 1. Update Operator Header AI Mic Button (Visual Mirror)
-  const micBtn = document.getElementById('ai-mic-btn');
-  if (micBtn) {
-    micBtn.classList.toggle('active', !!state.aiListening);
-    micBtn.title = state.aiListening ? 'Host Microphone: LIVE (Listening to sanctuary audio)' : 'Host Microphone: Paused (Studio)';
-    micBtn.setAttribute('data-tooltip', state.aiListening ? 'Host Microphone: LIVE (Active)' : 'Host Microphone: Paused');
-    const dot = micBtn.querySelector('.status-indicator-dot') || micBtn.querySelector('.ai-dot');
-    if (dot) {
-      dot.style.background = state.aiListening ? '#10B981' : '#64748B';
-      dot.style.boxShadow = state.aiListening ? '0 0 8px #10B981' : 'none';
-    }
-  }
-
-  // 2. Update Header Audio Device Selector Label
-  const audioPickerLabel = document.getElementById('audio-mic-picker-label');
-  if (audioPickerLabel && REMOTE_MODE) {
-    audioPickerLabel.textContent = state.aiListening ? 'Host Mic: LIVE' : 'Host Mic: Standby';
-    audioPickerLabel.style.color = state.aiListening ? '#86EFAC' : '#94A3B8';
-  }
-
-  // 3. Update Live Microphone Signal Bars
-  const indicator = document.getElementById('mic-signal-indicator');
-  if (indicator) {
-    indicator.classList.toggle('live-active', !!state.aiListening);
-    const bar1 = indicator.querySelector('.bar-1');
-    const bar2 = indicator.querySelector('.bar-2');
-    const bar3 = indicator.querySelector('.bar-3');
-    const bar4 = indicator.querySelector('.bar-4');
-    if (state.aiListening) {
-      const p = (msg && msg.audioLevel !== undefined) ? msg.audioLevel : 25;
-      if (bar1) bar1.classList.toggle('active', p > 2);
-      if (bar2) bar2.classList.toggle('active', p > 14);
-      if (bar3) bar3.classList.toggle('active', p > 32);
-      if (bar4) bar4.classList.toggle('active', p > 60);
-    } else {
-      if (bar1) bar1.classList.remove('active');
-      if (bar2) bar2.classList.remove('active');
-      if (bar3) bar3.classList.remove('active');
-      if (bar4) bar4.classList.remove('active');
-    }
-  }
-
-  // 4. Update Pulsing Radar Indicator in Zone 3
-  const pulseEl = document.querySelector('.ai-mic-indicator-pulse');
-  if (pulseEl) {
-    pulseEl.style.display = state.aiListening ? 'block' : 'none';
-  }
-
-  // 5. Update Live Speech Transcription Feed Box
-  const transcriptBox = document.getElementById('ai-transcript-text');
-  if (transcriptBox) {
-    if (state.aiTranscript && state.aiTranscript.trim()) {
-      transcriptBox.textContent = `"${state.aiTranscript.trim()}"`;
-    } else if (state.aiListening) {
-      transcriptBox.textContent = 'Listening to Host microphone... Speak scripture or sing lyrics.';
-    } else {
-      transcriptBox.textContent = 'Host microphone is paused on Studio computer...';
-    }
-  }
-
   renderAiHud();
 }
 
@@ -7024,21 +5724,8 @@ function setSavedOperatorName(name) {
 }
 
 function updateOperatorHeaderUI(name) {
-  const profilePill = document.getElementById('operator-profile-pill');
   const bentoPill = document.getElementById('bento-op-pill');
-  const nameDisplay = document.getElementById('operator-name-display');
   const cleanName = (name || getSavedOperatorName() || 'Operator').trim();
-  if (nameDisplay) {
-    nameDisplay.textContent = cleanName;
-  }
-  if (profilePill) {
-    profilePill.style.display = REMOTE_MODE ? 'inline-flex' : 'none';
-    if (REMOTE_MODE) {
-      profilePill.title = `Joined as ${cleanName} — Click to change name`;
-      profilePill.setAttribute('data-tooltip', `Joined as ${cleanName} (Click to change)`);
-    }
-  }
-
   const bentoOpName = document.getElementById('bento-op-name');
   const bentoOpAv = document.getElementById('bento-op-av');
   const bentoPushBtn = document.getElementById('bento-op-push-btn') || (bentoPill && bentoPill.querySelector('.push'));
@@ -7084,21 +5771,27 @@ function openOperatorJoinModal(isEditing = false) {
     if (cancelBtn) cancelBtn.style.display = 'block';
   } else {
     if (title) title.textContent = 'Join as Operator';
-    if (desc) desc.textContent = 'Enter your name so the Studio Pro host can identify your console.';
+    if (desc) desc.textContent = 'Enter your name and the six-digit pairing code from the host Broadcast Hub.';
     if (submitBtn) submitBtn.textContent = 'Connect to Studio';
     if (cancelBtn) cancelBtn.style.display = 'none';
   }
 
   modal.style.display = 'flex';
-  setTimeout(() => {
-    input.focus();
-    input.select();
-  }, 100);
+  modal.classList.add('open');
+  window.sfSyncModal?.(modal);
+  const code = document.getElementById('operator-pairing-code');
+  const focusInput = !isEditing && currentName && code ? code : input;
+  focusInput.focus();
+  focusInput.select();
 }
 
 function closeOperatorJoinModal() {
   const modal = document.getElementById('operator-join-modal-backdrop');
-  if (modal) modal.style.display = 'none';
+  if (modal) {
+    modal.classList.remove('open');
+    modal.style.display = 'none';
+    window.sfSyncModal?.(modal);
+  }
 }
 
 function openOperatorRenameModal() {
@@ -7133,16 +5826,6 @@ window.closeOperatorJoinModal = closeOperatorJoinModal;
 function initRemoteOperator() {
   if (!REMOTE_MODE) return;
 
-  // 1. Update branding badge and header buttons
-  const brandBadge = document.getElementById('brand-badge') || document.querySelector('.brand-badge');
-  if (brandBadge) {
-    brandBadge.textContent = 'OPERATOR';
-    brandBadge.classList.add('operator-badge');
-  }
-
-  const pushToHostBtn = document.getElementById('remote-push-to-host-btn');
-  if (pushToHostBtn) pushToHostBtn.style.display = 'inline-flex';
-
   const savedName = getSavedOperatorName();
   updateOperatorHeaderUI(savedName || 'Operator');
 
@@ -7151,9 +5834,10 @@ function initRemoteOperator() {
     openOperatorJoinModal(false);
   }
 
-  // Hook Enter key on operator name input
-  const nameInput = document.getElementById('operator-join-name-input');
-  if (nameInput) {
+  // Both inputs support Enter to connect.
+  for (const id of ['operator-join-name-input', 'operator-pairing-code']) {
+    const nameInput = document.getElementById(id);
+    if (!nameInput) continue;
     nameInput.onkeydown = (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -7167,39 +5851,6 @@ function initRemoteOperator() {
     remoteBtn.classList.add('active');
     const label = remoteBtn.querySelector('.remote-server-label');
     if (label) label.textContent = 'Studio Connected';
-  }
-
-  // 2. Lockout Microphone & Speech AI in Remote Mode (Managed exclusively by Host, mirrored for Operator)
-  const micBtn = document.getElementById('ai-mic-btn');
-  if (micBtn) {
-    micBtn.style.cursor = 'default';
-    micBtn.title = 'Host Microphone Feed (Managed on Host Computer)';
-    micBtn.setAttribute('data-tooltip', 'Host Microphone Feed (Managed on Host)');
-    micBtn.onclick = (e) => {
-      if (e) e.preventDefault();
-      showToast('Live audio microphone is managed on the Host Studio computer and mirrored here in real time.', 'info');
-    };
-  }
-
-  const audioPickerBtn = document.getElementById('audio-mic-picker-btn');
-  if (audioPickerBtn) {
-    audioPickerBtn.onclick = (e) => {
-      if (e) e.stopPropagation();
-      showToast('Audio is captured and processed live from the Host Studio microphone.', 'info');
-    };
-    audioPickerBtn.setAttribute('data-tooltip', 'Audio is streamed live from Host Studio microphone');
-    audioPickerBtn.title = 'Audio is streamed live from Host Studio microphone';
-  }
-
-  const autoProjectBtn = document.getElementById('auto-project-btn');
-  if (autoProjectBtn) {
-    autoProjectBtn.style.opacity = '0.4';
-    autoProjectBtn.style.cursor = 'not-allowed';
-    autoProjectBtn.title = 'Auto-project is managed on Host computer';
-    autoProjectBtn.onclick = (e) => {
-      if (e) e.preventDefault();
-      showToast('Auto-project is managed on the Host Studio computer.', 'info');
-    };
   }
 
   const speechNotice = document.getElementById('speech-remote-mode-banner');
@@ -7232,15 +5883,9 @@ function initRemoteOperator() {
   if (hubRemoteDesc) hubRemoteDesc.textContent = 'Connected as operator to Host Studio. Sanctuary & Livestream displays are active.';
 
   // 4. Check initial session state and host speech status from server immediately
-  fetch('/api/session').then(r => r.json()).then(data => {
-    if (!data.enabled) {
-      setRemoteSessionLocked(true);
-    } else {
-      setRemoteSessionLocked(false);
-      if (data.hostSpeechState) {
-        applyHostSpeechAiUpdate({ hostSpeechState: data.hostSpeechState, fullSync: true });
-      }
-      joinAndSyncOperatorSession();
+  refreshRemoteOperatorSession().then(data => {
+    if (data?.enabled && data.hostSpeechState) {
+      applyHostSpeechAiUpdate({ hostSpeechState: data.hostSpeechState, fullSync: true });
     }
   }).catch(() => {
     setRemoteSessionLocked(true);
@@ -7258,19 +5903,34 @@ function initRemoteOperator() {
     }
   }).catch(() => { });
 
-  // 5. Connect to live SSE stream for real-time display mirroring (Last Action Wins)
+}
+
+function initRemoteLiveStream() {
+  if (!REMOTE_MODE || !window.sfOperatorPaired) return;
+  const remoteBtn = document.getElementById('remote-server-btn');
+  const generation = remoteSessionGeneration;
+  remoteLiveEventSource?.close();
   if (window.EventSource) {
-    const sse = new (window.AppEventSource || EventSource)('/api/events');
+    const sse = new (window.AppEventSource || EventSource)('/api/events?operatorSession=' + remoteSessionRevision);
+    remoteLiveEventSource = sse;
     sse.onmessage = (event) => {
+      if (generation !== remoteSessionGeneration || sse !== remoteLiveEventSource) return;
       try {
         const liveState = JSON.parse(event.data);
+        if (typeof liveState.isHoldLive === 'boolean') {
+          state.isHoldLive = liveState.isHoldLive;
+          window.syncPresentationControls?.();
+        }
+        const pending = window.pendingRemoteProjection;
+        if (pending && Date.now() - pending.startedAt < 2000 && liveState._operatorRequestId !== pending.id && !liveState.clear && !liveState.blackout) return;
+        if (liveState._operatorRequestId === pending?.id || liveState.clear || liveState.blackout) window.pendingRemoteProjection = null;
         if (liveState.clear || liveState.blackout) {
           state.activeLiveSlideId = null;
           state.activeLiveText = '';
           state.activeLiveRef = '';
+          state.liveEngagedDeck = null;
           updateActiveSlideVisuals(null);
           updateLivePreview(liveState);
-          renderDeck();
           if (typeof window.syncBentoStagePreview === 'function') {
             window.syncBentoStagePreview();
           }
@@ -7283,6 +5943,9 @@ function initRemoteOperator() {
             if (needsRebuild) {
               renderDeck();
             }
+            state.liveEngagedDeck = state.activeDeckType === 'bible'
+              ? { type:'bible', book:state.activeBibleBook, chapter:state.activeBibleChapter }
+              : { type:'song', songId:state.activeSongId };
           }
           if (liveState.compareData !== undefined) {
             state.compareData = liveState.compareData;
@@ -7300,9 +5963,7 @@ function initRemoteOperator() {
         if (liveState.textSize !== undefined) {
           state.textSize = liveState.textSize;
           const slider = document.getElementById('preview-size-slider');
-          const readout = document.getElementById('preview-size-readout');
           if (slider) slider.value = state.textSize;
-          if (readout) readout.textContent = `${Number(state.textSize).toFixed(1)}x`;
         }
         if (liveState.songScaleFull !== undefined) {
           state.songScaleFull = liveState.songScaleFull;
@@ -7325,44 +5986,30 @@ function initRemoteOperator() {
       }
     };
 
+    sse.onopen = () => {
+      fetch('/api/state', { signal: AbortSignal.timeout(10000) }).then(r => r.json())
+        .then(data => sse.onmessage({ data: JSON.stringify(data) })).catch(() => {});
+    };
     sse.onerror = () => {
+      if (generation !== remoteSessionGeneration || sse !== remoteLiveEventSource) return;
       if (remoteBtn) {
         const dot = remoteBtn.querySelector('.remote-server-dot');
         if (dot) dot.style.background = '#EF4444';
       }
     };
 
-    // Listen for host start/stop session events, catalog push & speech updates
-    const ctrlEvents = new (window.AppEventSource || EventSource)('/api/control-events');
-    ctrlEvents.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'REMOTE_SERVER_STATUS') {
-          if (msg.enabled) {
-            setRemoteSessionLocked(false);
-            joinAndSyncOperatorSession();
-            showToast('Host started remote session! Full control active.', 'success');
-          } else {
-            setRemoteSessionLocked(true);
-            showToast('Host stopped remote session.', 'info');
-          }
-        } else if (msg.type === 'SESSION_ENDED') {
-          setRemoteSessionLocked(true);
-          showToast('Host stopped remote session.', 'info');
-        } else if (msg.type === 'CATALOG_PUSHED' && msg.catalog) {
-          applyHostPushedCatalog(msg.catalog);
-        } else if (msg.type === 'SPEECH_AI_UPDATE') {
-          applyHostSpeechAiUpdate(msg);
-        }
-        if (msg.hostSpeechState) {
-          applyHostSpeechAiUpdate({ hostSpeechState: msg.hostSpeechState, fullSync: true });
-        }
-      } catch (e) { }
-    };
+    // The authorized control stream opens after pairing. The public session
+    // check continues to detect host activation while this device is unpaired.
   }
 }
 
 let currentOperatorSse = null;
+let operatorJoinRequest = null;
+let operatorJoinController = null;
+let remoteLiveEventSource = null;
+let remoteSessionGeneration = 0;
+let remoteSessionRevision = -1;
+let pairingRetryUntil = 0;
 
 function getOrCreateDeviceId() {
   let id = null;
@@ -7374,29 +6021,69 @@ function getOrCreateDeviceId() {
   return id;
 }
 
+function showOperatorJoinError(message) {
+  const modal = document.getElementById('operator-join-modal-backdrop');
+  if (modal?.style.display === 'none') openOperatorJoinModal(false);
+  const error = document.getElementById('operator-join-error');
+  if (error) { error.textContent = message; error.style.display = 'block'; }
+}
+
 function joinAndSyncOperatorSession(customName) {
+  if (operatorJoinRequest) return operatorJoinRequest;
+  const code = document.getElementById('operator-pairing-code');
+  const pairingCode = (code?.value || '').trim();
+  if (customName && !window.sfOperatorPaired) {
+    if (Date.now() < pairingRetryUntil) {
+      showOperatorJoinError('Too many incorrect codes. Try again in ' + Math.ceil((pairingRetryUntil - Date.now()) / 1000) + ' seconds.');
+      return Promise.resolve();
+    }
+    if (!/^\d{6}$/.test(pairingCode)) {
+      showOperatorJoinError('Enter the six-digit pairing code from the host Broadcast Hub.');
+      code?.focus();
+      return Promise.resolve();
+    }
+  }
+  let generation = remoteSessionGeneration;
+  const controller = new AbortController();
+  operatorJoinController = controller;
+  let timedOut = false;
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 10000);
+  const button = document.getElementById('operator-join-submit-btn');
+  if (button) { button.disabled = true; button.textContent = 'Connecting...'; }
   const deviceId = getOrCreateDeviceId();
   const operatorName = (customName || getSavedOperatorName() || 'Remote Operator').trim();
-  fetch('/api/session/join', {
+  const request = fetch('/api/session/join', {
+    signal: controller.signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: operatorName, deviceId: deviceId, pairingCode: document.getElementById('operator-pairing-code')?.value })
-  }).then(r => r.json()).then(data => {
-    if (data.pairingRequired || data.error) {
-      setRemoteSessionLocked(true);
-      openOperatorJoinModal(false);
-      const error = document.getElementById('operator-join-error');
-      if (error) { error.textContent = data.error; error.style.display = 'block'; }
-      return;
-    }
+    body: JSON.stringify({ name: operatorName, deviceId: deviceId, pairingCode, ...(remoteSessionRevision >= 0 ? { revision: remoteSessionRevision } : {}) })
+  }).then(async r => {
+    const data = await r.json();
+    if ((!r.ok || !data.operatorId) && !data.error && !data.sessionOffline && !data.pairingRequired) data.error = 'Could not join the studio. Try again.';
+    return data;
+  }).then(data => {
+    if (generation !== remoteSessionGeneration) return;
+    if (Number.isFinite(data.revision) && data.revision < remoteSessionRevision) return;
+    if (Number.isFinite(data.revision)) remoteSessionRevision = data.revision;
     if (data.sessionOffline) {
-      setRemoteSessionLocked(true);
+      syncRemoteOperatorSession({ enabled: false, revision: data.revision });
       return;
     }
+    if (data.pairingRequired || data.error) {
+      window.sfOperatorPaired = false;
+      setRemoteSessionLocked(false);
+      pairingRetryUntil = Date.now() + (Number(data.retryAfter) || 0) * 1000;
+      showOperatorJoinError((data.error || 'Pairing is required.') + (data.retryAfter ? ' Try again in ' + data.retryAfter + ' seconds.' : ''));
+      return;
+    }
+    generation = ++remoteSessionGeneration;
     setRemoteSessionLocked(false);
     closeOperatorJoinModal();
     window.sfOperatorPaired = true;
+    pairingRetryUntil = 0;
+    if (code) code.value = '';
     initRemoteControl();
+    initRemoteLiveStream();
     if (customName) showToast(`Joined as "${operatorName}". Connected to Studio!`, 'success');
     if (data.name) {
       updateOperatorHeaderUI(data.name);
@@ -7412,8 +6099,13 @@ function joinAndSyncOperatorSession(customName) {
       if (currentOperatorSse) {
         try { currentOperatorSse.close(); } catch (e) { }
       }
-      currentOperatorSse = new (window.AppEventSource || EventSource)(`/api/operator-events/${data.operatorId}`);
-      currentOperatorSse.onmessage = (event) => {
+      const stream = new (window.AppEventSource || EventSource)(`/api/operator-events/${data.operatorId}`);
+      currentOperatorSse = stream;
+      stream.onerror = () => {
+        if (stream === currentOperatorSse) resetRemoteOperatorConnection();
+      };
+      stream.onmessage = (event) => {
+        if (generation !== remoteSessionGeneration || stream !== currentOperatorSse) return;
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'CATALOG_PUSHED' && msg.catalog) {
@@ -7422,18 +6114,28 @@ function joinAndSyncOperatorSession(customName) {
               showToast('Host pushed latest songs & agenda to your console!', 'success');
             }
           } else if (msg.type === 'PRIVILEGE_UPDATE' && msg.sessionEnabled === false) {
-            setRemoteSessionLocked(true);
+            syncRemoteOperatorSession({ enabled: false, revision: msg.revision });
           } else if (msg.type === 'SESSION_ENDED') {
-            window.sfOperatorPaired = false;
-            setRemoteSessionLocked(true);
-            controlEventSource?.close();
+            syncRemoteOperatorSession({ enabled: !!msg.enabled, paired: false, revision: msg.revision });
           } else if (msg.type === 'SPEECH_AI_UPDATE') {
             applyHostSpeechAiUpdate(msg);
           }
         } catch (e) { }
       };
     }
-  }).catch(() => { });
+  }).catch(() => {
+    if (generation !== remoteSessionGeneration) return;
+    showOperatorJoinError(timedOut ? 'Connection timed out. Check the host connection, then press Retry.' : 'Cannot reach the studio computer. Check the connection, then press Retry.');
+  }).finally(() => {
+    clearTimeout(timeout);
+    if (operatorJoinController === controller) {
+      operatorJoinController = null;
+      operatorJoinRequest = null;
+    }
+    if (!operatorJoinRequest && button) { button.disabled = false; button.textContent = window.sfOperatorPaired ? 'Save Name' : 'Retry connection'; }
+  });
+  operatorJoinRequest = request;
+  return request;
 }
 
 // Clean up operator presence on tab unload
@@ -7450,9 +6152,17 @@ if (REMOTE_MODE) {
 
 function applyRemoteCommand(command) {
   if (!command || typeof command.type !== 'string') return;
+  if (command.type === 'SPEECH_AI_UPDATE') {
+    if (REMOTE_MODE) applyHostSpeechAiUpdate(command);
+    return;
+  }
 
   if (command.type === 'REMOTE_SERVER_STATUS') {
     updateRemoteServerUI(!!command.enabled);
+    if (REMOTE_MODE) {
+      if (!command.enabled) syncRemoteOperatorSession({ enabled: false, revision: command.revision });
+      else refreshRemoteOperatorSession().catch(() => {});
+    }
     return;
   }
 
@@ -7490,50 +6200,23 @@ function applyRemoteCommand(command) {
 
   // Remote operator commands forwarded to host
   if (command._fromRemote) {
+    // The live feed confirms projections. Never send an echoed command back to the host.
+    if (REMOTE_MODE && ['PROJECT', 'CLEAR', 'BLACKOUT', 'NAVIGATE', 'SET_SPEECH_AI', 'SET_SERMON_RECORDING', 'SET_HOLD'].includes(command.type)) return;
+    if (command.type === 'SET_HOLD' && typeof command.enabled === 'boolean') {
+      if (command.enabled !== !!state.isHoldLive) toggleHoldLive();
+      return;
+    }
+    if (command.type === 'SET_SPEECH_AI' && typeof command.enabled === 'boolean') {
+      if (command.enabled !== !!(state.aiSpeechRequested || speechAi?.isListening)) toggleSpeechAi();
+      return;
+    }
+    if (command.type === 'SET_SERMON_RECORDING' && typeof command.enabled === 'boolean') {
+      if (window.sermonManager && command.enabled !== window.sermonManager.isRecordingSermon) window.sermonManager.toggleSermonRecording();
+      return;
+    }
     if (command.type === 'PROJECT' && typeof command.text === 'string') {
-      const slideId = command.slideId || ('remote_' + Date.now());
-      state.activeLiveSlideId = slideId;
-      state.activeLiveText = command.text;
-      state.activeLiveRef = command.reference || '';
-      state.compareData = command.compareData || null;
-      const isBible = slideId.startsWith('medley_bible_') || slideId.startsWith('bible_') || slideId.startsWith('ai_') || slideId.startsWith('para_') || slideId.startsWith('hist_');
-      const needsRebuild = syncStateFromSlideId(slideId);
-      if (needsRebuild) {
-        renderDeck();
-      }
-      updateActiveSlideVisuals(slideId);
-      updateLivePreview({
-        slideId: slideId,
-        contentType: isBible ? 'bible' : 'song',
-        isBible: isBible,
-        mode: state.currentMode,
-        projectorActive: state.projectorActive,
-        livestreamActive: state.livestreamActive,
-        showSongTitleInDisplay: state.showSongTitleInDisplay,
-        transparentBg: state.transparentBg,
-        typography: state.typography,
-        text: state.activeLiveText,
-        reference: state.activeLiveRef,
-        version: state.bibleVersion,
-        compare: state.isCompareMode,
-        compareVersion: state.compareBibleVersion,
-        compareData: state.compareData,
-        textSize: state.textSize,
-        textAutoScale: state.textAutoScale,
-        bg: state.background,
-        clear: false,
-        blackout: false
-      });
-      if (typeof window.syncBentoStagePreview === 'function') {
-        window.syncBentoStagePreview();
-      }
-      broadcastState({
-        slideId: state.activeLiveSlideId,
-        text: state.activeLiveText,
-        reference: state.activeLiveRef,
-        compareData: state.compareData,
-        clear: false,
-        blackout: false
+      projectSlide(command.slideId || ('remote_' + Date.now()), command.text, command.reference || '', {
+        takeLive: true, contentType: command.contentType, compareData: command.compareData || null, committedLiveState:command._committedLiveState
       });
       return;
     }
@@ -7559,8 +6242,6 @@ function applyRemoteCommand(command) {
     }
     if (command.type === 'STATE_PATCH' && command.patch) {
       applyDashboardPatch(command.patch);
-      renderLibrary();
-      renderDeck();
       if (typeof window.syncBentoStagePreview === 'function') {
         window.syncBentoStagePreview();
       }
@@ -7693,7 +6374,7 @@ async function pushRemoteLibraryToHost() {
   const songs = (typeof SONGS_DATABASE !== 'undefined') ? SONGS_DATABASE : [];
   const agendaItems = Array.isArray(state.agendaItems) ? state.agendaItems : [];
 
-  const btn = document.getElementById('remote-push-to-host-btn');
+  const btn = document.getElementById('bento-op-push-btn');
   if (btn) btn.style.opacity = '0.6';
 
   try {
@@ -7782,7 +6463,7 @@ function applyHostPushedCatalog(catalog, showToastNotice = true) {
 
   let updated = false;
 
-  if (catalog.bible && typeof catalog.bible === 'object' && Object.keys(catalog.bible).length > 0) {
+  if (catalog.bible && typeof catalog.bible === 'object' && Object.keys(catalog.bible).some(key => JSON.stringify(BIBLE_DATABASE[key]) !== JSON.stringify(catalog.bible[key]))) {
     if (window.libraryImporter && window.libraryImporter.customBibles) {
       Object.assign(window.libraryImporter.customBibles, catalog.bible);
     }
@@ -7790,12 +6471,12 @@ function applyHostPushedCatalog(catalog, showToastNotice = true) {
     updated = true;
   }
 
-  if (Array.isArray(catalog.songs) && catalog.songs.length > 0) {
+  if (Array.isArray(catalog.songs) && JSON.stringify(SONGS_DATABASE) !== JSON.stringify(catalog.songs)) {
     SONGS_DATABASE.splice(0, SONGS_DATABASE.length, ...catalog.songs);
     updated = true;
   }
 
-  if (Array.isArray(catalog.agendaItems)) {
+  if (Array.isArray(catalog.agendaItems) && JSON.stringify(state.agendaItems) !== JSON.stringify(catalog.agendaItems)) {
     state.agendaItems = catalog.agendaItems;
     updated = true;
   }
@@ -7812,178 +6493,9 @@ function applyHostPushedCatalog(catalog, showToastNotice = true) {
   }
 }
 
-
-
 function renderAiHud() {
-  if (typeof window.syncBentoAiHud === 'function') {
-    window.syncBentoAiHud();
-  }
-
-  const activeTab = (state.activeAiTab === 'songs') ? 'songs' : 'detected';
-  ['detected', 'songs'].forEach(t => {
-    const tabEl = document.getElementById(`ai-tab-${t}`);
-    const panelEl = document.getElementById(`ai-panel-${t}`);
-    if (tabEl) tabEl.classList.toggle('active', t === activeTab);
-    if (panelEl) panelEl.style.display = t === activeTab ? 'flex' : 'none';
-  });
-
-  // Update Tab Badges with real-time detection counts
-  const tabDet = document.getElementById('ai-tab-detected');
-  const tabSongs = document.getElementById('ai-tab-songs');
-
-  const detCount = state.aiDetectedVerses.length;
-  const songsCount = state.aiDetectedSongs.length;
-
-  if (tabDet) tabDet.innerHTML = `SCRIPTURES${detCount > 0 ? ` <span style="font-size:10px; background:rgba(59,130,246,0.3); color:#93C5FD; padding:1px 5px; border-radius:10px; margin-left:2px;">${detCount}</span>` : ''}`;
-  if (tabSongs) tabSongs.innerHTML = `SONGS${songsCount > 0 ? ` <span style="font-size:10px; background:rgba(236,72,153,0.3); color:#F472B6; padding:1px 5px; border-radius:10px; margin-left:2px;">${songsCount}</span>` : ''}`;
-
-  // 1. Detected Scripture Verses
-  const detList = document.getElementById('ai-panel-detected');
-  if (detList) {
-    detList.innerHTML = '';
-    const items = state.aiDetectedVerses.length > 0 ? state.aiDetectedVerses : state.aiSuggestions;
-    if (items.length === 0) {
-      detList.innerHTML = `
-        <div class="ai-empty-state">
-          <span>No scripture references detected yet</span>
-          <span style="font-size:10.5px; opacity:0.65; margin-top:3px;">Speak e.g. "John 3:16" or "Psalm 23"</span>
-        </div>`;
-    } else {
-      items.forEach(s => {
-        const card = document.createElement('div');
-        card.className = 'ai-detection-card scripture-card';
-        const ref = s.rawReference || s.reference;
-        const conf = s.confidence ? `${s.confidence}%` : '98%';
-        const snippet = s.text ? s.text.replace(/\[.*?\]/g, '').trim() : '';
-
-        card.innerHTML = `
-          <div class="ai-card-header">
-            <div class="ai-card-title">
-              <span class="ai-badge scripture-badge">SCRIPTURE</span>
-              <span class="ai-card-ref">${ref}</span>
-            </div>
-            <div class="ai-card-meta">
-              <span class="ai-conf-pill">${conf}</span>
-              ${s.time ? `<span class="ai-time-pill">${s.time}</span>` : ''}
-            </div>
-          </div>
-          ${snippet ? `<div class="ai-card-body">${snippet}</div>` : ''}
-          <div class="ai-card-actions">
-            <button class="ai-action-btn live-btn" title="Project live immediately"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>${s.kind === 'chapter' ? 'Open Chapter' : 'Project Live'}</button>
-          </div>
-        `;
-
-        const triggerProject = (e) => {
-          if (e) e.stopPropagation();
-          window.performDetectionAction(s, 'select');
-        };
-
-        card.querySelector('.live-btn').onclick = triggerProject;
-        card.onclick = triggerProject;
-
-        detList.appendChild(card);
-      });
-    }
-  }
-
-  // 2. Detected Songs & Lyrics
-  const songsList = document.getElementById('ai-panel-songs');
-  if (songsList) {
-    songsList.innerHTML = '';
-    if (state.aiDetectedSongs.length === 0) {
-      songsList.innerHTML = `
-        <div class="ai-empty-state">
-          <span>No worship songs or lyrics detected yet</span>
-          <span style="font-size:10.5px; opacity:0.65; margin-top:3px;">Sing or quote lyrics from your library</span>
-        </div>`;
-    } else {
-      state.aiDetectedSongs.forEach(sm => {
-        const card = document.createElement('div');
-        card.className = 'ai-detection-card song-card';
-        const conf = sm.confidence ? `${sm.confidence}%` : '90%';
-        const snippet = sm.matchedSnippet || sm.fullStanzaText || '';
-
-        card.innerHTML = `
-          <div class="ai-card-header">
-            <div class="ai-card-title">
-              <span class="ai-badge song-badge">${sm.stanzaType || 'SONG'}</span>
-              <span class="ai-card-ref">${sm.title}</span>
-            </div>
-            <div class="ai-card-meta">
-              <span class="ai-conf-pill">${conf}</span>
-              ${sm.time ? `<span class="ai-time-pill">${sm.time}</span>` : ''}
-            </div>
-          </div>
-          ${snippet ? `<div class="ai-card-body">${snippet}</div>` : ''}
-          <div class="ai-card-actions">
-            <button class="ai-action-btn live-btn" title="Project slide live"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Project Live</button>
-          </div>
-        `;
-
-        const triggerSong = (e) => {
-          if (e) e.stopPropagation();
-          window.performDetectionAction(sm, 'select');
-        };
-
-        card.querySelector('.live-btn').onclick = triggerSong;
-        card.onclick = triggerSong;
-
-        songsList.appendChild(card);
-      });
-    }
-  }
-
-  // 3. AI Paraphrase Matches
-  const paraList = document.getElementById('ai-panel-paraphrase');
-  if (paraList) {
-    paraList.innerHTML = '';
-    if (state.paraphraseMatches.length === 0) {
-      paraList.innerHTML = `
-        <div class="ai-empty-state">
-          <span>No scripture quotes or paraphrases detected</span>
-          <span style="font-size:10.5px; opacity:0.65; margin-top:3px;">Quotes like "God so loved the world" will match here</span>
-        </div>`;
-    } else {
-      state.paraphraseMatches.forEach(p => {
-        const card = document.createElement('div');
-        card.className = 'ai-detection-card paraphrase-card';
-        const conf = p.confidence ? `${p.confidence}%` : '85%';
-
-        card.innerHTML = `
-          <div class="ai-card-header">
-            <div class="ai-card-title">
-              <span class="ai-badge para-badge">QUOTE MATCH</span>
-              <span class="ai-card-ref">${p.reference}</span>
-            </div>
-            <div class="ai-card-meta">
-              <span class="ai-conf-pill">${conf}</span>
-              ${p.time ? `<span class="ai-time-pill">${p.time}</span>` : ''}
-            </div>
-          </div>
-          <div class="ai-card-body">${p.text}</div>
-          <div class="ai-card-actions">
-            <button class="ai-action-btn live-btn" title="Project live immediately"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Project Live</button>
-          </div>
-        `;
-
-        const triggerPara = (e) => {
-          if (e) e.stopPropagation();
-          projectSlide(`para_${p.reference}`, p.text, p.reference);
-        };
-
-        card.querySelector('.live-btn').onclick = triggerPara;
-        card.onclick = triggerPara;
-        paraList.appendChild(card);
-      });
-    }
-  }
-
-  if (typeof window.syncBentoAiHud === 'function') {
-    window.syncBentoAiHud();
-  }
+  window.syncBentoAiHud?.();
 }
-
-
 
 function initPanics() {
   const bindInstant = (id, fn) => {
@@ -8205,6 +6717,7 @@ function switchOmniSearchMode(mode, reSearch = true) {
   const tabAll = document.getElementById('omni-tab-all');
   const tabVerses = document.getElementById('omni-tab-verses');
   const tabSongs = document.getElementById('omni-tab-songs');
+  const tabStrongs = document.getElementById('omni-tab-strongs');
   const input = document.getElementById('omni-search-input');
 
   if (tabAll) {
@@ -8216,12 +6729,18 @@ function switchOmniSearchMode(mode, reSearch = true) {
     tabSongs.classList.toggle('active', omniSearchCurrentMode === 'songs');
     tabSongs.classList.toggle('songs-mode', omniSearchCurrentMode === 'songs');
   }
+  if (tabStrongs) {
+    tabStrongs.classList.toggle('active', omniSearchCurrentMode === 'strongs');
+    tabStrongs.classList.toggle('strongs-mode', omniSearchCurrentMode === 'strongs');
+  }
 
   if (input) {
     if (omniSearchCurrentMode === 'all') {
       input.placeholder = "Search scriptures, songs, or lyrics...";
     } else if (omniSearchCurrentMode === 'verses') {
       input.placeholder = "Search scriptures by reference or words...";
+    } else if (omniSearchCurrentMode === 'strongs') {
+      input.placeholder = "Search Strong's (e.g. church, love, G1577, shalom)...";
     } else {
       input.placeholder = "Search songs by title, artist, or lyrics...";
     }
@@ -8253,6 +6772,8 @@ function handleOmniSearchInput(val) {
     renderOmniUnifiedResults(cleanQ, resultsBox);
   } else if (omniSearchCurrentMode === 'verses') {
     renderOmniVersesResults(cleanQ, resultsBox);
+  } else if (omniSearchCurrentMode === 'strongs') {
+    renderOmniStrongsResults(cleanQ, resultsBox);
   } else {
     renderOmniSongsResults(cleanQ, resultsBox);
   }
@@ -8434,12 +6955,33 @@ function renderOmniUnifiedResults(query, container) {
     </div>
   `;
 
+  // ── Render Strong's Greek & Hebrew Concordance Section ──
+  let strongsMatches = [];
+  if (query && query.length >= 2 && typeof window.searchStrongsConcordance === 'function') {
+    strongsMatches = window.searchStrongsConcordance(query, { lang: 'all', limit: 3 });
+  }
+
+  const renderStrongsConcordanceHtml = () => {
+    if (!strongsMatches || strongsMatches.length === 0) return '';
+    return `
+      <div class="omni-section-header" style="color:var(--purple-text, #c3b6ff); display:flex; justify-content:space-between; align-items:center;">
+        <span>STRONG\'S GREEK &amp; HEBREW CONCORDANCE (${strongsMatches.length})</span>
+        <span style="font-size:10px; color:var(--mute); cursor:pointer;" onclick="switchOmniSearchMode('strongs')">View all in Concordance ↗</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px;">
+        ${strongsMatches.map(e => renderOmniStrongsCardHtml(e, false)).join('')}
+      </div>
+    `;
+  };
+
   // Compose according to Intent Ranking
   if (prioritizeScriptures) {
     html += renderScripturesHtml();
+    html += renderStrongsConcordanceHtml();
     html += renderLocalSongsHtml();
     html += renderCloudContainerHtml();
   } else {
+    html += renderStrongsConcordanceHtml();
     html += renderLocalSongsHtml();
     html += renderScripturesHtml();
     html += renderCloudContainerHtml();
@@ -8488,39 +7030,9 @@ function renderOmniUnifiedResults(query, container) {
   }, 300);
 }
 
-// ─── Reusable Helper: Render Scriptures in Classic (list) or Bento (Hero+Grid) ─
+// ─── Reusable Helper: Render Scriptures in Bento (Hero+Grid) ─
 function renderScripturesResultsHtml(items, parsed, activeVer, isExact = false) {
   if (!items || items.length === 0) return '';
-  const isBento = (document.body.getAttribute('data-theme-style') === 'bento');
-
-  if (!isBento) {
-    return items.slice(0, 8).map(v => {
-      const bookName = v.book || (parsed ? parsed.book : '');
-      const chapNum = v.chapter || (parsed ? parsed.chapter : 1) || 1;
-      const refStr = v.book ? `${v.book} ${v.chapter}:${v.verse}` : `${bookName} ${chapNum}:${v.verse}`;
-      return `
-        <div class="omni-card" style="border-left:3px solid var(--blue, #5fa8f5); cursor:pointer;" onclick="omniOpenBibleInDeck('${escapeHtml(bookName)}', ${chapNum}, ${v.verse})" title="Open ${refStr} in deck">
-          <div style="min-width:0; flex:1;">
-            <div class="omni-card-title">
-              <span>${refStr}</span>
-              <span class="omni-card-badge local">${activeVer}</span>
-              ${isExact ? '<span style="font-size:9.5px; color:var(--purple-text, #c3b6ff); font-weight:600;">Exact Match</span>' : ''}
-            </div>
-            <div class="omni-card-sub">${escapeHtml(v.text)}</div>
-          </div>
-          <div class="omni-card-actions">
-            <button type="button" class="omni-action-btn live" onclick="event.stopPropagation(); omniOpenBibleInDeck('${escapeHtml(bookName)}', ${chapNum}, ${v.verse})">
-              Open
-            </button>
-            <button type="button" class="omni-action-btn secondary" onclick="event.stopPropagation(); omniAddVerseToAgenda('${escapeHtml(bookName)}', ${chapNum}, ${v.verse}, '${escapeHtml(v.text)}', '${activeVer}')">
-              + Agenda
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
   // Bento Theme: 1 Top Hero Match Card + 2-Column Grid
   const hero = items[0];
   const remaining = items.slice(1, 5);
@@ -8592,37 +7104,9 @@ function renderScripturesResultsHtml(items, parsed, activeVer, isExact = false) 
   return html;
 }
 
-// ─── Reusable Helper: Render Saved Local Songs in Classic (list) or Bento (Hero+Grid) ─
+// ─── Reusable Helper: Render Saved Local Songs in Bento (Hero+Grid) ─
 function renderLocalSongsResultsHtml(matches) {
   if (!matches || matches.length === 0) return '';
-  const isBento = (document.body.getAttribute('data-theme-style') === 'bento');
-
-  if (!isBento) {
-    return matches.slice(0, 6).map(s => {
-      const preview = cleanOmniPreview(s._matchedSnippet || (s.stanzas && s.stanzas[0] ? s.stanzas[0].text : ''));
-      const artist = cleanOmniArtist(s.author);
-      return `
-        <div class="omni-card omni-card-clickable" style="border-left:3px solid var(--green, #3ecf7e); cursor:pointer;" onclick="omniLoadSongToDeck('${s.id}')" title="Open '${escapeHtml(s.title)}'">
-          <div style="min-width:0; flex:1;">
-            <div class="omni-card-title">
-              <span>${escapeHtml(s.title)}</span>
-              <span class="omni-card-badge local">Saved</span>
-              <span style="font-size:9.5px; color:var(--mute, #696773); font-weight:500;">${s.stanzas ? s.stanzas.length : 0} slides</span>
-            </div>
-            <div class="omni-card-sub">
-              <span style="color:var(--green, #3ecf7e); font-weight:500;">${escapeHtml(artist)}</span>${preview ? ` • ${escapeHtml(preview.slice(0, 85))}...` : ''}
-            </div>
-          </div>
-          <div class="omni-card-actions">
-            <button type="button" class="omni-action-btn live" onclick="event.stopPropagation(); omniLoadSongToDeck('${s.id}')">
-              Open
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
   // Bento Theme: 1 Top Hero Match Card + 2-Column Grid
   const hero = matches[0];
   const remaining = matches.slice(1, 5);
@@ -8686,7 +7170,7 @@ function renderLocalSongsResultsHtml(matches) {
   return html;
 }
 
-// ─── Reusable Helper: Render Cloud Songs in Classic (list) or Bento (Hero+Grid) ─
+// ─── Reusable Helper: Render Cloud Songs in Bento (Hero+Grid) ─
 function renderCloudResultsHtml(results) {
   if (!results || results.length === 0) return '';
   if (!window._omniCloudMap) window._omniCloudMap = new Map();
@@ -8696,38 +7180,6 @@ function renderCloudResultsHtml(results) {
       window._omniCloudMap.set(s.id, s);
     }
   });
-
-  const isBento = (document.body.getAttribute('data-theme-style') === 'bento');
-
-  if (!isBento) {
-    // Classic Theme: Single Column List
-    return results.slice(0, 6).map((s, idx) => {
-      const preview = cleanOmniPreview(s.previewText || (s.stanzas && s.stanzas[0] ? s.stanzas[0].text : ''));
-      const artist = cleanOmniArtist(s.author);
-      const safeId = escapeHtml(s.id);
-      return `
-        <div class="omni-card omni-card-clickable" style="border-left:3px solid var(--pink, #f178b6); cursor:pointer;" onclick="omniAddAndOpenCloudSong('${safeId}')" title="Click to save and open '${escapeHtml(s.title)}'">
-          <div style="min-width:0; flex:1;">
-            <div class="omni-card-title">
-              <span>${escapeHtml(s.title)}</span>
-              <span style="font-size:9.5px; color:var(--mute, #696773); font-weight:500;">${s.stanzas ? s.stanzas.length : 0} slides</span>
-            </div>
-            <div class="omni-card-sub">
-              <span style="color:var(--pink, #f178b6); font-weight:500;">${escapeHtml(artist)}</span>${preview ? ` • ${escapeHtml(preview.slice(0, 100))}...` : ''}
-            </div>
-          </div>
-          <div class="omni-card-actions">
-            <button type="button" class="omni-action-btn cloud-add" onclick="event.stopPropagation(); omniAddAndOpenCloudSong('${safeId}')" title="Save & open in workspace">
-              Add & Project
-            </button>
-            <button type="button" class="omni-action-btn secondary" onclick="event.stopPropagation(); omniAddCloudSongToDatabase('${safeId}')" title="Save to database (keep modal open)">
-              + Save
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
 
   // Bento Theme: 1 Top Match Hero Card + 2-Column Grid for remaining matches
   const hero = results[0];
@@ -8966,6 +7418,212 @@ function renderOmniSongsResults(query, container) {
   }, 350);
 }
 
+// ─── 4. Concordance & Strong\'s Filter Mode ──────────────────────────────────
+let omniStrongsLangFilter = 'all';
+
+function switchOmniStrongsLang(lang) {
+  omniStrongsLangFilter = lang || 'all';
+  const input = document.getElementById('omni-search-input');
+  const resultsBox = document.getElementById('omni-search-results-box');
+  const cleanQ = input ? input.value.trim() : '';
+  if (resultsBox) {
+    renderOmniStrongsResults(cleanQ, resultsBox);
+  }
+}
+window.switchOmniStrongsLang = switchOmniStrongsLang;
+
+function renderOmniStrongsCardHtml(entry, showOccurrencesAction = true) {
+  if (!entry) return '';
+  const isHebrew = entry.lang === 'Hebrew' || entry.id.startsWith('H');
+  const langClass = isHebrew ? 'hebrew' : 'greek';
+  const langLabel = isHebrew ? 'Hebrew' : 'Greek';
+  const safeId = escapeHtml(entry.id);
+  const safeLemma = escapeHtml(entry.lemma || entry.id);
+  const safeTranslit = escapeHtml(entry.transliteration || '');
+  const safePron = entry.pronunciation ? `/${escapeHtml(entry.pronunciation)}/` : '';
+  const safePos = escapeHtml(entry.part_of_speech || (isHebrew ? 'Hebrew' : 'Greek'));
+  const safeDef = escapeHtml(entry.short_definition || 'No concise definition.');
+  const safeKjv = entry.kjv_definition ? escapeHtml(entry.kjv_definition) : '';
+  const safeWordParam = (entry.short_definition || entry.lemma || entry.id).replace(/'/g, "\\'");
+
+  let occCountText = '';
+  if (typeof window.getStrongsBibleOccurrences === 'function') {
+    const occInfo = window.getStrongsBibleOccurrences(entry.id, 1);
+    if (occInfo && occInfo.totalCount > 0) {
+      occCountText = `${occInfo.totalCount} verse${occInfo.totalCount === 1 ? '' : 's'} in KJV`;
+    }
+  }
+
+  return `
+    <div class="omni-strongs-card" onclick="openLexiconInspector('${safeId}', '${safeWordParam}')" title="Click to open full Word Study in Drawer">
+      <div class="omni-strongs-head">
+        <div class="omni-strongs-meta">
+          <span class="omni-strongs-id ${langClass}">${safeId}</span>
+          <span class="omni-strongs-lemma ${langClass}">${safeLemma}</span>
+          <span class="omni-strongs-translit">${safeTranslit}</span>
+          ${safePron ? `<span class="omni-strongs-pron">${safePron}</span>` : ''}
+          <span class="omni-strongs-pos">${safePos}</span>
+        </div>
+        <div class="omni-strongs-actions" onclick="event.stopPropagation()">
+          <button type="button" class="omni-strongs-action-btn project-btn" onclick="omniProjectStrongsWord('${safeId}', '${safeWordParam}')" title="Project this word slide live">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Project</span>
+          </button>
+          <button type="button" class="omni-strongs-action-btn" onclick="openLexiconInspector('${safeId}', '${safeWordParam}')" title="Inspect full definition, derivation, and occurrences">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <span>Inspect</span>
+          </button>
+          ${showOccurrencesAction ? `
+            <button type="button" class="omni-strongs-action-btn" onclick="toggleOmniStrongsOccurrences('${safeId}', this)" title="Show Bible references for this word">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              <span>Occurrences</span>
+            </button>
+          ` : ''}
+        </div>
+      </div>
+      <div class="omni-strongs-def">${safeDef}</div>
+      ${safeKjv ? `<div class="omni-strongs-kjv">KJV: ${safeKjv}</div>` : ''}
+      <div class="omni-strongs-foot">
+        <span class="omni-strongs-occ-count">${occCountText || `${langLabel} Concordance`}</span>
+        <span style="font-size:10px; color:var(--purple-text, #c3b6ff);">Click to view Thayer/BDB Lexicon &rarr;</span>
+      </div>
+      <div id="omni-occ-panel-${safeId}" class="omni-strongs-inline-occ" style="display:none; margin-top:8px;" onclick="event.stopPropagation()"></div>
+    </div>
+  `;
+}
+window.renderOmniStrongsCardHtml = renderOmniStrongsCardHtml;
+
+function toggleOmniStrongsOccurrences(strongId, btnEl) {
+  const panel = document.getElementById(`omni-occ-panel-${strongId}`);
+  if (!panel) return;
+  if (panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    if (btnEl) btnEl.classList.remove('active');
+    return;
+  }
+  panel.style.display = 'block';
+  if (btnEl) btnEl.classList.add('active');
+
+  if (typeof window.getStrongsBibleOccurrences === 'function') {
+    const data = window.getStrongsBibleOccurrences(strongId, 20);
+    if (!data.occurrences || data.occurrences.length === 0) {
+      panel.innerHTML = `<div style="padding:8px 12px; font-size:11px; color:var(--mute);">No occurrences found in KJV Strong\'s Bible.</div>`;
+      return;
+    }
+    let occHtml = `
+      <div style="background:var(--card-3, #1e1d28); border:1px solid var(--border, rgba(255,255,255,0.08)); border-radius:8px; padding:8px 10px; display:flex; flex-direction:column; gap:6px;">
+        <div style="font-size:10.5px; font-weight:700; color:var(--dim, #a3a1ae); display:flex; justify-content:space-between;">
+          <span>Found in ${data.totalCount} verses (showing top ${data.occurrences.length})</span>
+          <span style="cursor:pointer; color:var(--purple-text);" onclick="openLexiconInspector('${strongId}');">View all in drawer &rarr;</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:5px; max-height:180px; overflow-y:auto;">
+    `;
+    data.occurrences.forEach(o => {
+      occHtml += `
+        <div style="font-size:11px; display:flex; justify-content:space-between; align-items:flex-start; gap:8px; border-bottom:1px solid rgba(255,255,255,0.04); padding-bottom:4px;">
+          <div style="min-width:0; flex:1;">
+            <b style="color:var(--purple-text, #c3b6ff); cursor:pointer;" onclick="omniOpenBibleInDeck('${escapeHtml(o.book)}', ${o.chapter}, ${o.verse})">${escapeHtml(o.ref)}</b>:
+            <span style="color:var(--dim, #a3a1ae);">${escapeHtml(o.text)}</span>
+          </div>
+          <button type="button" class="omni-strongs-action-btn project-btn" style="padding:2px 6px; font-size:9.5px; flex-shrink:0;" onclick="omniProjectVerse('${escapeHtml(o.book)}', ${o.chapter}, ${o.verse}, '${escapeHtml(o.text).replace(/'/g, "\\'")}', 'KJV')">
+            Project
+          </button>
+        </div>
+      `;
+    });
+    occHtml += `</div></div>`;
+    panel.innerHTML = occHtml;
+  }
+}
+window.toggleOmniStrongsOccurrences = toggleOmniStrongsOccurrences;
+
+function omniProjectStrongsWord(strongId, wordText) {
+  if (typeof window.fetchLexiconEntry === 'function') {
+    window.fetchLexiconEntry(strongId).then(entry => {
+      if (entry && typeof window.projectLexiconEntry === 'function') {
+        window.projectLexiconEntry(entry, wordText);
+      }
+    });
+  }
+}
+window.omniProjectStrongsWord = omniProjectStrongsWord;
+
+function renderOmniStrongsResults(query, container) {
+  if (!container) return;
+
+  const filterBarHtml = `
+    <div class="omni-concordance-filter-bar">
+      <span class="omni-filter-chip ${omniStrongsLangFilter === 'all' ? 'active' : ''}" onclick="switchOmniStrongsLang('all')">All (Greek &amp; Hebrew)</span>
+      <span class="omni-filter-chip ${omniStrongsLangFilter === 'greek' ? 'active' : ''}" onclick="switchOmniStrongsLang('greek')">Greek (NT)</span>
+      <span class="omni-filter-chip ${omniStrongsLangFilter === 'hebrew' ? 'active' : ''}" onclick="switchOmniStrongsLang('hebrew')">Hebrew (OT)</span>
+    </div>
+  `;
+
+  if (!query) {
+    container.innerHTML = `
+      <div class="omni-empty-compact">
+        <div class="omni-empty-icon" style="color:var(--purple-text, #c3b6ff);">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><circle cx="10" cy="10" r="2.5"/></svg>
+        </div>
+        <div class="omni-empty-title">Strong\'s Concordance &amp; Word Study</div>
+        <div class="omni-empty-desc">
+          Search English words (e.g. <i>church</i>, <i>love</i>, <i>peace</i>) to discover Greek and Hebrew roots, Strong\'s IDs, and Bible occurrences.
+        </div>
+        ${filterBarHtml}
+        <div style="font-size:11px; font-weight:700; color:var(--text); margin:8px 0 4px;">Popular English Words:</div>
+        <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap; margin-bottom:10px;">
+          <span class="tag-chip" onclick="setOmniSearchText('church')">church</span>
+          <span class="tag-chip" onclick="setOmniSearchText('love')">love</span>
+          <span class="tag-chip" onclick="setOmniSearchText('peace')">peace</span>
+          <span class="tag-chip" onclick="setOmniSearchText('grace')">grace</span>
+          <span class="tag-chip" onclick="setOmniSearchText('faith')">faith</span>
+          <span class="tag-chip" onclick="setOmniSearchText('spirit')">spirit</span>
+          <span class="tag-chip" onclick="setOmniSearchText('covenant')">covenant</span>
+        </div>
+        <div style="font-size:11px; font-weight:700; color:var(--text); margin:4px 0;">Greek &amp; Hebrew Terms:</div>
+        <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+          <span class="tag-chip" onclick="setOmniSearchText('ekklesia')">ekklesia (G1577)</span>
+          <span class="tag-chip" onclick="setOmniSearchText('agape')">agape (G26)</span>
+          <span class="tag-chip" onclick="setOmniSearchText('shalom')">shalom (H7965)</span>
+          <span class="tag-chip" onclick="setOmniSearchText('chesed')">chesed (H2617)</span>
+          <span class="tag-chip" onclick="setOmniSearchText('logos')">logos (G3056)</span>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const matches = (typeof window.searchStrongsConcordance === 'function')
+    ? window.searchStrongsConcordance(query, { lang: omniStrongsLangFilter, limit: 30 })
+    : [];
+
+  if (matches.length === 0) {
+    container.innerHTML = `
+      ${filterBarHtml}
+      <div class="omni-empty-state" style="text-align:center; padding:30px 16px;">
+        <div style="color:var(--dim, #a3a1ae); font-size:13px; margin-bottom:12px;">No Strong\'s concordance entries found for "<b style="color:var(--text);">${escapeHtml(query)}</b>".</div>
+        <button type="button" class="omni-action-btn live" style="margin:0 auto;" onclick="switchOmniSearchMode('all')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block; vertical-align:middle; margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Search in All Categories</span>
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  let html = `
+    ${filterBarHtml}
+    <div class="omni-section-header" style="color:var(--purple-text, #c3b6ff); margin-bottom:8px;">
+      <span>CONCORDANCE MATCHES (${matches.length})</span>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${matches.map(m => renderOmniStrongsCardHtml(m, true)).join('')}
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+window.renderOmniStrongsResults = renderOmniStrongsResults;
 
 function setOmniSearchText(txt) {
   const input = document.getElementById('omni-search-input');
@@ -9019,15 +7677,10 @@ function omniOpenBibleInDeck(book, chapter, verse = null, projectVerse = true) {
 
   if (verse) {
     requestAnimationFrame(() => {
-      const activeVer = state.bibleVersion || 'KJV';
-      const classicSlideId = `bible_${activeVer}_${book}_${state.activeBibleChapter}_${verse}`;
       const bentoSlideId = `bible_${book}_${state.activeBibleChapter}_${verse}`;
-      
-      const card = document.getElementById(`card_${classicSlideId}`) 
-        || document.getElementById(`bento_card_${bentoSlideId}`) 
-        || document.querySelector(`[data-slide-id="${classicSlideId}"]`) 
+      const card = document.getElementById(`bento_card_${bentoSlideId}`)
         || document.querySelector(`[data-slide-id="${bentoSlideId}"]`);
-      
+
       if (card) {
         if (projectVerse && typeof card.click === 'function') card.click();
         else card.scrollIntoView({ block: 'nearest', behavior: 'instant' });
@@ -9184,9 +7837,6 @@ function performSystemReset() {
     localStorage.removeItem('sf_custom_songs');
     localStorage.removeItem('sf_custom_bibles');
     localStorage.removeItem('sf_custom_songbooks');
-    localStorage.removeItem('sf_agenda_height');
-    localStorage.removeItem('sf_sidebar_width');
-    localStorage.removeItem('sf_preview_width');
     localStorage.removeItem('sf_bento_sidebar_width');
     localStorage.removeItem('sf_bento_preview_width');
     localStorage.removeItem('sf_bento_agenda_height');
@@ -9261,8 +7911,6 @@ function performSystemReset() {
   // Reset UI Controls & Labels
   const zoomLabel = document.getElementById('bento-zoom-label');
   if (zoomLabel) zoomLabel.textContent = '100%';
-  const deckZoomLabel = document.getElementById('deck-zoom-label');
-  if (deckZoomLabel) deckZoomLabel.textContent = '100%';
 
   const colsSeg = document.getElementById('bento-cols-seg');
   if (colsSeg) {
@@ -9280,8 +7928,6 @@ function performSystemReset() {
 
   const searchInput = document.getElementById('bento-search-input');
   if (searchInput) searchInput.value = '';
-  const sideSearchInput = document.getElementById('sidebar-search-input');
-  if (sideSearchInput) sideSearchInput.value = '';
 
   // Broadcast blank/clear state to secondary displays
   clearAllOutputs();
@@ -9306,7 +7952,19 @@ function performSystemReset() {
   showToast('System reset complete. Workspace, songs, scriptures, and agenda have been reset to defaults.', 'success');
 }
 
-function performClearBiblesOnly() {
+async function performClearBiblesOnly() {
+  try {
+    const response = await fetch('/api/bibles/catalog');
+    if (!response.ok) throw Error('Could not read downloaded Bibles.');
+    const catalogue = await response.json();
+    for (const bible of catalogue.bibles || []) {
+      if (!bible.installed || bible.bundled) continue;
+      const removal = await fetch(`/api/content-packs/${encodeURIComponent(bible.code)}`, { method: 'DELETE' });
+      if (!removal.ok) throw Error('Could not clear every downloaded Bible. Wait for downloads to finish and retry.');
+      window.forgetContentPack?.(bible.code);
+    }
+    for (const bible of CLOUD_REPOSITORIES.bibles || []) bible.installed = Boolean(bible.bundled);
+  } catch (error) { showToast(error.message, 'error'); return; }
   if (window.libraryImporter && typeof window.libraryImporter.clearBiblesOnly === 'function') {
     window.libraryImporter.clearBiblesOnly();
   }
@@ -9316,8 +7974,6 @@ function performClearBiblesOnly() {
   state.bibleVersion = '';
   state.activeBibleBook = '';
   state.activeBibleChapter = 1;
-  const verLabel = document.getElementById('active-version-label');
-  if (verLabel) verLabel.textContent = 'Select';
 
   closeSystemResetModal();
   renderLibrary();
@@ -9398,6 +8054,7 @@ function addAiToAgenda(sugId) {
 /* hoisted */
 
 async function refreshAudioInputDevices() {
+  if (REMOTE_MODE) return;
   const select = document.getElementById('setting-audio-mic-select');
   if (!select) return;
 
@@ -9440,6 +8097,7 @@ async function refreshAudioInputDevices() {
 }
 
 function selectAudioInputDevice(deviceId, deviceLabel) {
+  if (REMOTE_MODE) return;
   selectedAudioDeviceId = deviceId;
   localStorage.setItem('sf_selected_mic_device', deviceId);
 
@@ -9474,18 +8132,7 @@ async function startAudioVuMeter() {
 }
 
 function updateMicSignalBars(percent) {
-  const container = document.getElementById('mic-signal-indicator');
-  const bar1 = container?.querySelector('.bar-1');
-  const bar2 = container?.querySelector('.bar-2');
-  const bar3 = container?.querySelector('.bar-3');
-  const bar4 = container?.querySelector('.bar-4');
-
   const p = Math.max(0, Number(percent) || 0);
-
-  if (bar1) bar1.classList.toggle('active', p > 2);
-  if (bar2) bar2.classList.toggle('active', p > 14);
-  if (bar3) bar3.classList.toggle('active', p > 32);
-  if (bar4) bar4.classList.toggle('active', p > 60);
 
   const bentoVu = document.getElementById('bento-vu-meter');
   if (bentoVu) {
@@ -10261,8 +8908,6 @@ function handleUnifiedFileImport(event) {
             const chs = getBibleChapters(state.activeBibleBook, state.bibleVersion);
             state.activeBibleChapter = chs.length > 0 ? parseInt(chs[0], 10) : 1;
           }
-          const verLabel = document.getElementById('active-version-label');
-          if (verLabel) verLabel.textContent = state.bibleVersion;
         }
 
         renderLibrary();
@@ -10562,11 +9207,11 @@ function renderCloudBibles(filter = '') {
   }
 
   container.innerHTML = matches.map(b => {
-    const isInstalled = (typeof BIBLE_DATABASE !== 'undefined' && BIBLE_DATABASE[b.code] && Object.keys(BIBLE_DATABASE[b.code]).length > 0) || (window.libraryImporter && window.libraryImporter.customBibles && window.libraryImporter.customBibles[b.code]);
+    const isInstalled = b.installed || (typeof BIBLE_DATABASE !== 'undefined' && BIBLE_DATABASE[b.code] && Object.keys(BIBLE_DATABASE[b.code]).length > 0) || (window.libraryImporter && window.libraryImporter.customBibles && window.libraryImporter.customBibles[b.code]);
     const isActive = isInstalled && state.bibleVersion === b.code;
 
     return `
-      <div class="repo-item-card ${isActive ? 'active-repo' : (isInstalled ? 'installed-repo' : '')}">
+      <div data-bible-code="${b.code}" class="repo-item-card ${isActive ? 'active-repo' : (isInstalled ? 'installed-repo' : '')}">
         <div class="repo-item-main">
           <div class="repo-item-title-row">
             <span class="repo-tag-pill ${isActive ? 'active' : (isInstalled ? 'installed' : '')}">${b.code}</span>
@@ -10579,8 +9224,8 @@ function renderCloudBibles(filter = '') {
             ${isActive
         ? '<span class="repo-status-badge active"><span class="badge-dot">●</span> Active</span>'
         : (isInstalled
-          ? '<span class="repo-status-badge ready"><span class="badge-dot">●</span> Ready</span>'
-          : '<span class="repo-status-badge cloud"><span class="badge-dot">☁</span> Cloud</span>')}
+          ? '<span class="repo-status-badge ready">Ready offline</span>'
+          : '<span class="repo-status-badge cloud">Download available</span>')}
           </div>
         </div>
         <div class="repo-item-actions">
@@ -10589,7 +9234,7 @@ function renderCloudBibles(filter = '') {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
               <span>Active</span>
             </button>
-            <button class="bento-btn-icon-danger" onclick="deleteCloudBible('${b.code}')" title="Delete ${b.code} from storage">
+            <button class="bento-btn-icon-danger" ${b.bundled ? 'disabled' : ''} onclick="deleteCloudBible('${b.code}')" title="${b.bundled ? 'Included with Ginomai' : `Delete ${b.code} from storage`}">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
           ` : (isInstalled ? `
@@ -10597,7 +9242,7 @@ function renderCloudBibles(filter = '') {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
               <span>Switch</span>
             </button>
-            <button class="bento-btn-icon-danger" onclick="deleteCloudBible('${b.code}')" title="Delete ${b.code} from storage">
+            <button class="bento-btn-icon-danger" ${b.bundled ? 'disabled' : ''} onclick="deleteCloudBible('${b.code}')" title="${b.bundled ? 'Included with Ginomai' : `Delete ${b.code} from storage`}">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
           ` : `
@@ -10616,11 +9261,51 @@ function filterCloudBibles(query) {
   renderCloudBibles(query);
 }
 
+function refreshCloudBibleCards() {
+  document.querySelectorAll('#cloud-bibles-list [data-bible-code]').forEach(card => {
+    const code = card.dataset.bibleCode;
+    const bible = (CLOUD_REPOSITORIES.bibles || []).find(bible => bible.code === code);
+    if (!bible) return;
+    const installed = Boolean(bible.installed || BIBLE_DATABASE?.[code] || window.libraryImporter?.customBibles?.[code]);
+    const active = installed && state.bibleVersion === code;
+    card.classList.toggle('active-repo', active);
+    card.classList.toggle('installed-repo', installed && !active);
+    const tag = card.querySelector('.repo-tag-pill');
+    tag?.classList.toggle('active', active);
+    tag?.classList.toggle('installed', installed && !active);
+    const badge = card.querySelector('.repo-status-badge');
+    if (badge) {
+      badge.className = `repo-status-badge ${active ? 'active' : installed ? 'ready' : 'cloud'}`;
+      badge.textContent = active ? 'Active' : installed ? 'Ready offline' : 'Download available';
+    }
+    const action = card.querySelector('.repo-item-actions > button');
+    if (action) {
+      action.disabled = active;
+      action.className = `repo-action-btn ${active ? 'bento-btn-active-indicator' : installed ? 'bento-btn-primary-sm' : 'bento-btn-secondary-sm'}`;
+      action.textContent = active ? 'Active' : installed ? 'Switch' : 'Download';
+      action.onclick = active ? null : installed ? () => switchCloudBible(code) : () => downloadCloudBible(code, bible.name);
+    }
+    let remove = card.querySelector('.bento-btn-icon-danger');
+    if (installed && !remove) {
+      remove = document.createElement('button');
+      remove.className = 'bento-btn-icon-danger';
+      remove.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14"/></svg>';
+      remove.onclick = () => deleteCloudBible(code);
+      card.querySelector('.repo-item-actions').appendChild(remove);
+    }
+    if (remove) {
+      remove.hidden = !installed;
+      remove.disabled = Boolean(bible.bundled);
+      remove.title = bible.bundled ? 'Included with Ginomai' : `Remove ${code} from offline storage`;
+    }
+  });
+}
+
 async function downloadCloudBible(code, name) {
   const btn = document.getElementById(`btn-dl-${code}`);
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = `<span style="display:inline-block; animation:spin 1s linear infinite; margin-right:4px;">⏳</span> Downloading...`;
+    btn.textContent = 'Downloading…';
   }
 
   showToast(`Downloading ${code} (${name}) into offline storage...`, 'info');
@@ -10631,6 +9316,8 @@ async function downloadCloudBible(code, name) {
     }
 
     const res = await window.libraryImporter.downloadCloudBible(code, name);
+    const repositoryBible = (CLOUD_REPOSITORIES.bibles || []).find(bible => bible.code === code);
+    if (repositoryBible) repositoryBible.installed = true;
 
     // Set as active Bible version
     state.bibleVersion = code;
@@ -10639,25 +9326,23 @@ async function downloadCloudBible(code, name) {
     const chs = getBibleChapters(state.activeBibleBook, code);
     state.activeBibleChapter = chs.length > 0 ? parseInt(chs[0], 10) : 1;
 
-    const verLabel = document.getElementById('active-version-label');
-    if (verLabel) verLabel.textContent = code;
-
     renderLibrary();
     renderDeck();
     syncRemoteCatalog();
-    renderCloudBibles();
+    refreshCloudBibleCards();
     showToast(`Successfully downloaded and saved ${code} (${res.booksCount} books) to IndexedDB!`, 'success');
   } catch (err) {
     console.error('Download error:', err);
     showToast(`Could not download ${code}: ${err.message}`, 'error');
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = `⬇ Download`;
+      btn.textContent = 'Download';
     }
   }
 }
 
-function switchCloudBible(code) {
+async function switchCloudBible(code) {
+  if (!await ensureBibleLoaded(code, true)) return;
   state.bibleVersion = code;
   const books = getBibleBooks(code);
   if (!state.activeBibleBook || !books.includes(state.activeBibleBook)) {
@@ -10665,12 +9350,10 @@ function switchCloudBible(code) {
     const chs = getBibleChapters(state.activeBibleBook, code);
     state.activeBibleChapter = chs.length > 0 ? parseInt(chs[0], 10) : 1;
   }
-  const verLabel = document.getElementById('active-version-label');
-  if (verLabel) verLabel.textContent = code;
   renderLibrary();
   renderDeck();
   syncRemoteCatalog();
-  renderCloudBibles();
+  refreshCloudBibleCards();
   showToast(`Switched active Bible translation to ${code}.`, 'info');
 }
 
@@ -10683,6 +9366,17 @@ async function deleteCloudBible(code) {
     danger: true
   });
   if (!confirmed) return;
+
+  const repositoryBible = (CLOUD_REPOSITORIES.bibles || []).find(bible => bible.code === code);
+  if (repositoryBible?.installed && !repositoryBible.bundled) {
+    try {
+      const response = await fetch(`/api/content-packs/${encodeURIComponent(code)}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || 'Could not remove this content pack.');
+      repositoryBible.installed = false;
+      window.forgetContentPack?.(code);
+    } catch (error) { showToast(error.message, 'error'); return; }
+  }
 
   if (window.libraryImporter) {
     window.libraryImporter.deleteBible(code);
@@ -10702,13 +9396,10 @@ async function deleteCloudBible(code) {
     }
   }
 
-  const verLabel = document.getElementById('active-version-label');
-  if (verLabel) verLabel.textContent = state.bibleVersion || 'Select';
-
   renderLibrary();
   renderDeck();
   syncRemoteCatalog();
-  renderCloudBibles();
+  refreshCloudBibleCards();
   showToast(`Removed ${code} from offline storage.`, 'info');
 }
 
@@ -11100,7 +9791,12 @@ function renderSessionPanel() {
 }
 
 async function toggleSession() {
+  if (REMOTE_MODE || sessionPanelState.togglePending) return;
+  sessionPanelState.togglePending = true;
   const startBtn = document.getElementById('session-start-stop-btn');
+  const hubBtn = document.getElementById('hub-toggle-session-btn');
+  if (startBtn) startBtn.disabled = true;
+  if (hubBtn) { hubBtn.disabled = true; hubBtn.textContent = sessionPanelState.enabled ? 'Stopping...' : 'Starting...'; }
   const wasEnabled = sessionPanelState.enabled;
 
   if (startBtn) {
@@ -11110,55 +9806,50 @@ async function toggleSession() {
 
   try {
     if (wasEnabled) {
-      await fetch('/api/session/stop', { method: 'POST' }).catch(() => { });
+      const response = await fetch('/api/session/stop', { method: 'POST', signal: AbortSignal.timeout(10000) });
+      const data = await response.json();
+      if (!response.ok || !data.success || data.enabled !== false) throw new Error(data.error || 'Could not stop the remote session.');
       sessionPanelState.enabled = false;
       sessionPanelState.operatorUrl = null;
       isRemoteServerActive = false;
       showToast('Remote session stopped.', 'info');
     } else {
       let lanUrl = null;
-      try {
-        const res = await fetch('/api/session/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fullControl: true })
-        });
-        const data = await res.json().catch(() => ({ success: true }));
-        if (data && data.success) {
-          const net = await fetch('/api/session').then(r => r.json()).catch(() => ({}));
-          lanUrl = net.lanUrl || null;
-        }
-      } catch (err) {
-        console.warn('Session API call fallback:', err);
-      }
-
+      const res = await fetch('/api/session/start', {
+        signal: AbortSignal.timeout(10000),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullControl: true })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || data.enabled !== true) throw new Error(data.error || 'Could not start the remote session.');
+      lanUrl = data.lanUrl || null;
       sessionPanelState.enabled = true;
       isRemoteServerActive = true;
-      sessionPanelState.operatorUrl = lanUrl || (window.location.origin.includes('http') ? `${window.location.origin}/index.html?remote=1` : 'http://localhost:8500/index.html?remote=1');
+      sessionPanelState.operatorUrl = lanUrl || getRemoteControlUrl(customLanIp);
       syncRemoteCatalog();
       showToast('Remote session started! Operator has full control.', 'success');
     }
   } catch (err) {
     console.error('toggleSession error:', err);
-    sessionPanelState.enabled = !wasEnabled;
+    const actual = await fetch('/api/session', { signal: AbortSignal.timeout(10000) }).then(r => r.json()).catch(() => ({}));
+    sessionPanelState.enabled = typeof actual.enabled === 'boolean' ? actual.enabled : wasEnabled;
     isRemoteServerActive = sessionPanelState.enabled;
-    sessionPanelState.operatorUrl = sessionPanelState.enabled ? `${window.location.origin || 'http://localhost:8500'}/index.html?remote=1` : null;
+    sessionPanelState.operatorUrl = sessionPanelState.enabled ? getRemoteControlUrl(customLanIp) : null;
+    showToast(err.message || 'Could not change the remote session. Try again from the host.', 'warning');
   } finally {
-    if (startBtn) startBtn.style.opacity = '1';
+    sessionPanelState.togglePending = false;
+    if (startBtn) { startBtn.style.opacity = '1'; startBtn.disabled = false; }
+    if (hubBtn) hubBtn.disabled = false;
     updateRemoteSessionHeaderUI();
     renderSessionPanel();
   }
 }
 
 function updateRemoteSessionHeaderUI() {
-  const btn = document.getElementById('broadcast-hub-btn') || document.getElementById('remote-server-btn');
-  const dot = document.getElementById('broadcast-status-dot');
+  const btn = document.getElementById('remote-server-btn');
   if (!btn) return;
   btn.classList.toggle('active', sessionPanelState.enabled);
-  if (dot) {
-    dot.style.background = sessionPanelState.enabled ? '#22C55E' : '';
-    dot.style.boxShadow = sessionPanelState.enabled ? '0 0 6px #22C55E' : '';
-  }
   btn.title = sessionPanelState.enabled ? 'Broadcast & Remote Hub: Active' : 'Broadcast Outputs, OBS Links & Remote Controllers';
 }
 
@@ -11169,12 +9860,6 @@ function updateSessionOperatorCount(count, joinedName, joinedOpId) {
   const currentCount = typeof count === 'number' ? count : 0;
   const countEl = document.getElementById('session-op-count');
   if (countEl) countEl.textContent = currentCount > 0 ? `${currentCount} Online` : '0 Online';
-
-  const badge = document.getElementById('remote-operator-count');
-  if (badge) {
-    badge.style.display = currentCount > 0 ? 'inline-block' : 'none';
-    if (currentCount > 0) badge.textContent = currentCount;
-  }
 
   const hubBadge = document.getElementById('hub-operators-badge');
   const hubCountPill = document.getElementById('hub-operators-count-pill');
@@ -11407,23 +10092,21 @@ function updateDesktopProjectorUI(status) {
 
   // Header Button
   const btn = document.getElementById('desktop-projector-btn');
-  const dot = document.getElementById('desktop-projector-dot');
   const label = document.getElementById('desktop-projector-label');
-  if (btn && dot && label) {
+  if (btn) {
+    btn.classList.toggle('active', isOpen);
+    btn.title = isOpen ? 'Disconnect projector from external display' : 'Connect projector to external display';
+    btn.setAttribute('aria-label', btn.title);
+    btn.setAttribute('aria-pressed', String(isOpen));
     if (isOpen) {
       btn.style.background = 'rgba(16,185,129,0.3)';
       btn.style.borderColor = '#10B981';
-      dot.style.background = '#34D399';
-      dot.style.boxShadow = '0 0 10px #34D399';
-      label.textContent = 'Projector: LIVE';
     } else {
       btn.style.background = 'rgba(16,185,129,0.12)';
       btn.style.borderColor = 'rgba(16,185,129,0.35)';
-      dot.style.background = '#64748B';
-      dot.style.boxShadow = 'none';
-      label.textContent = 'Projector: Off';
     }
   }
+  if (label) label.textContent = isOpen ? 'Projector: LIVE' : 'Projector: Off';
 
   // Modal Card Controls
   const toggleBtn = document.getElementById('desktop-projector-toggle-btn');
@@ -11460,8 +10143,8 @@ function updateDesktopStageUI(status) {
 }
 
 async function toggleDesktopProjector() {
-  if (!window.desktopApi) {
-    showToast('Desktop API only available in the Ginomia desktop application.', 'info');
+  if (!window.desktopApi?.isDesktop) {
+    openOutputLink('sanctuary');
     return;
   }
 
@@ -11479,7 +10162,7 @@ window.toggleDesktopProjector = toggleDesktopProjector;
 
 async function toggleDesktopStageMonitor() {
   if (!window.desktopApi) {
-    showToast('Desktop API only available in the Ginomia desktop application.', 'info');
+    showToast('Desktop API only available in the Ginomai desktop application.', 'info');
     return;
   }
 
@@ -11512,8 +10195,6 @@ function initWorkspaceResizers() {
       document.documentElement.style.setProperty('--deck-scale', '1');
       const bentoLbl = document.getElementById('bento-zoom-label');
       if (bentoLbl) bentoLbl.textContent = '100%';
-      const deckLbl = document.getElementById('deck-zoom-label');
-      if (deckLbl) deckLbl.textContent = '100%';
       if (typeof ThemeResizerEngine !== 'undefined') {
         ThemeResizerEngine.init();
       }
@@ -11531,8 +10212,6 @@ function initWorkspaceResizers() {
         state.deckZoom = num;
         document.documentElement.style.setProperty('--deck-scale-single', num);
         document.documentElement.style.setProperty('--deck-scale', num);
-        const lbl = document.getElementById('deck-zoom-label');
-        if (lbl) lbl.textContent = `${Math.round(num * 100)}%`;
       }
     }
     if (savedMedleyZoom) {
@@ -11552,18 +10231,9 @@ function initWorkspaceResizers() {
     }
   } catch (e) { }
 
-  // Initialize universal ThemeResizerEngine for Bento, Classic, and any future themes
+  // Initialize the workspace resize engine
   if (typeof ThemeResizerEngine !== 'undefined') {
     ThemeResizerEngine.init();
-  }
-
-  // Auto-observe wrap resize to keep preview iframe scale locked to 16:9
-  const stageWrap = document.querySelector('.preview-stage-wrap');
-  if (stageWrap && window.ResizeObserver) {
-    const ro = new ResizeObserver(() => {
-      if (typeof scalePreviewIframe === 'function') scalePreviewIframe();
-    });
-    ro.observe(stageWrap);
   }
 
   const bentoPrevBox = document.getElementById('bento-preview-box');
@@ -11593,8 +10263,6 @@ function adjustDeckZoom(delta) {
     state.deckZoom = scale;
     document.documentElement.style.setProperty('--deck-scale-single', scale);
     document.documentElement.style.setProperty('--deck-scale', scale);
-    const lbl = document.getElementById('deck-zoom-label');
-    if (lbl) lbl.textContent = `${Math.round(scale * 100)}%`;
     const bentoLbl = document.getElementById('bento-zoom-label');
     if (bentoLbl) bentoLbl.textContent = `${Math.round(scale * 100)}%`;
     try {
@@ -11604,25 +10272,6 @@ function adjustDeckZoom(delta) {
   }
 }
 window.adjustDeckZoom = adjustDeckZoom;
-
-function switchMobileZone(zoneName) {
-  state.activeMobileZone = zoneName;
-  document.querySelectorAll('.mobile-zone-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.zone === zoneName);
-  });
-  const lib = document.getElementById('zone-library');
-  const deck = document.getElementById('zone-deck');
-  const prev = document.getElementById('zone-preview');
-  if (lib && deck && prev) {
-    lib.classList.toggle('mobile-active', zoneName === 'library');
-    deck.classList.toggle('mobile-active', zoneName === 'deck');
-    prev.classList.toggle('mobile-active', zoneName === 'preview');
-  }
-  if (zoneName === 'preview' && typeof scalePreviewIframe === 'function') {
-    setTimeout(scalePreviewIframe, 60);
-  }
-}
-window.switchMobileZone = switchMobileZone;
 
 // Initialize resizers immediately or on DOM load
 if (document.readyState === 'loading') {
@@ -11639,28 +10288,12 @@ if (document.readyState === 'loading') {
 async function initAudioMicPicker() {
   if (REMOTE_MODE) {
     updateAudioMicPickerButtonLabel(state.aiListening ? 'Host Mic: LIVE' : 'Host Mic: Standby');
-    const btn = document.getElementById('audio-mic-picker-btn');
-    if (btn) {
-      btn.onclick = (e) => {
-        if (e) e.stopPropagation();
-        showToast('Audio input is captured and processed live from the Host Studio microphone.', 'info');
-      };
-      btn.setAttribute('data-tooltip', 'Audio is streamed live from Host Studio microphone');
-      btn.title = 'Audio is streamed live from Host Studio microphone';
-    }
     return;
   }
 
   updateMicSignalBars(0);
   await populateAudioInputDevices();
   startAudioVuMeter(selectedAudioDeviceId);
-
-  document.addEventListener('click', (e) => {
-    const wrapper = document.getElementById('audio-mic-wrapper');
-    if (wrapper && !wrapper.contains(e.target)) {
-      closeAudioMicPopover();
-    }
-  });
 
   if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
     navigator.mediaDevices.ondevicechange = () => {
@@ -11671,6 +10304,7 @@ async function initAudioMicPicker() {
 }
 
 async function populateAudioInputDevices(requestPermissionIfNeeded = false) {
+  if (REMOTE_MODE) return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
     updateAudioMicPickerButtonLabel('Default - Microphone...');
     return;
@@ -11716,11 +10350,6 @@ async function populateAudioInputDevices(requestPermissionIfNeeded = false) {
 }
 
 function updateAudioMicPickerButtonLabel(label) {
-  const labelEl = document.getElementById('audio-mic-picker-label');
-  if (labelEl) {
-    labelEl.textContent = label;
-    labelEl.title = `Microphone: ${label}`;
-  }
   const bentoDeviceName = document.getElementById('bento-device-name');
   if (bentoDeviceName) {
     bentoDeviceName.textContent = label;
@@ -11729,11 +10358,6 @@ function updateAudioMicPickerButtonLabel(label) {
   const bentoDeviceSel = document.getElementById('bento-device-sel');
   if (bentoDeviceSel) {
     bentoDeviceSel.title = `Microphone: ${label} (Click to switch)`;
-  }
-  const btn = document.getElementById('audio-mic-picker-btn');
-  if (btn) {
-    btn.setAttribute('data-tooltip', `Microphone: ${label}`);
-    btn.title = `Microphone: ${label} (Click to switch)`;
   }
 }
 
@@ -11786,7 +10410,10 @@ function renderAudioMicPopoverItems() {
 
 function toggleAudioMicPopover(e) {
   if (e) e.stopPropagation();
-  const btn = document.getElementById('audio-mic-picker-btn');
+  if (REMOTE_MODE) {
+    showToast('Microphone selection stays on the host computer.', 'info');
+    return;
+  }
   const bentoBtn = document.getElementById('bento-device-sel');
   const popover = document.getElementById('audio-mic-popover');
   if (!popover) return;
@@ -11796,7 +10423,7 @@ function toggleAudioMicPopover(e) {
     closeAudioMicPopover();
   } else {
     // If opened from Bento, position under bento-device-sel
-    const target = (e && e.currentTarget) || bentoBtn || btn;
+    const target = (e && e.currentTarget) || bentoBtn;
     if (target && target.closest('#bento-layout-root')) {
       target.style.position = 'relative';
       if (popover.parentElement !== target) {
@@ -11811,7 +10438,6 @@ function toggleAudioMicPopover(e) {
     }
     populateAudioInputDevices(true);
     popover.classList.add('open');
-    if (btn) btn.classList.add('open');
     if (bentoBtn) bentoBtn.classList.add('open');
     popover.style.zIndex = '100002';
     if (typeof window.openDismissShield === 'function') {
@@ -11821,11 +10447,9 @@ function toggleAudioMicPopover(e) {
 }
 
 function closeAudioMicPopover() {
-  const btn = document.getElementById('audio-mic-picker-btn');
   const bentoBtn = document.getElementById('bento-device-sel');
   const popover = document.getElementById('audio-mic-popover');
   if (popover) popover.classList.remove('open');
-  if (btn) btn.classList.remove('open');
   if (bentoBtn) bentoBtn.classList.remove('open');
   if (typeof window.closeDismissShield === 'function') {
     window.closeDismissShield();
@@ -11994,15 +10618,24 @@ async function toggleStrongsMode() {
     bentoBtn.classList.toggle('active', Boolean(state.strongsMode));
     bentoBtn.style.display = (state.currentTab === 'bible') ? 'inline-flex' : 'none';
   }
-
-  const classicBtn = document.getElementById('btn-strongs-mode');
-  if (classicBtn) {
-    classicBtn.classList.toggle('active', Boolean(state.strongsMode));
-    classicBtn.style.display = (state.currentTab === 'bible') ? 'inline-flex' : 'none';
+  const concordanceBtn = document.getElementById('bento-concordance-search-btn');
+  if (concordanceBtn) {
+    concordanceBtn.style.display = (state.currentTab === 'bible') ? 'inline-flex' : 'none';
   }
 
   // Load KJV_STRONGS data on demand if needed
   if (state.strongsMode) {
+    try {
+      if (typeof window.ensureContentPack === 'function' && !await window.ensureContentPack('KJV_STRONGS')) {
+        if (state.strongsMode) toggleStrongsMode();
+        return;
+      }
+    } catch (error) {
+      if (state.strongsMode) toggleStrongsMode();
+      showToast(error.message, 'error');
+      return;
+    }
+    if (!state.strongsMode) return;
     if (typeof BIBLE_DATABASE !== 'undefined' && (!BIBLE_DATABASE['KJV_STRONGS'] || Object.keys(BIBLE_DATABASE['KJV_STRONGS']).length === 0)) {
       try {
         const resp = await fetch('/bibles/KJV_STRONGS.json');
@@ -12264,8 +10897,154 @@ window.openLexiconInspector = async function (strongId, wordText = '', isHistory
     if (span) span.textContent = isAlreadyLive ? 'Live on Screen' : 'Project Word';
   }
 
+  // Asynchronously render Scripture Occurrences in Drawer (< 0ms blocking)
+  if (typeof window.renderStrongsOccurrencesInDrawer === 'function') {
+    window.renderStrongsOccurrencesInDrawer(id);
+  }
+
+  // Clear drawer search bar
+  const drawerSearchInput = document.getElementById('strongs-drawer-search-input');
+  if (drawerSearchInput) drawerSearchInput.value = '';
+  const drawerSearchDropdown = document.getElementById('strongs-drawer-search-dropdown');
+  if (drawerSearchDropdown) drawerSearchDropdown.style.display = 'none';
+
   if (drawerBackdrop) {
     drawerBackdrop.classList.add('open');
+  }
+};
+
+// ─── Drawer Concordance Search & Scripture Occurrences ────────────────────────
+let isStrongsOccurrencesCollapsed = false;
+
+window.toggleStrongsOccurrencesCollapse = function () {
+  const container = document.getElementById('strongs-drawer-occurrences-container');
+  const chevron = document.getElementById('strongs-occurrences-chevron');
+  if (!container) return;
+  isStrongsOccurrencesCollapsed = !isStrongsOccurrencesCollapsed;
+  container.style.display = isStrongsOccurrencesCollapsed ? 'none' : 'block';
+  if (chevron) {
+    chevron.style.transform = isStrongsOccurrencesCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+  }
+};
+
+window.renderStrongsOccurrencesInDrawer = function (strongId) {
+  const card = document.getElementById('strongs-drawer-occurrences-card');
+  const badge = document.getElementById('strongs-occurrences-count-badge');
+  const listEl = document.getElementById('strongs-drawer-occurrences-list');
+  if (!card || !listEl) return;
+
+  card.style.display = 'block';
+  if (badge) badge.textContent = 'Searching...';
+  listEl.innerHTML = '<div style="font-size:11px; color:var(--dim); padding:8px 0;">Locating scripture occurrences...</div>';
+
+  if (typeof window.getStrongsBibleOccurrences !== 'function') return;
+
+  const data = window.getStrongsBibleOccurrences(strongId, 50);
+  if (badge) {
+    badge.textContent = `${data.totalCount} verse${data.totalCount === 1 ? '' : 's'}`;
+  }
+
+  if (!data.occurrences || data.occurrences.length === 0) {
+    listEl.innerHTML = '<div style="font-size:11px; color:var(--dim); padding:8px 0;">No scripture occurrences found in KJV Strong\'s Bible.</div>';
+    return;
+  }
+
+  let html = '';
+  data.occurrences.forEach(o => {
+    // Highlight matched words in verse text
+    let verseText = escapeHtml(o.text);
+    if (o.matchedWords && o.matchedWords.length > 0) {
+      o.matchedWords.forEach(w => {
+        if (w && w.length >= 2) {
+          const wRegex = new RegExp(`\\b(${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'gi');
+          verseText = verseText.replace(wRegex, '<mark>$1</mark>');
+        }
+      });
+    }
+
+    const safeRef = escapeHtml(o.ref);
+    const safeBook = escapeHtml(o.book);
+    const safeCleanText = escapeHtml(o.text).replace(/'/g, "\\'");
+
+    html += `
+      <div class="strongs-occurrence-item">
+        <div class="strongs-occurrence-head">
+          <span class="strongs-occurrence-ref" onclick="omniOpenBibleInDeck('${safeBook}', ${o.chapter}, ${o.verse})" title="Open chapter in center deck">${safeRef}</span>
+          <div class="strongs-occurrence-actions">
+            <button type="button" class="strongs-occ-btn project" onclick="omniProjectVerse('${safeBook}', ${o.chapter}, ${o.verse}, '${safeCleanText}', 'KJV')" title="Project verse live">Project</button>
+            <button type="button" class="strongs-occ-btn" onclick="omniOpenBibleInDeck('${safeBook}', ${o.chapter}, ${o.verse})" title="Load in deck">Open Deck</button>
+          </div>
+        </div>
+        <div class="strongs-occurrence-text">${verseText}</div>
+      </div>
+    `;
+  });
+
+  if (data.totalCount > data.occurrences.length) {
+    html += `
+      <div style="font-size:10.5px; color:var(--dim); text-align:center; padding:6px 0;">
+        Showing first ${data.occurrences.length} of ${data.totalCount} verses.
+      </div>
+    `;
+  }
+
+  listEl.innerHTML = html;
+};
+
+window.handleStrongsDrawerSearch = function (val) {
+  const dropdown = document.getElementById('strongs-drawer-search-dropdown');
+  if (!dropdown) return;
+  const q = (val || '').trim();
+  if (!q) {
+    dropdown.style.display = 'none';
+    dropdown.innerHTML = '';
+    return;
+  }
+
+  const matches = (typeof window.searchStrongsConcordance === 'function')
+    ? window.searchStrongsConcordance(q, { lang: 'all', limit: 8 })
+    : [];
+
+  if (matches.length === 0) {
+    dropdown.innerHTML = '<div style="padding:8px 10px; font-size:11px; color:var(--dim);">No matching words found.</div>';
+    dropdown.style.display = 'block';
+    return;
+  }
+
+  let html = '';
+  matches.forEach(m => {
+    const isHeb = m.lang === 'Hebrew' || m.id.startsWith('H');
+    const safeWord = (m.short_definition || m.lemma || m.id).replace(/'/g, "\\'");
+    html += `
+      <div class="strongs-dropdown-item" onclick="selectStrongsDrawerSearchItem('${escapeHtml(m.id)}', '${safeWord}')">
+        <div class="strongs-dropdown-left">
+          <span class="strongs-dropdown-id ${isHeb ? 'hebrew' : 'greek'}">${escapeHtml(m.id)}</span>
+          <span class="strongs-dropdown-lemma">${escapeHtml(m.lemma || m.id)}</span>
+          <span style="color:var(--purple-text, #c3b6ff); font-size:10.5px;">${escapeHtml(m.transliteration || '')}</span>
+        </div>
+        <div class="strongs-dropdown-def">${escapeHtml(m.short_definition || '')}</div>
+      </div>
+    `;
+  });
+
+  dropdown.innerHTML = html;
+  dropdown.style.display = 'block';
+};
+
+window.selectStrongsDrawerSearchItem = function (id, wordText) {
+  const input = document.getElementById('strongs-drawer-search-input');
+  const dropdown = document.getElementById('strongs-drawer-search-dropdown');
+  if (input) input.value = '';
+  if (dropdown) dropdown.style.display = 'none';
+  window.openLexiconInspector(id, wordText);
+};
+
+window.projectLexiconEntry = function (entry, englishWord = '') {
+  if (!entry) return;
+  window.currentLexiconEntry = entry;
+  window.currentLexiconEnglishWord = englishWord || entry.short_definition || entry.lemma || entry.id;
+  if (typeof window.projectCurrentLexiconWord === 'function') {
+    window.projectCurrentLexiconWord();
   }
 };
 
@@ -12392,7 +11171,6 @@ document.addEventListener('keydown', (e) => {
     }
   }
 });
-
 
 // Extra Global Window Handlers for UI Buttons & Modals
 window.switchImportSubTab = typeof switchImportSubTab === 'function' ? switchImportSubTab : function (t) {
@@ -12547,7 +11325,7 @@ window.closeSessionPanel = typeof closeSessionPanel === 'function' ? closeSessio
 };
 
 window.copySessionUrl = typeof copySessionUrl === 'function' ? copySessionUrl : function () {
-  const url = sessionPanelState.operatorUrl || window.location.origin + '/operator.html';
+  const url = sessionPanelState.operatorUrl || getRemoteControlUrl(customLanIp);
   if (navigator.clipboard) {
     navigator.clipboard.writeText(url).then(() => showToast('Operator URL copied!', 'success'));
   }
@@ -12597,7 +11375,7 @@ if (typeof window.projectBentoSlide !== 'function') {
 
 // ── Settings Help & Support Actions ─────────────────────────────
 function openHelpTutorial() {
-  showToast('Opening Ginomia video guides...', 'info');
+  showToast('Opening Ginomai video guides...', 'info');
   window.open('https://youtube.com', '_blank', 'noopener,noreferrer');
 }
 window.openHelpTutorial = openHelpTutorial;
@@ -12624,7 +11402,7 @@ function startInteractiveTour() {
   const settingsModal = document.getElementById('settings-modal-backdrop');
   if (settingsModal) settingsModal.classList.remove('open');
 
-  showToast('Starting Ginomia interactive tour...', 'info');
+  showToast('Starting Ginomai interactive tour...', 'info');
 
   const tourSteps = [
     {
@@ -12698,7 +11476,7 @@ function startInteractiveTour() {
         renderStep();
       } else {
         tourOverlay.style.display = 'none';
-        showToast('Tour completed! Enjoy using Ginomia.', 'success');
+        showToast('Tour completed! Enjoy using Ginomai.', 'success');
       }
     });
     document.getElementById('tour-skip-btn')?.addEventListener('click', () => {
@@ -12712,10 +11490,9 @@ function startInteractiveTour() {
 window.startInteractiveTour = startInteractiveTour;
 
 async function sendSupportLogs() {
-  let releaseInfo = { appName: 'Ginomia', version: '2.4.0' };
+  let releaseInfo = { appName: 'Ginomai', version: window.ginomaiAppVersion || 'unknown' };
   try {
-    const response = await fetch('/api/version');
-    if (response.ok) releaseInfo = { ...releaseInfo, ...(await response.json()) };
+    releaseInfo = { ...releaseInfo, ...(await window.getInstalledAppInfo()) };
   } catch (e) { }
   const diagnostics = [
     `=== ${releaseInfo.appName.toUpperCase()} SUPPORT & DIAGNOSTIC LOG ===`,
@@ -12737,7 +11514,7 @@ async function sendSupportLogs() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ginomia-diagnostics-${Date.now()}.txt`;
+    a.download = `ginomai-diagnostics-${Date.now()}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -12766,69 +11543,7 @@ function copySupportWhatsApp() {
 window.copySupportWhatsApp = copySupportWhatsApp;
 
 function openSupportWhatsApp() {
-  const msg = encodeURIComponent('Hello Ginomia Team, I need assistance with Ginomia v2.4.0.');
+  const msg = encodeURIComponent(`Hello Ginomai Team, I need assistance with Ginomai ${window.ginomaiAppVersion || 'current build'}.`);
   window.open(`https://wa.me/?text=${msg}`, '_blank', 'noopener,noreferrer');
 }
 window.openSupportWhatsApp = openSupportWhatsApp;
-
-function checkForUpdates(event) {
-  if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
-
-  const btn = document.getElementById('check-update-btn');
-  const btnArch = document.getElementById('check-update-btn-arch');
-  const btnText = document.getElementById('check-update-btn-text');
-  const btnTextArch = document.getElementById('check-update-btn-text-arch');
-  const icon = document.getElementById('check-update-icon');
-  const iconArch = document.getElementById('check-update-icon-arch');
-  const statusText = document.getElementById('settings-update-status-text');
-  const statusTextArch = document.getElementById('settings-update-status-text-arch');
-
-  if (icon) icon.classList.add('sf-spinning');
-  if (iconArch) iconArch.classList.add('sf-spinning');
-  if (btnText) btnText.textContent = 'Checking...';
-  if (btnTextArch) btnTextArch.textContent = 'Checking...';
-  if (btn) btn.disabled = true;
-  if (btnArch) btnArch.disabled = true;
-
-  fetch('/api/version')
-    .then(res => res.json())
-    .then(data => {
-      setTimeout(() => {
-        if (icon) icon.classList.remove('sf-spinning');
-        if (iconArch) iconArch.classList.remove('sf-spinning');
-        if (btnText) btnText.textContent = 'Check for Updates';
-        if (btnTextArch) btnTextArch.textContent = 'Check for Updates';
-        if (btn) btn.disabled = false;
-        if (btnArch) btnArch.disabled = false;
-
-        const currentVer = data.version || '2.4.0';
-        const isLatest = data.isLatest !== false;
-
-        if (isLatest) {
-          showToast(`You're up to date! Ginomia v${currentVer} is the latest version.`, 'success');
-          const statusMsg = `✓ Up to date (v${currentVer}) · Checked just now`;
-          if (statusText) statusText.textContent = statusMsg;
-          if (statusTextArch) statusTextArch.textContent = statusMsg;
-        } else {
-          showToast(`Update available: Ginomia v${data.latestVersion || 'latest'}!`, 'info');
-          if (typeof openChangelogModal === 'function') openChangelogModal();
-        }
-      }, 600);
-    })
-    .catch(() => {
-      setTimeout(() => {
-        if (icon) icon.classList.remove('sf-spinning');
-        if (iconArch) iconArch.classList.remove('sf-spinning');
-        if (btnText) btnText.textContent = 'Check for Updates';
-        if (btnTextArch) btnTextArch.textContent = 'Check for Updates';
-        if (btn) btn.disabled = false;
-        if (btnArch) btnArch.disabled = false;
-
-        showToast("You're on the latest build (Ginomia v2.4.0).", 'success');
-        const statusMsg = `✓ Up to date (v2.4.0) · Checked just now`;
-        if (statusText) statusText.textContent = statusMsg;
-        if (statusTextArch) statusTextArch.textContent = statusMsg;
-      }, 600);
-    });
-}
-window.checkForUpdates = checkForUpdates;

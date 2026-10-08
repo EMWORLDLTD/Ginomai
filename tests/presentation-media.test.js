@@ -1,10 +1,20 @@
-'use strict';
+﻿'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {Readable,Writable}=require('node:stream');
 const createStore=require('../lib/presentation-media');
 const model=require('../js/presentation-model');
+
+test('countdown appearance accepts independent sizes and limits background URLs to saved local media',()=>{
+ const style=model.countdownAppearance({timerScale:1.35,headingScale:2,completionScale:.75,headingColor:'#ff9933',timerColor:'red',completionColor:'#22aa55'});
+ assert.equal(style.timerScale,1.35);assert.equal(style.headingScale,2);assert.equal(style.completionScale,.75);assert.equal(style.headingColor,'#ff9933');assert.equal(style.timerColor,'#ffffff');
+ assert.equal(model.countdownAppearance({headingScale:99,timerScale:-1}).headingScale,1);
+ assert.equal(model.countdownBackground({type:'image',imageUrl:'https://example.com/private.png'}),null);
+ assert.equal(model.countdownBackground({type:'video',videoUrl:'Themes/../../secret.webm'}),null);
+ const background=model.countdownBackground({type:'gradient',bgCss:'linear-gradient(180deg, #123456 0%, #000000 100%)',dimmer:150});assert.equal(background.dimmer,100);assert.match(background.bgCss,/linear-gradient/);
+ assert.equal(model.countdownBackground({bgCss:'url(https://example.com/image)'}).bgCss,'#10121c');
+});
 function request(buffer,range) {const req=Readable.from([buffer]);req.headers={'content-length':buffer.length,...(range?{range}:{})};return req;}
-async function fixture(t) {const dir=await fs.mkdtemp(path.join(os.tmpdir(),'ginomia-media-test-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));return createStore(dir);}
+async function fixture(t) {const dir=await fs.mkdtemp(path.join(os.tmpdir(),'ginomai-media-test-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));return createStore(dir);}
 test('countdown derives time from its deadline, including sleep and expiry',()=>{
  assert.equal(model.formatCountdown(61000,1000),'01:00');
  assert.equal(model.formatCountdown(3662000,1000),'01:01:01');
@@ -20,6 +30,10 @@ test('video synchronization handles pause, loop, and end without accumulated tic
  assert.equal(model.safeMediaUrl('/presentation/files/media_1234-abcd-page-1.png'),true);
  assert.equal(model.safeMediaUrl('https://example.com/video.mp4'),false);
  assert.equal(model.safeMediaUrl('/presentation/files/../../secret'),false);
+ assert.equal(model.safeMediaUrl('Themes/golden_sunrise.webp'),true);
+ assert.equal(model.safeMediaUrl('Themes/golden_sunrise_loop.webm'),true);
+ assert.equal(model.safeMediaUrl('Themes/../../secret.webm'),false);
+ assert.equal(model.safeMediaUrl('https://example.com/Themes/golden_sunrise.webp'),false);
 });
 test('PDF upload persists metadata and rejects malformed documents',async t=>{
  const store=await fixture(t),params=new URLSearchParams({name:'slides.pdf',width:800,height:600,pages:2});
@@ -51,8 +65,9 @@ test('video range serving is bounded and rejects traversal',async t=>{
 });
 
 test('presentation endpoints require host authorization while file reads are public',async t=>{
- const directory=await fs.mkdtemp(path.join(os.tmpdir(),'ginomia-presentation-api-'));
+ const directory=await fs.mkdtemp(path.join(os.tmpdir(),'ginomai-presentation-api-'));
  process.env.SF_PRESENTATION_DIR=directory;
+ process.env.SF_MEDIA_DIR=path.join(directory,'backgrounds');
  const {server}=require('../server');server.listen(0,'127.0.0.1');await require('node:events').once(server,'listening');
  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await fs.rm(directory,{recursive:true,force:true});});
  const base='http://127.0.0.1:'+server.address().port;

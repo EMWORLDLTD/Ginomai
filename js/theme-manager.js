@@ -1,4 +1,4 @@
-// Ginomia - Theme & Display Customizer Engine
+﻿// Ginomai - Theme & Display Customizer Engine
 'use strict';
 
 // Early Theme Hydration (Prevents Layout Stacking and Flash of Unstyled Theme on Refresh)
@@ -33,11 +33,7 @@ const UI_STYLES = {
     id: 'bento',
     name: 'Bento Studio Pro',
     description: 'Modern bento grid with modular cards, smooth curves, and dense workspace ergonomics.'
-  },
-  classic: {
-    id: 'classic',
-    name: 'Classic Studio Pro',
-    description: 'Classic high-contrast dark slate broadcast studio console.'
+
   }
 };
 
@@ -333,43 +329,7 @@ const THEME_LAYOUT_SPECS = {
         max: 520
       }
     ]
-  },
-  classic: {
-    containerSelector: '#app-workspace',
-    resizers: [
-      {
-        id: 'resizer-left',
-        type: 'column',
-        targetSelector: '#zone-library',
-        cssVar: '--sidebar-width',
-        storageKey: 'sf_sidebar_width',
-        defaultVal: 300,
-        min: 180,
-        max: 600,
-        direction: 'start'
-      },
-      {
-        id: 'resizer-right',
-        type: 'column',
-        targetSelector: '#zone-preview',
-        cssVar: '--preview-width',
-        storageKey: 'sf_preview_width',
-        defaultVal: 370,
-        min: 220,
-        max: 700,
-        direction: 'end'
-      },
-      {
-        id: 'resizer-agenda',
-        type: 'row',
-        targetSelector: '.sidebar-agenda-card',
-        cssVar: '--agenda-height',
-        storageKey: 'sf_agenda_height',
-        defaultVal: 220,
-        min: 80,
-        max: 520
-      }
-    ]
+
   }
 };
 
@@ -411,15 +371,6 @@ class ThemeResizerEngine {
     if (resizer.cssVar === '--bento-preview-height') {
       return isShortH ? Math.max(150, Math.floor(winH * 0.32)) : 250;
     }
-    if (resizer.cssVar === '--sidebar-width') {
-      return isSmallW ? 250 : 300;
-    }
-    if (resizer.cssVar === '--preview-width') {
-      return isSmallW ? 300 : 370;
-    }
-    if (resizer.cssVar === '--agenda-height') {
-      return isShortH ? 160 : 220;
-    }
     return resizer.defaultVal;
   }
 
@@ -457,9 +408,6 @@ class ThemeResizerEngine {
       });
     });
 
-    if (typeof window !== 'undefined' && typeof window.scalePreviewIframe === 'function') {
-      window.scalePreviewIframe();
-    }
   }
 
   /**
@@ -483,9 +431,6 @@ class ThemeResizerEngine {
       });
     });
 
-    if (typeof window !== 'undefined' && typeof window.scalePreviewIframe === 'function') {
-      window.scalePreviewIframe();
-    }
   }
 
   /**
@@ -535,7 +480,6 @@ class ThemeResizerEngine {
       try {
         localStorage.removeItem(config.storageKey);
       } catch (err) {}
-      if (typeof window.scalePreviewIframe === 'function') window.scalePreviewIframe();
       if (typeof window.syncBentoStagePreview === 'function') window.syncBentoStagePreview();
     };
 
@@ -596,8 +540,7 @@ class ThemeResizerEngine {
         }
 
         document.documentElement.style.setProperty(config.cssVar, `${newSize}px`);
-        if (typeof window.scalePreviewIframe === 'function') window.scalePreviewIframe();
-        if (typeof window.syncBentoStagePreview === 'function') window.syncBentoStagePreview();
+          if (typeof window.syncBentoStagePreview === 'function') window.syncBentoStagePreview();
       };
 
       const onUp = (upEvt) => {
@@ -622,8 +565,7 @@ class ThemeResizerEngine {
           } catch (err) {}
         }
 
-        if (typeof window.scalePreviewIframe === 'function') window.scalePreviewIframe();
-        if (typeof window.syncBentoStagePreview === 'function') window.syncBentoStagePreview();
+          if (typeof window.syncBentoStagePreview === 'function') window.syncBentoStagePreview();
       };
 
       if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -652,12 +594,13 @@ class ThemeManager {
 
     // Restore Sanctuary Theme Settings
     this.activeSanctuaryTheme = localStorage.getItem('sf_sanctuary_theme') || 'celestial_motion';
-    if (!SANCTUARY_THEMES[this.activeSanctuaryTheme] && !this.activeSanctuaryTheme.startsWith('upload_')) {
+    if (!SANCTUARY_THEMES[this.activeSanctuaryTheme] && !/^(upload_|media_)/.test(this.activeSanctuaryTheme)) {
       this.activeSanctuaryTheme = 'celestial_motion';
     }
     this.sanctuaryDimmer = parseInt(localStorage.getItem('sf_sanctuary_dimmer') || '30', 10);
     this.sanctuaryFont = localStorage.getItem('sf_sanctuary_font') || 'Outfit';
-    this.obsModeRule = localStorage.getItem('sf_obs_mode_rule') || 'follow';
+    const savedObsModeRule = localStorage.getItem('sf_obs_mode_rule');
+    this.obsModeRule = savedObsModeRule === 'always_full' ? 'always_full' : 'always_lt';
     try { this.sanctuaryFits = JSON.parse(localStorage.getItem('sf_sanctuary_fits') || '{}') || {}; } catch { this.sanctuaryFits = {}; }
 
     this.applyUiTheme();
@@ -768,7 +711,7 @@ class ThemeManager {
       headerColor: theme.headerColor,
       font: settings.sanctuaryFont || theme.font,
       dimmer: settings.sanctuaryDimmer,
-      obsModeRule: settings.obsModeRule || 'follow'
+      obsModeRule: settings.obsModeRule || 'always_lt'
     };
   }
 
@@ -826,7 +769,7 @@ class ThemeManager {
     // Update OBS mode rule select
     const obsRuleSelect = document.getElementById('obs-mode-rule-select');
     if (obsRuleSelect) {
-      obsRuleSelect.value = settings.obsModeRule || 'follow';
+      obsRuleSelect.value = settings.obsModeRule || 'always_lt';
     }
   }
 
@@ -895,12 +838,7 @@ class ThemeManager {
       }
     }
 
-    const classicBtn = document.getElementById('classic-theme-mode-toggle');
-    if (classicBtn) {
-      classicBtn.innerHTML = iconSvg;
-      classicBtn.title = tooltipText;
-      classicBtn.setAttribute('aria-label', tooltipText);
-    }
+
   }
 
   updateSettingsUi() {

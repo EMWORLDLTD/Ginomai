@@ -1,10 +1,11 @@
-// Ginomia - Electron Main Process
+// Ginomai - Electron Main Process
 'use strict';
 
 const { app, BrowserWindow, screen, ipcMain, Menu, shell, dialog, session } = require('electron');
 const path = require('path');
 const http = require('http');
-const { autoUpdater } = require('electron-updater');
+const { autoUpdater, CancellationToken } = require('electron-updater');
+const createUpdateController = require('./update-controller');
 const serverModule = require('../server.js');
 
 // Optimize memory and enforce proactive V8 Garbage Collection
@@ -12,10 +13,10 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512');
 
 // Global exception protection
 process.on('uncaughtException', (err) => {
-  console.error('[Ginomia Desktop] Uncaught exception:', err);
+  console.error('[Ginomai Desktop] Uncaught exception:', err);
 });
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('[Ginomia Desktop] Unhandled rejection:', reason);
+  console.error('[Ginomai Desktop] Unhandled rejection:', reason);
 });
 
 let mainWindow = null;
@@ -42,14 +43,14 @@ function startBackgroundServer(onReady) {
   try {
     serverModule.startServer(serverPort, (err, srv, boundPort) => {
       if (err) {
-        console.error('[Ginomia Desktop] Server start warning/error:', err);
+        console.error('[Ginomai Desktop] Server start warning/error:', err);
       }
       const activePort = boundPort || serverPort;
       serverPort = activePort;
       if (onReady) onReady(activePort);
     });
   } catch (err) {
-    console.error('[Ginomia Desktop] Failed to start embedded server:', err);
+    console.error('[Ginomai Desktop] Failed to start embedded server:', err);
     if (onReady) onReady(serverPort);
   }
 }
@@ -81,7 +82,7 @@ function createMainWindow(port) {
     minHeight: 650,
     show: false, // Don't show until page is loaded so there is never an empty/blank window
     backgroundColor: '#0a0f1d',
-    title: 'Ginomia — The Word in Motion',
+    title: '',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -89,6 +90,9 @@ function createMainWindow(port) {
       sandbox: false
     }
   });
+
+  // Keep the native title blank; the app header already displays the brand.
+  mainWindow.on('page-title-updated', (event) => event.preventDefault());
 
   const appUrl = `http://localhost:${activePort}/index.html`;
 
@@ -99,7 +103,7 @@ function createMainWindow(port) {
         mainWindow.focus();
       }
     }).catch((err) => {
-      console.warn('[Ginomia Desktop] Waiting for server to accept connection, retrying...', err);
+      console.warn('[Ginomai Desktop] Waiting for server to accept connection, retrying...', err);
       setTimeout(loadApp, 250);
     });
   };
@@ -156,7 +160,7 @@ function launchProjectorWindow(targetDisplayId = null, targetMode = 'sanctuary')
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
-    title: 'Ginomia — Sanctuary Projector Output',
+    title: 'Ginomai — Sanctuary Projector Output',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -253,7 +257,7 @@ function launchStageWindow(targetDisplayId = null, stageMode = 'stage') {
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
-    title: 'Ginomia — Stage Confidence Monitor (Choir / Pastors)',
+    title: 'Ginomai — Stage Confidence Monitor (Choir / Pastors)',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -431,48 +435,23 @@ function setupAppMenu() {
         {
           label: 'Check for Updates...',
           click: () => {
-            if (app.isPackaged) {
-              autoUpdater.checkForUpdates().then((result) => {
-                if (!result || !result.updateInfo) return;
-                const currentVer = app.getVersion();
-                if (result.updateInfo.version === currentVer) {
-                  dialog.showMessageBox(mainWindow, {
-                    type: 'info',
-                    title: 'Ginomia is Up to Date',
-                    message: `You are running the latest version of Ginomia (v${currentVer}).`
-                  });
-                }
-              }).catch((err) => {
-                dialog.showMessageBox(mainWindow, {
-                  type: 'warning',
-                  title: 'Update Check',
-                  message: 'Could not check for updates.',
-                  detail: err ? (err.message || String(err)) : 'Unknown network error.'
-                });
-              });
-            } else {
-              dialog.showMessageBox(mainWindow, {
-                type: 'info',
-                title: 'Development Mode',
-                message: 'Auto-update is active only in packaged desktop builds.'
-              });
-            }
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:open-updates');
           }
         },
         { type: 'separator' },
         {
-          label: 'Ginomia Releases',
+          label: 'Ginomai Releases',
           click: () => {
-            shell.openExternal('https://github.com/EMWORLDLTD/ginomai-pro/releases');
+            shell.openExternal('https://github.com/EMWORLDLTD/Ginomai/releases');
           }
         },
         {
-          label: 'About Ginomia',
+          label: 'About Ginomai',
           click: () => {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
-              title: 'About Ginomia',
-              message: 'Ginomia v' + app.getVersion(),
+              title: 'About Ginomai',
+              message: 'Ginomai v' + app.getVersion(),
               detail: 'The Word in Motion\n\nNext-Gen Church Presentation, Multi-Monitor Projection & OBS Broadcast System.\nRunning as native desktop application with embedded broadcast server on port ' + serverPort + '.'
             });
           }
@@ -568,84 +547,57 @@ ipcMain.handle('desktop:toggle-fullscreen', () => {
 });
 
 // ─── Over-The-Air (OTA) Auto-Updater ──────────────────────────────────────────
-function initAutoUpdater() {
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on('checking-for-update', () => {
-    console.log('[Ginomia AutoUpdater] Checking for updates...');
-  });
-
-  autoUpdater.on('update-available', (info) => {
-    console.log('[Ginomia AutoUpdater] Update available: v' + info.version);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('desktop:update-available', info);
-    }
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    console.log('[Ginomia AutoUpdater] Up to date (v' + app.getVersion() + ')');
-  });
-
-  autoUpdater.on('error', (err) => {
-    console.warn('[Ginomia AutoUpdater] Update check error:', err ? (err.message || err) : 'unknown');
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('desktop:update-download-progress', {
-        percent: Math.round(progressObj.percent),
-        transferred: progressObj.transferred,
-        total: progressObj.total
-      });
-    }
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('[Ginomia AutoUpdater] Update downloaded: v' + info.version);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('desktop:update-ready', info);
-    }
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Ready — Ginomia',
-      message: `Ginomia v${info.version} has been downloaded and is ready to install.`,
-      detail: 'Click "Restart Now" to apply the update immediately, or choose "Later" to update when you next exit.',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0,
-      cancelId: 1
-    }).then((result) => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall();
-      }
-    });
-  });
-
-  // Check for updates shortly after launch (only in packaged production app)
-  if (app.isPackaged) {
-    setTimeout(() => {
-      try {
-        autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-          console.warn('[Ginomia AutoUpdater] Background check failed:', err);
-        });
-      } catch (e) {
-        // ignore
-      }
-    }, 4000);
-  }
+let desktopUpdates = null;
+function isUpdateHost(event) {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) return false;
+  try {
+    const url = new URL(event.senderFrame.url);
+    return url.origin === `http://localhost:${serverPort}` && url.pathname === '/index.html' && url.searchParams.get('remote') !== '1';
+  } catch (_) { return false; }
 }
 
-ipcMain.handle('desktop:check-for-updates', () => {
-  if (app.isPackaged) {
-    return autoUpdater.checkForUpdates();
-  }
-  return Promise.resolve({ isDev: true });
-});
+function initAutoUpdater() {
+  if (desktopUpdates) return;
+  desktopUpdates = createUpdateController({
+    app, updater: autoUpdater, CancellationToken,
+    notify: state => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:update-status', state);
+    },
+    getBlockers: () => {
+      const blockers = [];
+      if (projectorWindow && !projectorWindow.isDestroyed()) blockers.push('Projector output');
+      if (stageWindow && !stageWindow.isDestroyed()) blockers.push('Stage output');
+      for (const output of serverModule.getConnectedOutputs()) {
+        if (output.connected > 0) blockers.push(output.target === 'sanctuary' ? 'Connected projector output' : output.target === 'livestream' ? 'Connected livestream output' : `Connected ${output.target === 'dynamic' ? 'audience' : output.target} output`);
+      }
+      const speech = serverModule.getCurrentState().hostSpeechState;
+      if (speech?.isRequested || speech?.isListening) blockers.push('AI microphone');
+      return blockers;
+    },
+    prepareRestart: save => {
+      if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The studio window is unavailable.');
+      return mainWindow.webContents.executeJavaScript(`window.prepareDesktopUpdateRestart?.(${save === true}) ?? {ok:false}`);
+    },
+    flushState: () => serverModule.flushLiveState({ strict: true })
+  });
+  desktopUpdates.start();
+}
 
-ipcMain.handle('desktop:install-update', () => {
-  autoUpdater.quitAndInstall();
-});
-
+for (const [channel, action] of [
+  ['desktop:get-update-status', () => desktopUpdates.snapshot()],
+  ['desktop:get-update-preferences', () => desktopUpdates.snapshot().preferences],
+  ['desktop:set-update-preferences', value => desktopUpdates.setPreferences(value)],
+  ['desktop:check-for-updates', () => desktopUpdates.check()],
+  ['desktop:download-update', () => desktopUpdates.download()],
+  ['desktop:cancel-update-download', () => desktopUpdates.cancelDownload()],
+  ['desktop:install-update', () => desktopUpdates.install()]
+]) {
+  ipcMain.handle(channel, (event, value) => {
+    if (!isUpdateHost(event)) return { error: 'Updates can only be controlled from the host desktop app.' };
+    if (!desktopUpdates) return { error: 'The update service is starting. Please retry.' };
+    return action(value);
+  });
+}
 // ─── App Lifecycle ───────────────────────────────────────────────────────────
 if (gotTheLock) {
   app.whenReady().then(() => {
@@ -694,5 +646,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  desktopUpdates?.stop();
   stopBackgroundServer();
 });

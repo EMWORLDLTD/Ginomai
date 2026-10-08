@@ -16,7 +16,7 @@ test('real broadcast permits alert dismissal during Hold and preserves transmitt
   const sent = [];
   const c = { REMOTE_MODE:false, state:{isHoldLive:true}, window:{},
     pendingLiveStorage:{text:'Held lyric',slideId:'song_1_0',clear:true,blackout:true},
-    liveStorageTimer:null, createDashboardSnapshot:()=>({}),getNextSlideAnticipation:()=>null,
+    liveStorageTimer:null, liveStateHydrated:true, flushCommittedLiveStorage(){}, createDashboardSnapshot:()=>({}),getNextSlideAnticipation:()=>null,
     clearTimeout(){},setTimeout(){},syncChannel:{postMessage:p=>sent.push(p)},fetch:()=>Promise.resolve(),Date };
   vm.runInNewContext(functionSource(app,'broadcastState') + ';broadcastState({alert:{active:false,text:""}},true);',c);
   assert.equal(sent.length,1);

@@ -1,4 +1,4 @@
-/* Compact Library Manager sizing, shared by Classic and Bento themes.
+/* Compact Library Manager sizing, for the Bento theme.
    Important declarations override the existing Bento and inline sizing. */
 #import-modal-backdrop .library-import-modal { height:auto; min-height:380px; max-height:85dvh; max-width:860px !important; display:flex; flex-direction:column; overflow:hidden; }
 #import-modal-backdrop .settings-header { padding:14px 20px !important; flex-shrink:0; }
@@ -84,6 +84,9 @@ body[data-theme-mode="light"] #import-modal-backdrop { --library-surface:#fff; -
 #import-modal-backdrop #import-subtab-migrate > div:nth-child(2) > div { flex-wrap:wrap; }
 #import-modal-backdrop #import-migrate-folder-path { flex-basis:100% !important; background:var(--library-sidebar); }
 #import-modal-backdrop #import-subtab-migrate button { border-radius:6px; }
+:is(:root[data-theme-mode="light"],body[data-theme-mode="light"]) #import-subtab-migrate { --text-muted:var(--library-muted); --text-main:var(--library-ink); --bg-secondary:var(--library-sidebar); --border-color:var(--library-line); --accent-blue:#2563eb; }
+:is(:root[data-theme-mode="light"],body[data-theme-mode="light"]) #import-subtab-migrate .migrate-count-badge { background:var(--library-surface); border-color:var(--library-line); }
+:is(:root[data-theme-mode="light"],body[data-theme-mode="light"]) #import-migrate-breakdown > div:has(> .import-checkbox-label) { border-color:var(--library-line) !important; }
 #import-modal-backdrop button:focus-visible { outline:2px solid #a88aff; outline-offset:2px; }
 @media(max-width:700px) {
   #import-modal-backdrop .library-import-modal { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto minmax(0,1fr); }

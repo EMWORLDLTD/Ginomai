@@ -8,14 +8,16 @@ function fixture() {
   const nodes=new Map(),broadcasts=[],projections=[];
   const field=id=>{
     if(!nodes.has(id))nodes.set(id,{hidden:id==='countdown-setup-shield',inert:false,value:'',textContent:'',disabled:false,
-      style:{setProperty(key,value){this[key]=value;}},classList:{toggle(key,on){this[key]=on;},contains(){return false;}},setAttribute(key,value){this[key]=value;},focus(){},getClientRects(){return [1];}});
+      children:[],style:{setProperty(key,value){this[key]=value;}},classList:{toggle(key,on){this[key]=on;},contains(){return false;}},setAttribute(key,value){this[key]=value;},getAttribute(key){return this[key];},removeAttribute(key){delete this[key];},append(...items){this.children.push(...items);},replaceChildren(){this.children=[];},pause(){this.paused=true;},play(){this.paused=false;return Promise.resolve();},focus(){},getClientRects(){return [1];}});
     return nodes.get(id);
   };
   const state={agendaItems:[],isHoldLive:false,activeDeckType:'song'};
   const window={state,PresentationModel:{...model,countdownView:(item,at=Clock.now())=>model.countdownView(item,at),countdownDeadline:(fields,at=Clock.now())=>model.countdownDeadline(fields,at)},dismissAllOverlays(){},renderDeck(){deckRenders++;},renderAgenda(){},syncPresentationControls(){},cancelPreparedSlide(){},broadcastState:flags=>broadcasts.push(flags),
-    themeManager:{sanctuaryFont:'Outfit',getSanctuaryPayload:()=>({bgCss:'#10121c'})},showToast(){}};
-  const document={activeElement:field('initial-focus'),getElementById:id=>id.startsWith('countdown-') || id==='bento-layout-root'?field(id):null,querySelectorAll:()=>[],addEventListener(){}};
+    themeManager:{sanctuaryFont:'Outfit',getSanctuaryPayload:()=>({bgCss:'#10121c'})},showToast(){},addEventListener(){}};
+  let created=0;
+  const document={activeElement:field('initial-focus'),createElement:tag=>field(`${tag}_${++created}`),getElementById:id=>id.startsWith('countdown-') || id==='bento-layout-root'?field(id):null,querySelectorAll:()=>[],addEventListener(){}};
   const context={window,document,REMOTE_MODE:false,Date:Clock,Intl,localStorage:{setItem(){}},clearTimeout(){},setTimeout(){},setInterval:fn=>tick=fn};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../js/countdown-renderer'),'utf8'),context);
   vm.runInNewContext(source,context);
   window.projectSlide=(id,text,reference,extra)=>{projections.push(extra);window.projectPresentation(id,text,reference,extra);};
   return {window,state,field,broadcasts,projections,context,advance:ms=>{now+=ms;tick();},now:()=>now,deckRenders:()=>deckRenders};
@@ -29,6 +31,30 @@ test('start-time preview counts down from the chosen deadline and previews the c
   f.window.setCountdownPreviewFinished(true);assert.equal(clock.textContent,'Please rise to your feet');assert.equal(f.field('countdown-preview-message').hidden,true);
   f.window.setCountdownPreviewFinished(false);assert.equal(clock.textContent,'08:00');assert.equal(f.field('countdown-preview-message').hidden,false);
   assert.equal(f.broadcasts.length,0);f.window.closeCountdownSetup();assert.equal(f.field('bento-layout-root').inert,false);
+});
+
+test('background and independent text settings survive saving and reopening without publishing',()=>{
+  const f=fixture();f.window.SANCTUARY_THEMES={golden:{id:'golden',name:'Golden Sunrise',type:'image',imageUrl:'Themes/golden_sunrise.webp'}};
+  f.window.openCountdownSetup();f.field('countdown-background').value='golden';f.window.selectCountdownBackground();
+  f.window.setCountdownColor('heading','#ffaa00');f.window.setCountdownColor('timer','#88ddff');f.window.setCountdownColor('completion','#22ff88');
+  f.field('countdown-heading-size').value='1.5';f.field('countdown-size').value='1.25';f.field('countdown-completion-size').value='2';f.window.updateCountdownSetup();
+  const display=f.field('countdown-preview-display');assert.equal(display.style['--countdown-heading-size'],'3cqw');assert.equal(display.style['--countdown-completion-size'],'7.6cqw');
+  f.window.saveCountdownSetup();const item=f.state.agendaItems[0];assert.equal(f.broadcasts.length,0);
+  assert.equal(item.countdown.background.imageUrl,'Themes/golden_sunrise.webp');assert.equal(item.countdown.headingColor,'#ffaa00');assert.equal(item.countdown.timerColor,'#88ddff');assert.equal(item.countdown.completionColor,'#22ff88');
+  f.window.openCountdownSetup(item);assert.equal(f.field('countdown-background').value,'golden');assert.equal(f.field('countdown-heading-size').value,1.5);assert.equal(f.field('countdown-size').value,1.25);assert.equal(f.field('countdown-completion-size').value,2);
+  f.window.setCountdownPreviewFinished(true);assert.equal(display.style['--countdown-completion-color'],'#22ff88');assert.equal(f.field('countdown-preview-message').hidden,true);
+  f.window.setCountdownColor('timer','invalid');assert.equal(f.field('countdown-timer-color').value,'#88ddff');
+});
+
+test('background upload waits before saving and a late upload cannot alter a reopened countdown',async()=>{
+  const f=fixture();f.window.SANCTUARY_THEMES={};let complete,options;
+  f.window.uploadSanctuaryBackgrounds=(_input,config)=>{options=config;return new Promise(resolve=>complete=()=>{const item={id:'upload_test',name:'Uploaded',type:'image',imageUrl:'/media/uploads/upload_test.png'};f.window.SANCTUARY_THEMES[item.id]=item;config.onSaved(item);resolve();});};
+  f.window.openCountdownSetup();const pending=f.window.uploadCountdownBackground({value:''});
+  assert.equal(options.publish,false);assert.equal(options.buttonId,'countdown-upload-button');assert.equal(options.statusId,'countdown-upload-status');
+  assert.equal(f.field('countdown-save').disabled,true);f.window.saveCountdownSetup();assert.equal(f.state.agendaItems.length,0);
+  complete();await pending;assert.equal(f.field('countdown-background').value,'upload_test');assert.equal(f.field('countdown-save').disabled,false);assert.equal(f.broadcasts.length,0);
+  const late=f.window.uploadCountdownBackground({value:''});f.window.closeCountdownSetup();f.window.openCountdownSetup();complete();await late;
+  assert.equal(f.field('countdown-background').value,'');f.window.saveCountdownSetup();assert.equal(f.state.agendaItems[0].countdown.background,null);
 });
 test('Start projects immediately with a fixed target time; adding to agenda only prepares it',()=>{
   const f=fixture();f.window.openCountdownSetup();f.field('countdown-start').value='08:00';f.field('countdown-completion').value='Welcome to worship';
@@ -61,4 +87,24 @@ test('editing the heading or completion of a running duration does not reset its
   const item=f.state.agendaItems[0],deadline=item.countdown.startsAt,renders=f.deckRenders();f.advance(60000);f.window.openCountdownSetup(item);
   f.field('countdown-completion').value='Let us worship';f.window.updateCountdownSetup();f.window.saveCountdownSetup();
   assert.equal(f.state.activePresentation.countdown.startsAt,deadline);assert.equal(f.state.activePresentation.countdown.completionMessage,'Let us worship');assert.equal(f.state.agendaItems.length,1);assert.equal(f.deckRenders(),renders);
+});
+
+
+test('thumbnail selection updates resident buttons and preview without rebuilding the gallery',()=>{
+  const f=fixture();
+  f.window.SANCTUARY_THEMES={golden:{name:'Golden',type:'image',imageUrl:'Themes/golden_sunrise.webp'}};
+  f.window.openCountdownSetup();
+  const grid=f.field('countdown-background-grid'),buttons=[...grid.children];
+  assert.equal(buttons[0]['aria-pressed'],'true');
+  buttons[1].onclick();
+  assert.equal(f.field('countdown-background').value,'golden');
+  assert.equal(buttons[0]['aria-pressed'],'false');
+  assert.equal(buttons[1]['aria-pressed'],'true');
+  assert.deepEqual(grid.children,buttons);
+  f.window.setCountdownStylePart('heading');
+  assert.equal(f.field('countdown-style-heading').hidden,false);
+  assert.equal(f.field('countdown-style-timer').hidden,true);
+  assert.equal(f.field('countdown-style-completion').hidden,true);
+  f.window.saveCountdownSetup();
+  assert.equal(f.state.agendaItems[0].countdown.background.imageUrl,'Themes/golden_sunrise.webp');
 });

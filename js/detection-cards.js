@@ -1,7 +1,7 @@
 'use strict';
 (function(root){
  const keyOf=item=>`${item._type||item.kind||(item.songId?'song':'verse')}:${item.songId ? `${item.songId}:${item.stanzaIndex||0}` : item.id||item.rawReference||item.reference}`;
- root.renderDetectionCards=function(list,items,{bento=false,diagnostics=false}={}){
+ root.renderDetectionCards=function(list,items,{diagnostics=false}={}){
   if(!list)return;
   if(list.style.overflowAnchor!=='none')list.style.overflowAnchor='none';
   const top=list.scrollTop;
@@ -15,20 +15,20 @@
    const key=keyOf(item);if(wanted.has(key))continue;wanted.add(key);
    let card=map.get(key);
    if(!card){
-    card=document.createElement('div');card.className=bento?'bento-ai-card':'ai-detection-card';card.dataset.detectionKey=key;
+    card=document.createElement('div');card.className='bento-ai-card';card.dataset.detectionKey=key;
     const header=document.createElement('div');header.className='ai-card-header';
     const badge=document.createElement('span');badge.className='ai-badge';header.appendChild(badge);
     const ref=document.createElement('span');ref.className='ai-card-ref';header.appendChild(ref);
     const score=document.createElement('span');score.className='ai-conf-pill';header.appendChild(score);
     const body=document.createElement('div');body.className='ai-card-body';
     const actions=document.createElement('div');actions.className='ai-card-actions';
-    const project=document.createElement('button');project.type='button';project.className=bento?'bento-ai-btn proj':'ai-action-btn live-btn';
+    const project=document.createElement('button');project.type='button';project.className='bento-ai-btn proj';
     project.onclick=e=>{e.stopPropagation();root.performDetectionAction?.(card._item,'select');};actions.appendChild(project);
     const open=document.createElement('button');open.type='button';open.className='bento-ai-btn';open.textContent='Open';open.title='Open in Bible deck without projecting';
     open.onclick=e=>{e.stopPropagation();root.performDetectionAction?.(card._item,'open');};actions.appendChild(open);card._open=open;
-    const dismiss=document.createElement('button');dismiss.type='button';dismiss.className=bento?'bento-ai-btn':'ai-action-btn';dismiss.textContent='Dismiss';
+    const dismiss=document.createElement('button');dismiss.type='button';dismiss.className='bento-ai-btn';dismiss.textContent='Dismiss';
     dismiss.onclick=e=>{e.stopPropagation();root.performDetectionAction?.(card._item,'dismiss');};actions.appendChild(dismiss);
-    if(bento){const agenda=document.createElement('button');agenda.type='button';agenda.className='ai-action-btn';agenda.textContent='Add to Agenda';agenda.onclick=e=>{e.stopPropagation();const item=card._item;root.addAiToAgenda?.(item.rawReference||item.reference||item.title);};actions.appendChild(agenda);card._agenda=agenda;}
+    const agenda=document.createElement('button');agenda.type='button';agenda.className='ai-action-btn';agenda.textContent='Add to Agenda';agenda.onclick=e=>{e.stopPropagation();const item=card._item;root.addAiToAgenda?.(item.rawReference||item.reference||item.title);};actions.appendChild(agenda);card._agenda=agenda;
     card.appendChild(header);card.appendChild(body);card.appendChild(actions);card._parts={ref,score,body,project,badge};
     map.set(key,card);list.insertBefore(card,list.firstChild);
    }

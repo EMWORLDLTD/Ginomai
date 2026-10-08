@@ -20,6 +20,15 @@ function fixture() {
   return { manager, themes: context.window.SANCTUARY_THEMES, writes, broadcasts: () => broadcasts };
 }
 
+test('new and legacy follow layouts default to bottom overlay while an explicit full-screen preference is restored', () => {
+  for (const [savedRule, expected] of [[null, 'always_lt'], ['follow', 'always_lt'], ['always_lt', 'always_lt'], ['always_full', 'always_full']]) {
+    const context = vm.createContext({window:{},document:{readyState:'loading',addEventListener(){}},localStorage:{getItem:key=>key==='sf_obs_mode_rule'?savedRule:null,setItem(){}}});
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/theme-manager.js'),'utf8'),context);
+    vm.runInContext('ThemeManager.prototype.applyUiTheme = () => {}; ThemeResizerEngine.applySavedThemeDimensions = () => {}; window.manager = new ThemeManager();',context);
+    assert.equal(context.window.manager.obsModeRule,expected);
+  }
+});
+
 test('fallback colors are permanent media-free gradient themes, with separate flat solids', () => {
   const {manager, themes, writes, broadcasts} = fixture();
   manager.beginSanctuaryDraft();

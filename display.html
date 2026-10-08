@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <script src="js/shared-events.js"></script>
   <meta charset="UTF-8">
-  <title>Ginomia — The Word in Motion</title>
+  <title>Ginomai — The Word in Motion</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=David+Libre:wght@500;700&family=Didact+Gothic&family=GFS+Didot&family=Inter:wght@400;600;700;800&family=Noto+Serif+Hebrew:wght@600;800&family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -1219,10 +1219,7 @@
     <div id="bg-dimmer-layer"></div>
   </div>
 
-  <!-- Standby Idle State Placeholder (when no slide is on air) -->
-  <div id="standby-container" class="standby-container">
-    <div class="standby-title">This is your live preview</div>
-  </div>
+  <div id="stream-bottom-fade" hidden aria-hidden="true"></div>
 
   <!-- Dual-Buffered Content Display Container for Seamless Transitions -->
   <div id="display-container" class="mode-full">
@@ -1277,10 +1274,11 @@
   </div>
 
   <link rel="stylesheet" href="css/stream-appearance.css">
-  <script src="js/stream-appearance.js"></script>
+  <script src="js/stream-appearance.js?v=20261005-01"></script>
   <script src="js/output-fit.js"></script>
   <link rel="stylesheet" href="css/presentation-media.css">
-  <script src="js/presentation-model.js"></script>
+  <script src="js/presentation-model.js?v=20261005-02"></script>
+  <script src="js/countdown-renderer.js"></script>
   <script src="js/presentation-output.js"></script>
   <script>
     'use strict';
@@ -1330,7 +1328,7 @@
       if (['media','countdown'].includes(data.contentType)) return false;
       if (isExplicitFull || isSanctuary) return false;
 
-      const obsRule = (data.sanctuaryTheme && data.sanctuaryTheme.obsModeRule) || data.obsModeRule || localStorage.getItem('sf_obs_mode_rule') || 'follow';
+      const obsRule = (data.sanctuaryTheme && data.sanctuaryTheme.obsModeRule) || data.obsModeRule || localStorage.getItem('sf_obs_mode_rule') || 'always_lt';
       if (targetType === 'obs' || targetType === 'livestream') {
         if (obsRule === 'always_full') return false;
         if (obsRule === 'always_lt') return true;
@@ -1341,7 +1339,7 @@
       return Boolean(data.mode === 'lt' || data.mode === 'lowerthird');
     }
 
-    const viewportChannel = new BroadcastChannel('ginomia_output_viewports');
+    const viewportChannel = new BroadcastChannel('ginomai_output_viewports');
     const reportViewport = () => {
       if (!urlParams.has('embedded')) viewportChannel.postMessage({ target: isSanctuary ? 'sanctuary' : isStage ? 'stage' : 'livestream', width: innerWidth, height: innerHeight });
     };
@@ -1970,6 +1968,11 @@
     // =====================================================
     function applyState(raw) {
       if (!raw) return;
+      const pending = window.pendingOperatorPreview;
+      if (pending && raw._timestamp && Date.now() - pending.startedAt < 2000) {
+        if (raw._operatorRequestId !== pending.id && !raw.clear && !raw.blackout) return;
+        window.pendingOperatorPreview = null;
+      }
       if (raw._timestamp && raw._timestamp < lastProcessedTimestamp) return;
       if (raw.type === 'sanctuary_theme_sync') {
         if (raw.sanctuaryTheme) applySanctuaryTheme(raw.sanctuaryTheme);
@@ -2006,6 +2009,7 @@
 
       window.LATEST_STATE = data;
       if (data.sanctuaryTheme) applySanctuaryTheme(data.sanctuaryTheme);
+      window.applyStreamBottomFade?.(document.getElementById('stream-bottom-fade'), data, isLowerThirdLayout(data) && !isSanctuary && !isStage);
       const presentationDimmer=document.getElementById('bg-dimmer-layer');
       if(presentationDimmer) presentationDimmer.style.display=isLowerThirdLayout(data) ? 'none':'';
       if (window.renderPresentationOutput?.(data,{isSanctuary,isStage,isExplicitLt,embedded:urlParams.has('embedded')})) {

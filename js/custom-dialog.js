@@ -1,4 +1,4 @@
-// Ginomia - High-Performance Custom Dialog System (Prompt & Confirm)
+﻿// Ginomai - High-Performance Custom Dialog System (Prompt & Confirm)
 'use strict';
 
 (function() {

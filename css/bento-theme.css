@@ -1523,8 +1523,8 @@ body[data-theme-mode="light"] .bento-vu:not(.live-active) i.active { background:
   border-color: var(--border-strong);
 }
 
-.bento-single-card.live,
-.bento-single-card.staged {
+.bento-single-card.live:not(.is-video),
+.bento-single-card.staged:not(.is-video) {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -1831,12 +1831,6 @@ body[data-theme-mode="light"] .sf-ctx-item:hover {
   align-items: center;
   justify-content: center;
   line-height: 1;
-}
-
-.staged-pill.classic {
-  font-size: 8.5px;
-  padding: 2px 7px;
-  margin-left: auto;
 }
 
 /* Bento Staged Corner Dock & Scalloped Inverted Cutout */
@@ -5135,7 +5129,7 @@ body[data-theme-style="bento"] .theme-mode-btn.active {
   box-shadow: none !important;
 }
 
-/* 9. Theme Style Selector Cards (Bento vs Classic) */
+/* 9. Theme Style Selector Cards */
 body[data-theme-style="bento"] .theme-style-card {
   background: #131218 !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -9552,7 +9546,7 @@ body[data-theme-style="bento"][data-theme-mode="light"] .sf-strong-tag {
   justify-content: center;
   padding: 24px;
   opacity: 0;
-  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: none;
 }
 
 #strongs-inspector-modal-backdrop.open {
@@ -9562,7 +9556,8 @@ body[data-theme-style="bento"][data-theme-mode="light"] .sf-strong-tag {
 
 .strongs-inspector-drawer {
   width: 640px;
-  max-width: 95vw;
+  max-width: 100%;
+  box-sizing: border-box;
   max-height: 88vh;
   height: auto;
   background: var(--card, #131218);
@@ -9571,8 +9566,8 @@ body[data-theme-style="bento"][data-theme-mode="light"] .sf-strong-tag {
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85), 0 4px 20px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  transform: scale(0.94) translateY(14px);
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  transform: none;
+  transition: none;
   overflow: hidden;
 }
 
@@ -9590,7 +9585,8 @@ body[data-theme-style="bento"][data-theme-mode="light"] .sf-strong-tag {
   gap: 10px;
   border-top-left-radius: 20px;
   border-top-right-radius: 20px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .strongs-head-meta {
@@ -9671,6 +9667,8 @@ body[data-theme-style="bento"][data-theme-mode="light"] .sf-strong-tag {
   gap: 6px;
   flex-shrink: 0;
   white-space: nowrap;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .strongs-style-select,
@@ -9761,6 +9759,7 @@ body[data-theme-style="bento"][data-theme-mode="light"] .sf-strong-tag {
 
 .strongs-drawer-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 22px;
   display: flex;
@@ -9786,7 +9785,7 @@ body[data-theme-style="bento"][data-theme-mode="light"] .sf-strong-tag {
   font-size: 48px;
   font-weight: 800;
   line-height: 1.15;
-  color: #FFFFFF;
+  color: var(--text, #F3F2F7);
 }
 
 .strongs-lemma-text.hebrew {
@@ -11751,7 +11750,7 @@ body[data-theme-mode="light"] .session-foot-hint code {
   justify-content: center;
   padding: 18px;
   opacity: 0;
-  transition: opacity 0.05s ease;
+  transition: opacity 0.04s ease;
 }
 
 .sf-dialog-backdrop.open {
@@ -11771,7 +11770,7 @@ body[data-theme-mode="light"] .session-foot-hint code {
   gap: 16px;
   padding: 20px 22px;
   transform: scale(0.98);
-  transition: transform 0.05s ease;
+  transition: transform 0.04s ease;
 }
 
 .sf-dialog-backdrop.open .sf-custom-dialog-card {
@@ -12716,3 +12715,458 @@ body[data-theme-mode="light"] .session-foot-hint code {
 #bento-ai-feed-list .ai-card-actions { gap:4px; padding-top:6px; margin-top:6px; }
 #bento-ai-feed-list .ai-card-actions button { min-height:24px; padding:4px 7px; font-size:10px; }
 #bento-ai-feed-list .ai-card-actions button[hidden] { display:none; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   STRONG'S CONCORDANCE & BIBLE WORD SEARCH STYLES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Concordance Toolbar Button */
+.bento-tbtn#bento-concordance-search-btn .sf-strong-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 14px;
+  border-radius: 3px;
+  background: rgba(56, 189, 248, 0.2);
+  color: #38BDF8;
+  font-weight: 800;
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.bento-tbtn#bento-concordance-search-btn.active .sf-strong-icon {
+  background: #38BDF8;
+  color: #0F172A;
+}
+
+/* In-Drawer Search Input Wrap */
+.strongs-drawer-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card-3, #1e1d26);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  padding: 0 10px;
+  height: 32px;
+  flex: 1;
+  max-width: 280px;
+  min-width: 140px;
+  color: var(--dim, #a3a1ae);
+  transition: border-color 0.04s ease;
+}
+
+.strongs-drawer-search-wrap:focus-within {
+  border-color: var(--purple, #8A6DFF);
+  color: var(--text, #fff);
+}
+
+#strongs-drawer-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 11.5px;
+  color: var(--text, #fff);
+  width: 100%;
+  font-family: inherit;
+  padding: 0;
+}
+
+#strongs-drawer-search-input::placeholder {
+  color: var(--dim, #716e7e);
+}
+
+/* In-Drawer Live Search Dropdown Popover */
+.strongs-drawer-search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--card, #131218);
+  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.18));
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.85);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 100010;
+  padding: 4px;
+}
+
+.strongs-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.04s ease;
+  font-size: 11px;
+}
+
+.strongs-dropdown-item:hover,
+.strongs-dropdown-item.selected {
+  background: var(--card-hover, rgba(255, 255, 255, 0.08));
+}
+
+.strongs-dropdown-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.strongs-dropdown-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.strongs-dropdown-id.greek {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38BDF8;
+}
+
+.strongs-dropdown-id.hebrew {
+  background: rgba(245, 158, 11, 0.2);
+  color: #F59E0B;
+}
+
+.strongs-dropdown-lemma {
+  font-weight: 700;
+  color: var(--text, #fff);
+}
+
+.strongs-dropdown-def {
+  color: var(--dim, #a3a1ae);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scripture Occurrences in Drawer */
+#strongs-drawer-occurrences-card {
+  margin-top: 12px;
+}
+
+.strongs-count-badge {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--purple-dim, rgba(138, 109, 255, 0.2));
+  color: var(--purple-text, #C3B6FF);
+}
+
+.strongs-occurrences-container {
+  max-height: 280px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding-right: 4px;
+}
+
+.strongs-occurrences-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.strongs-occurrence-item {
+  background: var(--card-3, #1c1b24);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.04s ease;
+}
+
+.strongs-occurrence-item:hover {
+  border-color: var(--border-strong, rgba(255, 255, 255, 0.18));
+}
+
+.strongs-occurrence-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.strongs-occurrence-ref {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: var(--purple-text, #C3B6FF);
+  cursor: pointer;
+}
+
+.strongs-occurrence-ref:hover {
+  text-decoration: underline;
+}
+
+.strongs-occurrence-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.strongs-occ-btn {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--card-2, #23222d);
+  color: var(--text, #fff);
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.04s ease;
+}
+
+.strongs-occ-btn:hover {
+  background: var(--card-hover, rgba(255, 255, 255, 0.12));
+}
+
+.strongs-occ-btn.project {
+  background: #2563EB;
+  border-color: transparent;
+  color: #fff;
+}
+
+.strongs-occ-btn.project:hover {
+  background: #1D4ED8;
+}
+
+.strongs-occurrence-text {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--dim, #a3a1ae);
+}
+
+.strongs-occurrence-text mark {
+  background: rgba(138, 109, 255, 0.28);
+  color: #FFFFFF;
+  border-radius: 2px;
+  padding: 0 2px;
+  font-weight: 600;
+}
+
+/* Omni-Search Concordance Tab & Cards */
+.omni-concordance-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  margin-bottom: 8px;
+}
+
+.omni-filter-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: var(--card-2, #1f1e28);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  color: var(--dim, #a3a1ae);
+  cursor: pointer;
+  line-height: 1.2;
+  transition: all 0.04s ease;
+}
+
+.omni-filter-chip:hover {
+  background: var(--card-hover, rgba(255, 255, 255, 0.08));
+  color: var(--text, #fff);
+}
+
+.omni-filter-chip.active {
+  background: var(--purple-dim, rgba(138, 109, 255, 0.22));
+  border-color: var(--purple, #8A6DFF);
+  color: var(--purple-text, #C3B6FF);
+}
+
+.omni-strongs-card {
+  background: var(--card-2, #18171f);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.09));
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color 0.04s ease, background 0.04s ease;
+}
+
+.omni-strongs-card:hover {
+  background: var(--card-hover, #201f2b);
+  border-color: var(--purple, #8A6DFF);
+}
+
+.omni-strongs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.omni-strongs-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.omni-strongs-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.omni-strongs-id.greek {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38BDF8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.omni-strongs-id.hebrew {
+  background: rgba(245, 158, 11, 0.2);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.omni-strongs-lemma {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text, #fff);
+  letter-spacing: 0.01em;
+}
+
+.omni-strongs-translit {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--purple-text, #C3B6FF);
+}
+
+.omni-strongs-pron {
+  font-size: 11px;
+  color: var(--dim, #8f8d9c);
+}
+
+.omni-strongs-pos {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--dim, #a3a1ae);
+  line-height: 1;
+}
+
+.omni-strongs-def {
+  font-size: 12px;
+  color: var(--text, #e2e8f0);
+  line-height: 1.4;
+}
+
+.omni-strongs-kjv {
+  font-size: 11px;
+  color: var(--dim, #94a3b8);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.omni-strongs-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.omni-strongs-occ-count {
+  font-size: 10.5px;
+  color: var(--dim, #a3a1ae);
+}
+
+.omni-strongs-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.omni-strongs-action-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--card-3, #22212d);
+  color: var(--text, #fff);
+  cursor: pointer;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.04s ease;
+}
+
+.omni-strongs-action-btn:hover {
+  background: var(--card-hover, rgba(255, 255, 255, 0.12));
+}
+
+.omni-strongs-action-btn.project-btn {
+  background: #2563EB;
+  border-color: transparent;
+  color: #fff;
+}
+
+.omni-strongs-action-btn.project-btn:hover {
+  background: #1D4ED8;
+}
+
+/* Light Theme Overrides for Strong's Concordance */
+body[data-theme-style="bento"][data-theme-mode="light"] .strongs-drawer-search-wrap {
+  background: #f1f0f5;
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #4b5563;
+}
+
+body[data-theme-style="bento"][data-theme-mode="light"] #strongs-drawer-search-input {
+  color: #111827;
+}
+
+body[data-theme-style="bento"][data-theme-mode="light"] .strongs-drawer-search-dropdown {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.14);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+}
+
+body[data-theme-style="bento"][data-theme-mode="light"] .strongs-occurrence-item {
+  background: #f8f8fb;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body[data-theme-style="bento"][data-theme-mode="light"] .omni-strongs-card {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+body[data-theme-style="bento"][data-theme-mode="light"] .omni-strongs-card:hover {
+  background: #f4f3f9;
+  border-color: #6037e6;
+}

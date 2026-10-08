@@ -1,4 +1,4 @@
-// Keep HTTP connections available for navigation, assets and output previews.
+﻿// Keep HTTP connections available for navigation, assets and output previews.
 (() => {
   if (!window.EventSource || location.protocol === 'file:') return;
   const NativeEventSource = window.EventSource;
@@ -25,7 +25,7 @@
         }
       };
       try {
-        this.worker = new SharedWorker(workerUrl, 'ginomia-events');
+        this.worker = new SharedWorker(workerUrl, 'ginomai-events');
         this.worker.port.onmessage = e => relay(e.data);
         this.worker.onerror = fallback;
         this.worker.port.start();

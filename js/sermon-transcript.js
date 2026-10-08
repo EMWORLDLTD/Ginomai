@@ -1,4 +1,4 @@
-// Ginomia - Live Sermon Audio Transcription & Multi-Session Engine
+﻿// Ginomai - Live Sermon Audio Transcription & Multi-Session Engine
 'use strict';
 
 class SermonTranscriptManager {
@@ -251,7 +251,7 @@ class SermonTranscriptManager {
   startTimer() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.timerInterval = setInterval(() => {
-      if (this.isRecordingSermon) {
+      if (this.isRecordingSermon && !window.isRemoteOperator) {
         this.session.totalDurationSeconds = (this.session.totalDurationSeconds || 0) + 1;
         if (this.activeRecordingMoment) {
           this.activeRecordingMoment.durationSeconds = (this.activeRecordingMoment.durationSeconds || 0) + 1;
@@ -263,6 +263,12 @@ class SermonTranscriptManager {
 
   // Preaching recording toggle: Multiple recordings / moments within active service session
   toggleSermonRecording() {
+    if (window.isRemoteOperator) {
+      this.isRecordingSermon = !this.isRecordingSermon;
+      this.syncTopBarRecordBtn();
+      window.sendRemoteCommand({type:'SET_SERMON_RECORDING',enabled:this.isRecordingSermon});
+      return;
+    }
     const willRecord = !this.isRecordingSermon;
 
     if (willRecord) {
@@ -758,7 +764,7 @@ class SermonTranscriptManager {
     const lines = [];
 
     lines.push(separator);
-    lines.push(` GINOMIA — RECORDED MOMENT: ${moment.title.toUpperCase()} [${moment.type.toUpperCase()}]`);
+    lines.push(` GINOMAI — RECORDED MOMENT: ${moment.title.toUpperCase()} [${moment.type.toUpperCase()}]`);
     lines.push(separator);
     lines.push(` Service:     ${this.session.title || 'Sunday Service'}`);
     lines.push(` Speaker:     ${this.session.speaker || 'Pastor'}`);
@@ -799,7 +805,7 @@ class SermonTranscriptManager {
     }
 
     lines.push(separator);
-    lines.push(' Transcribed live via Ginomia — The Word in Motion');
+    lines.push(' Transcribed live via Ginomai — The Word in Motion');
     lines.push(separator);
 
     return lines.join('\n');
@@ -865,7 +871,7 @@ class SermonTranscriptManager {
     const allScriptures = this.getAllScriptures();
 
     lines.push(separator);
-    lines.push(' GINOMIA — SERVICE TRANSCRIPT & RECORDINGS');
+    lines.push(' GINOMAI — SERVICE TRANSCRIPT & RECORDINGS');
     lines.push(separator);
     lines.push(` Service:     ${this.session.title || 'Sunday Service'}`);
     lines.push(` Speaker:     ${this.session.speaker || 'Pastor'}`);
@@ -939,7 +945,7 @@ class SermonTranscriptManager {
     }
 
     lines.push(separator);
-    lines.push(' Transcribed live via Ginomia — The Word in Motion');
+    lines.push(' Transcribed live via Ginomai — The Word in Motion');
     lines.push(separator);
 
     return lines.join('\n');
@@ -1019,6 +1025,21 @@ class SermonTranscriptManager {
     this.syncBentoUi();
     this.syncModalUi();
     this.syncTopBarRecordBtn();
+    if (fullRender && !window.isRemoteOperator) {
+      window.broadcastSpeechAiUpdate?.({sermon:{session:this.session,isRecording:this.isRecordingSermon,interimText:this.currentInterimText || ''}});
+    }
+  }
+
+  applyHostState(sermon) {
+    if (!window.isRemoteOperator || !sermon.session) return;
+    this.session = sermon.session;
+    const index = this.sessions.findIndex(session => session.id === this.session.id);
+    if (index === -1) this.sessions.unshift(this.session);
+    else this.sessions[index] = this.session;
+    this.isRecordingSermon = !!sermon.isRecording;
+    this.currentInterimText = sermon.interimText || '';
+    this.activeRecordingMoment = this.session.recordings?.find(moment => moment.isRecording) || null;
+    this.notifyUpdate(true);
   }
 
   syncTopBarRecordBtn() {

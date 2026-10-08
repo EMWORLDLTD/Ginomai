@@ -104,9 +104,15 @@ body .bento-tabs2 > span, body .bento-seg > span {
 body .bento-feed-card .bento-tabs2 [role="button"] {
   min-height: 0; min-width: 0;
 }
-body .bento-topbar { flex-wrap: wrap; height: auto; min-height: 48px; gap: 8px; padding-block: 8px; }
-body .bento-topbar .bento-tb-center { flex: 1 1 440px; }
-body .bento-topbar .bento-mic-cluster { flex-wrap: wrap; }
+body .bento-topbar { flex-wrap: wrap; height: auto; min-height: 48px; gap: 8px; padding-block: 4px; }
+/* Wrap the audio group as a unit so its controls cannot create a tall middle panel. */
+body .bento-topbar .bento-tb-center { flex: 1 0 auto; }
+body .bento-topbar .bento-mic-cluster { flex-wrap: nowrap; max-width: 100%; box-sizing: border-box; }
+body .bento-topbar .bento-mic-cluster > :not(.bento-device-sel) { flex-shrink: 0; white-space: nowrap; }
+body .bento-topbar .bento-session-wrap { min-width: 0; flex: 0 1 auto; }
+body .bento-topbar .bento-session-pill { min-width: 0; white-space: nowrap; }
+body .bento-topbar .session-name { min-width: 0; }
+body .bento-topbar .bento-session-pill > :not(.session-name) { flex-shrink: 0; }
 .bento-mic-cluster button { font-size: 11px; }
 body .bento-topbar .bento-brand-name { font-size: 13px; }
 body .bento-pro-badge { display: none; }
@@ -318,7 +324,23 @@ body #omni-search-palette .omni-empty-compact { opacity: 1; padding: 26px 12px; 
 body #omni-search-palette .tag-chip { color: var(--dim); background: var(--card-2); border: 1px solid var(--border-strong); padding: 5px 8px; cursor: pointer; }
 body #bento-transcript-open-btn { color: var(--purple-text) !important; background: var(--purple-dim) !important; border-color: var(--border-strong) !important; }
 body #bento-transcript-open-btn:hover { border-color: var(--purple) !important; }
-@media (max-width: 1100px) { body .bento-topbar .bento-tb-center { order: 3; flex-basis: 100%; } }
+@media (max-width: 1440px) {
+  body .bento-topbar .bento-cmdk-text { display: none; }
+  body .bento-topbar .bento-session-pill { gap: 5px; padding-inline: 8px; }
+  body .bento-topbar .session-name { max-width: 104px; }
+  body .bento-topbar .bento-mic-cluster { gap: 6px; padding: 4px 6px; }
+  body .bento-topbar .bento-tb-right { gap: 6px; }
+}
+@media (max-width: 1200px) {
+  body .bento-topbar .bento-tb-center { order: 3; flex-basis: 100%; }
+  body .bento-topbar .bento-tb-right { margin-left: auto; }
+  body .bento-topbar .bento-mic-cluster { width: 100%; }
+  body .bento-topbar .bento-autoproj { margin-left: auto; }
+}
+@media (max-width: 640px) {
+  body .bento-topbar .bento-mic-cluster { flex-wrap: wrap; }
+  body .bento-topbar .bento-autoproj { margin-left: 0; }
+}
 @media (pointer: coarse) { body :is(button,[role="button"],summary) { min-height: 44px; min-width: 44px; } }
 @media (prefers-reduced-motion: reduce) { body *:not(.ann-preview-scroll-text), body *::before, body *::after { animation-duration: 0s !important; transition-duration: 0s !important; } }
 

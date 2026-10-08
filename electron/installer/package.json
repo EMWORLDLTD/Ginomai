@@ -1,9 +1,9 @@
 {
-  "name": "ginomia-setup",
-  "productName": "Install Ginomia",
+  "name": "ginomai-setup",
+  "productName": "Install Ginomai",
   "version": "2.4.0",
-  "description": "Ginomia branded desktop installer",
-  "author": "Ginomia Team",
+  "description": "Ginomai branded desktop installer",
+  "author": "Ginomai Team",
   "license": "MIT",
   "main": "main.js"
 }

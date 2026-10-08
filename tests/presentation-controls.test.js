@@ -177,6 +177,47 @@ test('overlay library refresh adds and removes uploaded images without rebuildin
  window.refreshStyleGallery();assert.equal(field('stream-image-list').children[0],first);
  delete window.SANCTUARY_THEMES.b;window.refreshStyleGallery();assert.deepEqual(field('stream-image-list').children,[first]);
 });
+test('bottom fade applies only behind visible text-only overlays and clears on output changes',()=>{
+ const {window}=fixture(),properties={};
+ const layer={hidden:true,style:{setProperty:(key,value)=>properties[key]=value}};
+ const data={text:'You alone are my heart\'s desire',contentType:'song',streamAppearance:{surface:'none',bottomFade:true,opacity:75}};
+ assert.equal(window.normalizeStreamAppearance().bottomFade,false);
+ assert.equal(window.normalizeStreamAppearance({bottomFade:'true'}).bottomFade,false);
+ window.applyStreamBottomFade(layer,data,true);
+ assert.equal(layer.hidden,false);assert.equal(properties['--broadcast-fade-opacity'],.75);
+ for(const patch of [{clear:true},{blackout:true},{livestreamActive:false},{text:'',reference:''},{isLexicon:true},{slideId:'lexicon_H1'},{contentType:'media'},{contentType:'countdown'},
+   {streamAppearance:{surface:'none',bottomFade:false}},{streamAppearance:{surface:'solid',bottomFade:true}},{streamAppearance:{surface:'image',bottomFade:true}}, {streamAppearance:null}]) {
+   window.applyStreamBottomFade(layer,{...data,...patch},true);assert.equal(layer.hidden,true);
+   window.applyStreamBottomFade(layer,data,true);assert.equal(layer.hidden,false);
+ }
+ window.applyStreamBottomFade(layer,data,false);assert.equal(layer.hidden,true);
+});
+
+test('bottom fade previews locally, cancels cleanly, and persists only after Apply',async()=>{
+ const {window,state,field,messages,sent,saved}=draftFixture();
+ window.previewTargetMode='livestream';
+ await window.togglePresentationSettings();
+ assert.equal(field('style-layout').value,'always_lt');
+ assert.equal(field('stream-bottom-fade-row').hidden,true);
+ window.updateStreamAppearance({surface:'none',bottomFade:true});
+ assert.equal(field('stream-bottom-fade-row').hidden,false);assert.equal(field('stream-bottom-fade').checked,true);
+ assert.equal(field('stream-opacity-row').hidden,true);assert.equal(field('stream-fade-strength-row').hidden,false);
+ window.updateStreamAppearance({opacity:35});
+ assert.equal(field('stream-fade-strength').value,35);assert.equal(field('stream-fade-strength-value').textContent,'35%');
+ assert.equal(messages.at(-1).payload.streamAppearance.opacity,35);assert.equal(state.streamAppearance.opacity,90);
+ assert.equal(messages.at(-1).payload.streamAppearance.bottomFade,true);
+ assert.equal(state.streamAppearance.bottomFade,false);assert.equal(sent.length,0);assert.equal(saved.size,0);
+ window.closePresentationSettings();
+ await window.togglePresentationSettings();assert.equal(field('stream-bottom-fade').checked,false);
+ window.updateStreamAppearance({surface:'none',bottomFade:true,opacity:35});window.applyStyleDraft();
+ assert.equal(state.streamAppearance.bottomFade,true);assert.equal(sent.length,1);
+ assert.equal(JSON.parse(saved.get('sf_stream_appearance')).bottomFade,true);
+ assert.equal(JSON.parse(saved.get('sf_stream_appearance')).opacity,35);
+ await window.togglePresentationSettings();window.updateStreamAppearance({bottomFade:false});
+ assert.equal(field('stream-opacity-row').hidden,true);assert.equal(field('stream-fade-strength-row').hidden,true);assert.equal(messages.at(-1).payload.streamAppearance.bottomFade,false);
+ window.applyStyleDraft();assert.equal(state.streamAppearance.bottomFade,false);
+});
+
 test('modern solid lower-third respects darkness, while text-only mode removes the entire surface',()=>{
  const {window}=fixture(),properties={},classes=new Set();
  const box={dataset:{},style:{setProperty:(key,value)=>properties[key]=value},classList:{toggle:(key,on)=>on?classes.add(key):classes.delete(key),remove:key=>classes.delete(key)}};

@@ -17,7 +17,7 @@
     const manager = window.themeManager;
     return {activeSanctuaryTheme:manager.activeSanctuaryTheme, sanctuaryFont:manager.sanctuaryFont,
       sanctuaryDimmer:manager.sanctuaryDimmer, sanctuaryFits:{...manager.sanctuaryFits},
-      obsModeRule:manager.obsModeRule === 'follow' ? (window.state.currentMode === 'lt' ? 'always_lt' : 'always_full') : manager.obsModeRule,
+      obsModeRule:manager.obsModeRule === 'follow' ? 'always_lt' : manager.obsModeRule,
       streamAppearance:{...window.state.streamAppearance}, transparentBg:window.state.transparentBg};
   }
   function previewPayload() {
@@ -68,6 +68,13 @@
       el(id).setAttribute('aria-pressed',String(surface===value)); el(id).disabled=uploading || REMOTE_MODE;
     }
     el('stream-upload-trigger').disabled=uploading || REMOTE_MODE;
+    el('stream-bottom-fade-row').hidden=surface!=='none';
+    el('stream-bottom-fade').checked=style.bottomFade;
+    el('stream-bottom-fade').disabled=uploading || REMOTE_MODE;
+    el('stream-fade-strength-row').hidden=surface!=='none' || !style.bottomFade;
+    el('stream-fade-strength').value=style.opacity;
+    el('stream-fade-strength').disabled=uploading || REMOTE_MODE;
+    el('stream-fade-strength-value').textContent=style.opacity+'%';
     if(el('stream-image-crop')) el('stream-image-crop').disabled=uploading || REMOTE_MODE;
     el('stream-image-library').hidden=surface!=='image';
     syncStreamImageSelection();
@@ -296,6 +303,7 @@
       const result=await response.json(); if (!response.ok) throw new Error(result.error || 'Upload failed.');
       window.SANCTUARY_THEMES[result.item.id]=result.item;
       gallery();
+      await window.refreshMediaLibrary?.();
       if (draft && token===requestToken) { window.updateStreamAppearance({imageUrl:result.item.imageUrl,surface:'image'}); el('stream-image-name').textContent=file.name; status.textContent='Ready to preview.'; uploading=false;window.cropStreamBackground(); }
     } catch(error) { if (draft && token===requestToken) status.textContent=error.message; }
     finally { if(token===requestToken) uploading=false; URL.revokeObjectURL(url); window.syncPresentationControls(); }
@@ -318,6 +326,7 @@
         const response=await fetch(`/api/sanctuary-media?${params}`,{method:'POST',body:blob});
         const result=await response.json();if(!response.ok) throw new Error(result.error || 'Could not save this crop.');
         window.SANCTUARY_THEMES[result.item.id]=result.item;gallery();
+        await window.refreshMediaLibrary?.();
         if(isCurrent() && draft && token===requestToken && draft.streamAppearance.imageUrl===url) window.updateStreamAppearance({imageUrl:result.item.imageUrl,position:50,surface:'image'});
       }finally {if(token===requestToken)uploading=false;window.syncPresentationControls();}
     }});

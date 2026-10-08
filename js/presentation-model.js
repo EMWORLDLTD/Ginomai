@@ -6,9 +6,24 @@
     const pad=n=>String(n).padStart(2,'0');
     return seconds>=3600 ? `${pad(Math.floor(seconds/3600))}:${pad(Math.floor(seconds/60)%60)}:${pad(seconds%60)}` : `${pad(Math.floor(seconds/60))}:${pad(seconds%60)}`;
   };
+  const scale=(value,min,max)=>Number.isFinite(Number(value))&&Number(value)>=min&&Number(value)<=max?Number(value):1;
+  const color=value=>/^#[a-f0-9]{6}$/i.test(value || '')?value:'#ffffff';
+  const countdownBackground=background=> {
+    if(!background || typeof background!=='object')return null;
+    const safeUrl=url=>/^(?:Themes\/|\/media\/uploads\/)[a-zA-Z0-9_.-]+\.(?:png|jpe?g|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/i.test(url || '') || /^\/presentation\/files\/media_[a-f0-9-]+(?:-page-[1-9]\d*(?:-thumb)?)?\.(?:png|jpe?g|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/.test(url || '')?url:'';
+    const imageUrl=safeUrl(background.imageUrl),videoUrl=safeUrl(background.videoUrl);
+    const type=['image','video','gradient','solid','minimal'].includes(background.type)?background.type:'gradient';
+    if((type==='image'&&!imageUrl)||(type==='video'&&!videoUrl))return null;
+    const css=String(background.bgCss || '');
+    return {id:String(background.id || '').slice(0,100),type,imageUrl,videoUrl,
+      bgCss:css.length<=500&&/^(?:#|rgba?\(|hsla?\(|(?:linear|radial)-gradient\()/i.test(css)&&/^[#a-z0-9.,()%\s-]+$/i.test(css)?css:'#10121c',
+      fit:['cover','contain','fill'].includes(background.fit)?background.fit:'cover',
+      dimmer:Number.isFinite(Number(background.dimmer))?Math.max(0,Math.min(100,Number(background.dimmer))):30};
+  };
   const countdownAppearance=countdown=>({
     font:['Outfit','Inter','Cormorant Garamond','Cinzel'].includes(countdown?.font)?countdown.font:'',
-    timerScale:[0.8,1,1.2].includes(Number(countdown?.timerScale))?Number(countdown.timerScale):1
+    timerScale:scale(countdown?.timerScale,.5,2),headingScale:scale(countdown?.headingScale,.5,3),completionScale:scale(countdown?.completionScale,.5,3),
+    headingColor:color(countdown?.headingColor),timerColor:color(countdown?.timerColor),completionColor:color(countdown?.completionColor)
   });
   const countdownView=(countdown,now=Date.now())=>({
     finished:!Number.isFinite(Number(countdown?.startsAt)) || Number(countdown.startsAt)<=now,
@@ -28,8 +43,8 @@
     if(Number.isFinite(duration)&&duration>0) position=playback?.loop ? position%duration:Math.min(position,duration);
     return position;
   };
-  const safeMediaUrl=url=>/^\/presentation\/files\/media_[a-f0-9-]+(?:-page-[1-9]\d*(?:-thumb)?)?\.(pdf|png|jpg|jpeg|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/.test(url || '');
-  const api={formatCountdown,countdownAppearance,countdownView,countdownDeadline,playbackPosition,safeMediaUrl};
+  const safeMediaUrl=url=>/^\/presentation\/files\/media_[a-f0-9-]+(?:-page-[1-9]\d*(?:-thumb)?)?\.(pdf|png|jpg|jpeg|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/.test(url || '') || /^Themes\/[a-zA-Z0-9_-]+\.(png|jpe?g|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/.test(url || '') || /^\/media\/uploads\/upload_[a-f0-9-]+\.(png|jpe?g|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/.test(url || '');
+  const api={formatCountdown,countdownAppearance,countdownBackground,countdownView,countdownDeadline,playbackPosition,safeMediaUrl};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.PresentationModel=api;
 })(typeof window!=='undefined'?window:globalThis);

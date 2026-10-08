@@ -2,7 +2,8 @@
 (() => {
   let loading, deleting = false;
   const uploadHelp = 'Images, GIFs and videos · Up to 250 MB each · Videos loop without sound';
-  window.loadSanctuaryUploads = function (publish = true) {
+  window.loadSanctuaryUploads = function (publish = true, refresh = false) {
+    if(refresh) loading=null;
     if (loading) return loading;
     loading = (async () => {
       try {
@@ -15,7 +16,7 @@
         if (status) status.textContent = uploadHelp;
         items.forEach(item => { window.SANCTUARY_THEMES[item.id] = item; });
         const manager = window.themeManager;
-        if (publish && manager.activeSanctuaryTheme.startsWith('upload_')) {
+        if (publish && /^(upload_|media_)/.test(manager.activeSanctuaryTheme)) {
           if (!window.SANCTUARY_THEMES[manager.activeSanctuaryTheme]) manager.activeSanctuaryTheme = 'celestial_motion';
           if (publish) manager.broadcastSanctuaryTheme();
           if (manager.sanctuaryDraft && !manager.hasSanctuaryDraftChanges()) manager.beginSanctuaryDraft();
@@ -62,8 +63,8 @@
     const files = Array.from(input.files || []);
     input.value = '';
     if (!files.length) return;
-    const button = document.getElementById('sanctuary-upload-button');
-    const status = document.getElementById('sanctuary-upload-status');
+    const button = document.getElementById(options.buttonId || 'sanctuary-upload-button');
+    const status = document.getElementById(options.statusId || 'sanctuary-upload-status');
     button.disabled = true;
     const failures = [];
     let saved = 0;
@@ -93,7 +94,7 @@
           saved++;
         } catch (error) { failures.push(`${file.name}: ${error.message}`); }
       }
-      if (saved) { window.filterSanctuaryThemes('uploads'); window.refreshStyleGallery?.(); }
+      if (saved) { if (!options.buttonId) window.filterSanctuaryThemes('uploads'); window.refreshStyleGallery?.(); await window.refreshMediaLibrary?.(); }
       status.textContent = [saved ? `${saved} background${saved === 1 ? '' : 's'} saved in Custom. Select one to preview it.` : '', ...failures].filter(Boolean).join(' ');
     } finally { button.disabled = false; }
   };
@@ -177,6 +178,7 @@
       }
 
       delete window.SANCTUARY_THEMES[themeId];
+      window.onPresentationMediaDeleted?.(themeId);
 
       const remainingCustomThemes = Object.values(window.SANCTUARY_THEMES || {}).filter(t => t.custom);
       const fallbackThemeId = remainingCustomThemes.length > 0 ? remainingCustomThemes[0].id : 'celestial_motion';

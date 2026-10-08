@@ -1,8 +1,8 @@
-/* Scale the production output canvas, never its individual text elements. */
+﻿/* Scale the production output canvas, never its individual text elements. */
 (() => {
   const dimensions = new Map();
   const entries = [];
-  const channel = new BroadcastChannel('ginomia_output_viewports');
+  const channel = new BroadcastChannel('ginomai_output_viewports');
   function layout(entry) {
     const target = entry.target;
     const selected = window.previewTargetMode === 'sanctuary' || !window.previewTargetMode ? 'sanctuary' : 'livestream';
@@ -15,6 +15,21 @@
   }
   window.getOutputPreviewDimensions = target => dimensions.get(target) || {width:1920,height:1080};
   window.syncOutputPreviews = () => entries.forEach(layout);
+  window.updateOutputPreviews = payload => {
+    for (const {frame} of entries) {
+      const output = frame.contentWindow;
+      if (output && payload._operatorRequestId && !payload._timestamp) {
+        output.pendingOperatorPreview = {id:payload._operatorRequestId,startedAt:Date.now()};
+      }
+      // Local selection must not wait for a host echo or advance the server timestamp.
+      const next = {...output?.LATEST_STATE, ...payload, _timestamp:undefined};
+      if (payload.contentType && payload.contentType !== 'lexicon') {
+        next.isLexicon = false;
+        next.lexiconData = null;
+      }
+      output?.applyState?.(next);
+    }
+  };
   for (const [id, target, single] of [['bento-single-prev-wrap','sanctuary',true],['bento-single-prev-wrap','livestream',true],['bento-dual-sanctuary','sanctuary',false],['bento-dual-livestream','livestream',false]]) {
     const host = document.getElementById(id);
     if (!host) continue;

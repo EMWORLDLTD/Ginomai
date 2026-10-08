@@ -55,6 +55,9 @@
     }
   }
 
+  // Allow modal handlers to restore background interaction immediately.
+  window.sfSyncModal = syncModal;
+
   function enhance(root) {
     if (!(root instanceof Element)) return;
     const candidates = [root, ...root.querySelectorAll('[onclick],[role="button"],input,textarea,select,button')];
@@ -91,7 +94,7 @@
       if (modal.id === 'sf-custom-dialog-backdrop') { window.sfCloseCustomDialog(null); return; }
       const close = [...modal.querySelectorAll('button,[role="button"]')].find(element => /close|cancel/i.test(element.getAttribute('aria-label') || element.title || element.textContent) && visible(element));
       if (close) close.click();
-      else { modal.style.display = 'none'; modal.classList.remove('open'); }
+      else { modal.style.display = 'none'; modal.classList.remove('open'); syncModal(modal); }
       return;
     }
     const control = event.target.closest?.('[role="button"]');

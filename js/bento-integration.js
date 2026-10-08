@@ -1,4 +1,4 @@
-// Ginomia - Bento Theme Interactive Controller
+// Ginomai - Bento Theme Interactive Controller
 // Powers all buttons, slots, tabs, library items, medley deck columns, stage preview, and AI speech feed
 
 (function() {
@@ -329,9 +329,13 @@
     const listEl = document.getElementById('bento-library-list');
     if (!listEl) return;
     const savedScrollTop = listEl.scrollTop;
-    listEl.innerHTML = '';
 
     const currentTab = window.state ? window.state.currentTab : 'songs';
+    if (currentTab !== 'songs') {
+      delete listEl._songLibraryRows;
+      listEl.onscroll = null;
+      listEl.innerHTML = '';
+    }
     listEl.classList.toggle('bento-bible-grid', currentTab === 'bible');
     let q = '';
     if (typeof filterQuery === 'string') {
@@ -353,13 +357,47 @@
       const filtered = q ? books.filter(b => b.toLowerCase().includes(q)) : books;
 
       if (filtered.length === 0) {
+        if (q && q.length >= 2 && typeof window.searchStrongsConcordance === 'function') {
+          const strongsMatches = window.searchStrongsConcordance(q, { lang: 'all', limit: 12 });
+          if (strongsMatches && strongsMatches.length > 0) {
+            let concordanceHtml = `
+              <div style="padding:4px 8px 8px; display:flex; flex-direction:column; gap:6px;">
+                <div style="font-size:10.5px; font-weight:700; color:var(--purple-text, #c3b6ff); display:flex; justify-content:space-between; align-items:center; padding:0 2px;">
+                  <span>Strong\'s Concordance (${strongsMatches.length})</span>
+                  <span style="cursor:pointer; color:var(--blue, #38bdf8);" onclick="openOmniSearchPalette('strongs', '${escapeHtml(q)}')">View All ↗</span>
+                </div>
+            `;
+            strongsMatches.forEach(m => {
+              const isHeb = m.lang === 'Hebrew' || m.id.startsWith('H');
+              const safeWord = (m.short_definition || m.lemma || m.id).replace(/'/g, "\\'");
+              concordanceHtml += `
+                <div class="bento-song-row" style="cursor:pointer; padding:6px 8px; border-radius:6px; display:flex; align-items:center; justify-content:space-between; gap:6px;" onclick="openLexiconInspector('${escapeHtml(m.id)}', '${safeWord}')" title="Click to view word study in drawer">
+                  <div class="info" style="flex:1; min-width:0;">
+                    <div class="n" style="display:flex; align-items:center; gap:6px;">
+                      <span class="omni-strongs-id ${isHeb ? 'hebrew' : 'greek'}" style="font-size:9.5px; padding:1px 4px;">${escapeHtml(m.id)}</span>
+                      <span style="font-weight:700;">${escapeHtml(m.lemma || m.id)}</span>
+                      <span style="color:var(--purple-text, #c3b6ff); font-size:11px;">${escapeHtml(m.transliteration || '')}</span>
+                    </div>
+                    <div class="a" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--dim);">${escapeHtml(m.short_definition || '')}</div>
+                  </div>
+                  <button type="button" class="tag-chip" style="font-size:9.5px; padding:2px 6px; cursor:pointer;" onclick="event.stopPropagation(); omniProjectStrongsWord('${escapeHtml(m.id)}', '${safeWord}')" title="Project this word">Project</button>
+                </div>
+              `;
+            });
+            concordanceHtml += `</div>`;
+            listEl.innerHTML = concordanceHtml;
+            return;
+          }
+        }
+
         listEl.innerHTML = `
           <div class="bento-empty-unit compact">
             <div class="empty-icon">
               ${q ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'}
             </div>
-            <div class="empty-title">${q ? 'No matching books' : 'No Bible books'}</div>
+            <div class="empty-title">${q ? 'No matching books or words' : 'No Bible books'}</div>
             <div class="empty-desc">${q ? 'Check spelling or switch translation above.' : 'Import Bible translations from top toolbar.'}</div>
+            ${q ? `<button type="button" class="tag-chip" style="margin-top:8px; cursor:pointer;" onclick="openOmniSearchPalette('strongs', '${escapeHtml(q)}')">Search in Concordance ↗</button>` : ''}
           </div>
         `;
         return;
@@ -497,8 +535,7 @@
         ? songs.filter(s => (typeof window.matchSongQuery === 'function' ? window.matchSongQuery(s, q) : (typeof window.getSongSearchIndex === 'function' ? window.getSongSearchIndex(s) : (s.title + ' ' + (s.author || ''))).toLowerCase().includes(q)))
         : songs;
 
-      if (filtered.length === 0) {
-        listEl.innerHTML = `
+      const emptyHtml = `
           <div class="bento-empty-unit compact">
             <div class="empty-icon">
               ${q ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>'}
@@ -507,8 +544,6 @@
             <div class="empty-desc">${q ? 'Try searching by title, artist, or lyric phrase.' : 'Import song files via the top toolbar to start.'}</div>
           </div>
         `;
-        return;
-      }
 
       const showSongsMedleyBtns = !!(window.state && (window.state.isMedleyMode || window.state.showMedleyView));
       const medleyIds = (window.state && Array.isArray(window.state.medleySongIds)) ? window.state.medleySongIds : [];
@@ -517,7 +552,7 @@
       const m2 = medleyIds[2];
       const activeId = window.state ? window.state.activeSongId : null;
 
-      filtered.forEach(song => {
+      const createRow = song => {
         const row = document.createElement('div');
         const isSelected = activeId === song.id;
         const isS1 = m0 === song.id;
@@ -586,11 +621,24 @@
           window.openSongContextMenu(e, song.id);
         };
 
-        listEl.appendChild(row);
+        return row;
+      };
+      window.renderSongLibraryRows(listEl, filtered, {
+        catalog: songs, query: q, emptyHtml,
+        signature: song => JSON.stringify([song.title, song.author, showSongsMedleyBtns]),
+        createRow,
+        updateRow: (row, song) => {
+          row.classList.toggle('active', window.state?.activeSongId === song.id);
+          row.querySelectorAll('.bento-slotbtns span').forEach((button, i) => {
+            const assigned = medleyIds[i] === song.id;
+            button.classList.toggle('active', assigned);
+            button.title = assigned ? `Remove from Slot S${i + 1}` : `Assign to Slot S${i + 1}`;
+          });
+        }
       });
     }
 
-    if (savedScrollTop > 0) {
+    if (currentTab !== 'songs' && savedScrollTop > 0) {
       listEl.scrollTop = savedScrollTop;
     }
   }
@@ -827,6 +875,10 @@
     const Rc = 26;     // circular scoop radius (giving an exact uniform 8px moat around 36px button)
     const r = 12;      // smooth blend fillet radius
 
+    if (cardEl.classList.contains('is-video')) {
+      svgPath.setAttribute('d', '');
+      return;
+    }
     if (w < 120 || h < 80) {
       svgPath.setAttribute('d', `M ${R} 0 H ${w - R} A ${R} ${R} 0 0 1 ${w} ${R} V ${h - R} A ${R} ${R} 0 0 1 ${w - R} ${h} H ${R} A ${R} ${R} 0 0 1 0 ${h - R} V ${R} A ${R} ${R} 0 0 1 ${R} 0 Z`);
       return;
@@ -948,6 +1000,7 @@
     const addSongBtn = document.getElementById('bento-add-song-btn');
     const compareBtn = document.getElementById('bento-compare-btn');
     const strongsBtn = document.getElementById('bento-strongs-btn');
+    const concordanceBtn = document.getElementById('bento-concordance-search-btn');
 
     const isEditing = Boolean(!isBibleDeck && state.isDeckEditingSong && state.isDeckEditingSong === state.activeSongId);
     if (isEditing) isMedley = false;
@@ -986,6 +1039,9 @@
     if (strongsBtn) {
       strongsBtn.style.display = isBibleDeck ? 'inline-flex' : 'none';
       strongsBtn.classList.toggle('active', Boolean(state.strongsMode));
+    }
+    if (concordanceBtn) {
+      concordanceBtn.style.display = isBibleDeck ? 'inline-flex' : 'none';
     }
 
     // Return to Live tally button
@@ -3257,7 +3313,7 @@
     const songs = (state.aiDetectedSongs || []).map(v => ({ ...v, _type: 'song' }));
     const quotations = (state.paraphraseMatches || []).map(v => ({ ...v, _type: 'quotation' }));
     const concordance = (state.aiDetectedConcordance || []).map(v => ({ ...v, _type: 'concordance' }));
-    window.renderDetectionCards?.(listEl, [...verses, ...songs, ...quotations, ...concordance], { bento: true });
+    window.renderDetectionCards?.(listEl, [...verses, ...songs, ...quotations, ...concordance]);
   }
 
 
@@ -3341,6 +3397,8 @@
   }
 
   window.clearBentoSearch = function() {
+    clearTimeout(_bentoSearchDebounceTimer);
+    _bentoSearchDebounceTimer = null;
     const input = document.getElementById('bento-search-input');
     const clearBtn = document.getElementById('bento-search-clear');
     if (input) {
@@ -3694,6 +3752,10 @@
     const book = targetBook || (popover && popover._targetBook) || (window.state && (window.state.pendingVerseSelection?.book || window.state.activeBibleBook)) || 'Genesis';
     const ch = parseInt(targetChapter || (popover && popover._targetChapter) || (window.state && (window.state.pendingVerseSelection?.chapter || window.state.activeBibleChapter)), 10) || 1;
     const vNum = parseInt(verseNum, 10) || 1;
+    const slideId = `bible_${book}_${ch}_${vNum}`;
+    const needsDeckRebuild = !window.state || window.state.activeDeckType !== 'bible' ||
+      window.state.activeBibleBook !== book || Number(window.state.activeBibleChapter) !== ch ||
+      !document.getElementById(`bento_card_${slideId}`);
 
     closeBentoVersePopover();
 
@@ -3704,12 +3766,14 @@
     window.state.expandedBibleBook = book;
     window.state.activeDeckType = 'bible';
     window.state.pendingVerseSelection = null;
-    window.state.liveEngagedDeck = null;
+    if (needsDeckRebuild) window.state.liveEngagedDeck = null;
     if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
 
-    // Transition the main deck and library synchronously to the newly selected passage
-    if (typeof window.renderLibrary === 'function') window.renderLibrary();
-    if (typeof window.renderDeck === 'function') window.renderDeck(true);
+    // Existing chapter cards stay mounted while the operator moves between verses.
+    if (needsDeckRebuild) {
+      if (typeof window.renderLibrary === 'function') window.renderLibrary();
+      if (typeof window.renderDeck === 'function') window.renderDeck(true);
+    }
     if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
 
     const badge = document.getElementById('bento-active-verse-badge');
@@ -3721,8 +3785,7 @@
       }
     }
 
-    const slideId = `bible_${book}_${ch}_${vNum}`;
-    requestAnimationFrame(() => {
+    {
       const card = document.getElementById(`bento_card_${slideId}`);
       if (card) {
         card.classList.add('bento-card-pulse');
@@ -3736,7 +3799,7 @@
       if (typeof window.scrollToActiveSlide === 'function') {
         window.scrollToActiveSlide({ center: true });
       }
-    });
+    }
   };
 
   window.toggleBentoVersePopover = function(event) {

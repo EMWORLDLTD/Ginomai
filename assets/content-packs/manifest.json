@@ -1,0 +1,457 @@
+{
+  "schemaVersion": 1,
+  "baseUrl": "https://github.com/EMWORLDLTD/Ginomai/releases/download/content-v1",
+  "packs": [
+    {
+      "code": "KJV_STRONGS",
+      "name": "King James Version with Strong's Concordance",
+      "version": "e7a08aef140e2bc6af42df2117fa44ead1e78eb60dd5b0ee37ec2e221a08dd19",
+      "files": [
+        {
+          "path": "bibles/KJV_STRONGS.json",
+          "asset": "KJV_STRONGS--KJV_STRONGS--8e4816cc03c87d82.json.gz",
+          "bytes": 7571797,
+          "downloadBytes": 1941847,
+          "sha256": "8e4816cc03c87d82471f69aad4f7d51282d19de5cb1f5de9d6fa0269e30aba9f",
+          "compressedSha256": "a6afcfe679296fb5f75e39c5740b868a24fc56ac0a16b07b0599c2ea720c60f3"
+        },
+        {
+          "path": "lexicon/strongs_unified.json",
+          "asset": "KJV_STRONGS--strongs_unified--78962b6134f8785d.json.gz",
+          "bytes": 12977185,
+          "downloadBytes": 2094203,
+          "sha256": "78962b6134f8785dce9abfaf68f077627ca5b54b273dcb32c73c85ce7f1df068",
+          "compressedSha256": "ee7ab6888edeb0d0528016a6e2af83646c7a3956018f952ef95f572133fd8263"
+        },
+        {
+          "path": "lexicon/strongs_lexicon.json",
+          "asset": "KJV_STRONGS--strongs_lexicon--2cdc4c89a15e85e0.json.gz",
+          "bytes": 10302352,
+          "downloadBytes": 1705494,
+          "sha256": "2cdc4c89a15e85e0f3dbeb7498587db3f27664e46146f6a2c76839856c6fa0ca",
+          "compressedSha256": "e6a144e7d573886eca5bff535d9c2cd53a5e6d304fd3e5612086ba1e3cc629e7"
+        }
+      ]
+    },
+    {
+      "code": "AMP",
+      "name": "Amplified Bible",
+      "version": "93c16b0729f635112d3e5d10b255123bd406d135bb52d9cf6e175696c466e23f",
+      "files": [
+        {
+          "path": "bibles/AMP.json",
+          "asset": "AMP--AMP--b38eecc77d027212.json.gz",
+          "bytes": 5437014,
+          "downloadBytes": 1656626,
+          "sha256": "b38eecc77d027212a896124538c34c367f8d0a9d9ae7637116e9d2e070b32ca1",
+          "compressedSha256": "df21ea00193487b3be7c54a053a90368ec17fa7e99e742dec9f6a2e84fef20a6"
+        }
+      ]
+    },
+    {
+      "code": "AMPC",
+      "name": "Amplified Classic Bible",
+      "version": "e38e0a4500b92c1056793753c003a64f0988d221954cb167b1d95d207f45ae2f",
+      "files": [
+        {
+          "path": "bibles/AMPC.json",
+          "asset": "AMPC--AMPC--2d052aa8aa25b16a.json.gz",
+          "bytes": 5430024,
+          "downloadBytes": 1656058,
+          "sha256": "2d052aa8aa25b16ad80ebd23db29900f7265ee3ac25ef5fc76d30aa7092d9500",
+          "compressedSha256": "dd28a1c04b9e5f9c6c7eb2b42313377c0eed5d82a80aaae50a33118d71224851"
+        }
+      ]
+    },
+    {
+      "code": "ASV",
+      "name": "American Standard Version",
+      "version": "edeb4845d2c02c05d3aa27e0269a9643afa845ac718e7c6c0b57d07ecf5e7044",
+      "files": [
+        {
+          "path": "bibles/ASV.json",
+          "asset": "ASV--ASV--4a348234bda4f49e.json.gz",
+          "bytes": 4830310,
+          "downloadBytes": 1301623,
+          "sha256": "4a348234bda4f49e8b87a0f0f9b73f94e227c19526d2ccd8220762b13cfa1985",
+          "compressedSha256": "df9c9012f86ca6dee3fe43b1f17a9092b6527c84a3aaea94dfc57f094e03d1bc"
+        }
+      ]
+    },
+    {
+      "code": "BSB",
+      "name": "Berean Standard Bible",
+      "version": "61be38b602476005e7cdf3a9bf161f6b400ac6fff13c68d721e67408d2030b81",
+      "files": [
+        {
+          "path": "bibles/BSB.json",
+          "asset": "BSB--BSB--330786781024bf79.json.gz",
+          "bytes": 4560791,
+          "downloadBytes": 1306620,
+          "sha256": "330786781024bf79eef77ef2a4d77e1a88339dbd890c1fa15a52c6c24e54d82b",
+          "compressedSha256": "078059193efbfe0fe98cab379d69055ef1cdfc16808b9d8ea161378530895918"
+        }
+      ]
+    },
+    {
+      "code": "CSB",
+      "name": "Christian Standard Bible",
+      "version": "8c06039dbb06f6de10e10eda3032b5a7c5ee7ab52128538762d0212bf0038af6",
+      "files": [
+        {
+          "path": "bibles/CSB.json",
+          "asset": "CSB--CSB--504466335303c6f3.json.gz",
+          "bytes": 4592874,
+          "downloadBytes": 1306221,
+          "sha256": "504466335303c6f376ef5cb12a6b690a61fce1564f3b900413cbacf7ad1718af",
+          "compressedSha256": "1300f26e5382b00fe7441647b3813485e88995c4d423038fd7deb68d1139e83d"
+        }
+      ]
+    },
+    {
+      "code": "DARBY",
+      "name": "Darby Bible",
+      "version": "0ca70805b98df4ac1152558e32ab3f6e9335a4a09c98378c3990afd1c5a08eae",
+      "files": [
+        {
+          "path": "bibles/DARBY.json",
+          "asset": "DARBY--DARBY--67dfe323ec8738c4.json.gz",
+          "bytes": 4791905,
+          "downloadBytes": 1310744,
+          "sha256": "67dfe323ec8738c43471f5ac90b9bcbd59e0dfdf79e32209993b7f0735ec1ffb",
+          "compressedSha256": "d857b82707c100fdcf4eefee9b83588859aab651eaf9525709f49dc6e2703f73"
+        }
+      ]
+    },
+    {
+      "code": "EASY",
+      "name": "EasyEnglish Bible",
+      "version": "72fe7ab09748cbc2bb74d37deea12bbbe97bb0c8c41994677ed1d512a3cdf51e",
+      "files": [
+        {
+          "path": "bibles/EASY.json",
+          "asset": "EASY--EASY--0077f25d83b072b7.json.gz",
+          "bytes": 5554031,
+          "downloadBytes": 1477118,
+          "sha256": "0077f25d83b072b7cc563c0e098468723c19047da90333e6380672173b903dbd",
+          "compressedSha256": "60d1c5521374aa71a1af5566accb1f054e56f99aeb076a8340ec96a52ac0ecb7"
+        }
+      ]
+    },
+    {
+      "code": "ERV",
+      "name": "Easy-to-Read Version",
+      "version": "374dab1c19174b6380ba92574d7d865c4abdb2f5ba6225bf1018b71eacbd119e",
+      "files": [
+        {
+          "path": "bibles/ERV.json",
+          "asset": "ERV--ERV--a7a2f95d5d5ebb13.json.gz",
+          "bytes": 5038688,
+          "downloadBytes": 1396076,
+          "sha256": "a7a2f95d5d5ebb13e3d8a462ba9bd09842720cc62bab58869b24faff272bef00",
+          "compressedSha256": "794bda17594c6c431c69b5584b54f02290007430227427cda5f2e9182b5d8ffb"
+        }
+      ]
+    },
+    {
+      "code": "ESV",
+      "name": "English Standard Version",
+      "version": "9a7a345520d4232aaafbd30251e1154d117531210066de058f1c0aba2c1c913e",
+      "files": [
+        {
+          "path": "bibles/ESV.json",
+          "asset": "ESV--ESV--d1a153d9a69d666f.json.gz",
+          "bytes": 4632285,
+          "downloadBytes": 1288346,
+          "sha256": "d1a153d9a69d666f8b2a72ec736ebc27ce39af889f35b1d8155c75a1033a087a",
+          "compressedSha256": "ce93fe4992351cff3f19049bb1d4d69c56238d8b77c3c4b91827d6ef17ae6682"
+        }
+      ]
+    },
+    {
+      "code": "GNT",
+      "name": "Good News Translation",
+      "version": "055e62cc214fd4c91f58c8f168a45fe10e5a76cb4012d31f92bcddb55b375569",
+      "files": [
+        {
+          "path": "bibles/GNT.json",
+          "asset": "GNT--GNT--05f312ee9bd73c95.json.gz",
+          "bytes": 4495830,
+          "downloadBytes": 1297551,
+          "sha256": "05f312ee9bd73c95c6a17fcc35642f373636c2de123db4d69c6a942344e9a9d7",
+          "compressedSha256": "804c8d110d295bf0e15b24a05f7e7f32ab27984202ad80655c605227f4adcb30"
+        }
+      ]
+    },
+    {
+      "code": "GW",
+      "name": "God's Word Translation",
+      "version": "bbd3dade4002945300230f9016b540c11cae3e53db211ac69a9eaed9aa75d62d",
+      "files": [
+        {
+          "path": "bibles/GW.json",
+          "asset": "GW--GW--80c7f936225177e7.json.gz",
+          "bytes": 4614703,
+          "downloadBytes": 1317559,
+          "sha256": "80c7f936225177e7c0defd1a619e896a45c38161ed95f5aa9f9242308abbd12b",
+          "compressedSha256": "b72c9043bab7aac8bae18ba101422330dff996101b6eb4e2545b573d335f15ec"
+        }
+      ]
+    },
+    {
+      "code": "HCSB",
+      "name": "Holman Christian Standard Bible",
+      "version": "ae43c4910f6f50ab54170b3e4bc6cd1dbcb24a0058b7278f7b546d89708f82c5",
+      "files": [
+        {
+          "path": "bibles/HCSB.json",
+          "asset": "HCSB--HCSB--0158e3c1aa8b17a0.json.gz",
+          "bytes": 4542736,
+          "downloadBytes": 1315490,
+          "sha256": "0158e3c1aa8b17a0a089bd45d5c0faa31b672f2d58f9aea23fcd99abeb5d2a3d",
+          "compressedSha256": "ee33ecbef8b98cca0b938e217f575d9f6f06dc274b6a9f3f8435a6cc439bc264"
+        }
+      ]
+    },
+    {
+      "code": "KJV",
+      "name": "King James Version",
+      "version": "8281ecfb0b5e4a00a8c3f90ec52266f8e94f0ab59f1c3637fc45ef313378c300",
+      "files": [
+        {
+          "path": "bibles/KJV.json",
+          "asset": "KJV--KJV--13e5c139f9f4abe6.json.gz",
+          "bytes": 4819971,
+          "downloadBytes": 1301787,
+          "sha256": "13e5c139f9f4abe67bfd98b88292e5c1e3b4b14f06096ffcb349aefb27bc9d5e",
+          "compressedSha256": "e4cfe049264bc886f5685f5cea1a4c2fb939fff358b2bfd0b6655d1de2ab3996"
+        }
+      ]
+    },
+    {
+      "code": "LSB",
+      "name": "Legacy Standard Bible",
+      "version": "e8e9429f87bea01018667d553055da4d8b373a2dfa1211d26b0e7f3317e69b8c",
+      "files": [
+        {
+          "path": "bibles/LSB.json",
+          "asset": "LSB--LSB--3a9b70376521972d.json.gz",
+          "bytes": 4815078,
+          "downloadBytes": 1333564,
+          "sha256": "3a9b70376521972d619b8fd6978a999cbb5646f0e4f6f711f516e612fed549c1",
+          "compressedSha256": "dbb8ae6ecb71227c3147127ad8b080def535ded0160e5b03735934a5b43e5559"
+        }
+      ]
+    },
+    {
+      "code": "MEV",
+      "name": "Modern English Version",
+      "version": "1f495f18b04dc952219e96837d92855206b2c73b8eeb6bba860964036ea6ddf3",
+      "files": [
+        {
+          "path": "bibles/MEV.json",
+          "asset": "MEV--MEV--99991a13c695c1ba.json.gz",
+          "bytes": 4684950,
+          "downloadBytes": 1305309,
+          "sha256": "99991a13c695c1bac00702e37fc983b08c45f48be1d95d22c0463dbaf869091c",
+          "compressedSha256": "78b170fc0613f256df70a9ae2b483d6879c7d2fdfbf8cf2864a5049764a2a216"
+        }
+      ]
+    },
+    {
+      "code": "NASB",
+      "name": "New American Standard Bible (1995)",
+      "version": "3128e977e7f08507d8047cbe63c0dc5cf4393624549dbaa30ef4097d7ad3d17e",
+      "files": [
+        {
+          "path": "bibles/NASB.json",
+          "asset": "NASB--NASB--bc0ac841d60f9e69.json.gz",
+          "bytes": 4751516,
+          "downloadBytes": 1338498,
+          "sha256": "bc0ac841d60f9e695b14742ceb00b86aa0611aa27300eac08e18f4e05c30b885",
+          "compressedSha256": "16b5c22ee83a1b9fe90dfb54a288679e923c556c2f6685f888fe5e91879b65f6"
+        }
+      ]
+    },
+    {
+      "code": "NASU",
+      "name": "New American Standard Update",
+      "version": "a44e9c612feb9e6163f97d695a0a20b05856f003a6e2be923459bca4b34a03ae",
+      "files": [
+        {
+          "path": "bibles/NASU.json",
+          "asset": "NASU--NASU--e08b2b1a77ce688a.json.gz",
+          "bytes": 4546233,
+          "downloadBytes": 1338895,
+          "sha256": "e08b2b1a77ce688a38a6b4e35fb9d80c7bd1bcf2d92f21545f91909b189657e7",
+          "compressedSha256": "881d12fe58377d4d94a4e3eb07e3e0201c51ea046c7cb022b61022a11597ad59"
+        }
+      ]
+    },
+    {
+      "code": "NET",
+      "name": "New English Translation",
+      "version": "4bcf2e936b647424b93530f334a98c81e4599be9832f30f3a2f1ef5213739ab4",
+      "files": [
+        {
+          "path": "bibles/NET.json",
+          "asset": "NET--NET--cd868ba0fe06b8af.json.gz",
+          "bytes": 4736667,
+          "downloadBytes": 1355440,
+          "sha256": "cd868ba0fe06b8afba0dd756d8635a93c6eaf2fb0b0120fafa8a2869c84053ed",
+          "compressedSha256": "0f971c29ab9ed4dea4ed4fceede9da3d3589b2702a96b82b90eeb3a7f7ea6d74"
+        }
+      ]
+    },
+    {
+      "code": "NIRV",
+      "name": "New International Reader's Version",
+      "version": "758e0a917b50fd977f719ef906b4012ab2a87a6f4ace8bfa57c7d592a7442d1a",
+      "files": [
+        {
+          "path": "bibles/NIRV.json",
+          "asset": "NIRV--NIRV--bc691484fb9d5226.json.gz",
+          "bytes": 5108474,
+          "downloadBytes": 1395616,
+          "sha256": "bc691484fb9d52263741f4430b09942942678a9e276a06f7edfc27b96255f71b",
+          "compressedSha256": "674aee6c07b848de993f6014348e5e95180170333b7dd4ce1e4688226fdf1c3d"
+        }
+      ]
+    },
+    {
+      "code": "NIV",
+      "name": "New International Version",
+      "version": "c6df8c49b069e6f2f298d51ada885e4992b100985ef9a1d688949745729b6c3f",
+      "files": [
+        {
+          "path": "bibles/NIV.json",
+          "asset": "NIV--NIV--6bc0f4b887a0ee17.json.gz",
+          "bytes": 4511555,
+          "downloadBytes": 1301651,
+          "sha256": "6bc0f4b887a0ee17e518458bdb5b73f239931a5f3e8df46d15acf4b8b54a457c",
+          "compressedSha256": "9d896bb909468529895888d113ea5bd2a5a51542a23ea739b3e51b2db3e5eb9d"
+        }
+      ]
+    },
+    {
+      "code": "NKJV",
+      "name": "New King James Version",
+      "version": "b9680b56b6dc6ddaa1f483cc009e30c4a9489960defbb24ac45e425e4233dc4a",
+      "files": [
+        {
+          "path": "bibles/NKJV.json",
+          "asset": "NKJV--NKJV--22342b07902946d8.json.gz",
+          "bytes": 4750497,
+          "downloadBytes": 1319851,
+          "sha256": "22342b07902946d8aeebfb1a4f7baed1af989f4b213e7c8b7923a3e164fb91e6",
+          "compressedSha256": "6551a5fa3ad5008a3565d0b5493f22f2fc7c7f709f23282b905fbbd9f521391b"
+        }
+      ]
+    },
+    {
+      "code": "NLT",
+      "name": "New Living Translation",
+      "version": "c3e9991a7e1ba86e14a311ec31fdcb8fcb4fde5cde0bb8b07059f55c9ec1882c",
+      "files": [
+        {
+          "path": "bibles/NLT.json",
+          "asset": "NLT--NLT--529dccb22c26a0cb.json.gz",
+          "bytes": 4661858,
+          "downloadBytes": 1384008,
+          "sha256": "529dccb22c26a0cb3e2c8cec865d383d25fcff39c75785c4480bf15a92f2196c",
+          "compressedSha256": "b3542ec0f90815f8c5957abf198e3a85bd6325adbe8c1d3399a1e7e28058e485"
+        }
+      ]
+    },
+    {
+      "code": "NRSV",
+      "name": "New Revised Standard Version",
+      "version": "a0164b1de3b7254d9ed1928124314dcb2ef724e17defd2230cb1a0eff6a3f69e",
+      "files": [
+        {
+          "path": "bibles/NRSV.json",
+          "asset": "NRSV--NRSV--6f3d1d76753a7d68.json.gz",
+          "bytes": 4605813,
+          "downloadBytes": 1301040,
+          "sha256": "6f3d1d76753a7d68963c54b32998b23a0178baaba8619453946211438213d545",
+          "compressedSha256": "9acc0815243c803258ddc63425c8ea7b084f91d5dad8eb19aca0c7e5b309e608"
+        }
+      ]
+    },
+    {
+      "code": "TPT",
+      "name": "The Passion Translation",
+      "version": "41fdcec1e33cade36ac0e47eb4458c4644b800beac81a25c6112479355ce4734",
+      "files": [
+        {
+          "path": "bibles/TPT.json",
+          "asset": "TPT--TPT--175b7a9ea573cd87.json.gz",
+          "bytes": 3349631,
+          "downloadBytes": 1053766,
+          "sha256": "175b7a9ea573cd87ea6971fdd147aa90dad9e6b6ff6ebc8c2c8c32bc06e40125",
+          "compressedSha256": "0123bac24ed8eef2c485137f3d73dc36fd79ded10a56f5e5b48d0027761e3d09"
+        }
+      ]
+    },
+    {
+      "code": "RSV",
+      "name": "Revised Standard Version",
+      "version": "07c40f8865d286854fddfa4069e00790393279254fa9600fb0657c94677a223d",
+      "files": [
+        {
+          "path": "bibles/RSV.json",
+          "asset": "RSV--RSV--63434370826b5db1.json.gz",
+          "bytes": 4638452,
+          "downloadBytes": 1289929,
+          "sha256": "63434370826b5db1dfe80ca0b9998d3236fd97aa4e928ffb4ce824e8dd904e21",
+          "compressedSha256": "f0542f275591725da2f84416eac552c21b78db8c2ff53ea0752b60166d5aac06"
+        }
+      ]
+    },
+    {
+      "code": "TLB",
+      "name": "The Living Bible",
+      "version": "d4330ace503ea01f1b9cca075050656a7e2a62db929059845d065504ad94714a",
+      "files": [
+        {
+          "path": "bibles/TLB.json",
+          "asset": "TLB--TLB--084e55633232580a.json.gz",
+          "bytes": 4522356,
+          "downloadBytes": 1405848,
+          "sha256": "084e55633232580a24702643c9f96a8ccbe5ac04a71e6b8688ade6431bc99879",
+          "compressedSha256": "fb2b84810d3a44a56c2734df716bca986a6f2a35b96c806d2b471afb9bfd69eb"
+        }
+      ]
+    },
+    {
+      "code": "TYNDALE",
+      "name": "Tyndale 1537",
+      "version": "a29cc5c868695d2b4c318fd2eda63ff8b351bb30fc716702d4a6f8b77cb7ae4f",
+      "files": [
+        {
+          "path": "bibles/TYNDALE.json",
+          "asset": "TYNDALE--TYNDALE--18fe38159d78dc25.json.gz",
+          "bytes": 4888528,
+          "downloadBytes": 1382512,
+          "sha256": "18fe38159d78dc255777cef78810434438e8448dfdcd328b3390cd42f6a7d25f",
+          "compressedSha256": "cbfd308e5c02937ebb5ed977bc72a6ef38a6a0606276d35ec0a144058426cc60"
+        }
+      ]
+    },
+    {
+      "code": "YLT",
+      "name": "Young's Literal Translation",
+      "version": "7d0c0f4845f990215b26c059add5acb0dd9ae359e5c39b5adc81b1d4e332fb1c",
+      "files": [
+        {
+          "path": "bibles/YLT.json",
+          "asset": "YLT--YLT--968712f9865a59cf.json.gz",
+          "bytes": 4849287,
+          "downloadBytes": 1307377,
+          "sha256": "968712f9865a59cf3bf9cd846094f5dff17ac7fd0052f009b450d787b5cf66d0",
+          "compressedSha256": "99952d980593448095d4bdd685cf2a71c0a8bc93c5be4d7570bfb3b2d15f11b8"
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -14,13 +14,13 @@ test('release metadata stays aligned across package, UI, server, and Electron', 
   const serverSource = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   const electronSource = fs.readFileSync(path.join(root, 'electron/main.js'), 'utf8');
 
-  assert.equal(pkg.version, '2.4.0');
-  assert.equal(pkg.build.productName, 'Ginomia');
+  assert.equal(pkg.version, '2.4.3');
+  assert.equal(pkg.build.productName, 'Ginomai');
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
-  assert.match(index, /Ginomia/);
-  assert.match(index, /Build 2\.4\.0/);
-  assert.doesNotMatch(index, /2\.4\.0-PRO|Ginomai Pro|\bGinomia Pro\b/);
+  assert.match(index, /Ginomai/);
+  assert.match(index, /Build 2\.4\.3/);
+  assert.doesNotMatch(index, /2\.4\.0-PRO|Ginomai Pro|\bGinomai Pro\b/);
   assert.match(serverSource, /version: packageMetadata\.version/);
   assert.match(electronSource, /app\.getVersion\(\)/);
 });
@@ -51,12 +51,21 @@ test('remote control requires pairing, enforces permissions without a client fla
   const session = await (await request('/api/session', undefined, host)).json();
   assert.match(session.pairingCode, /^\d{6}$/);
   assert.equal((await (await request('/api/session')).json()).pairingCode, undefined);
+  assert.equal((await (await request('/api/session')).json()).paired, false);
   assert.equal((await request('/api/session/join', { name: 'Test', pairingCode: 'bad' })).status, 403);
   const join = await request('/api/session/join', { name: 'Test operator', pairingCode: session.pairingCode });
   assert.equal(join.status, 200);
   const operator = join.headers.get('set-cookie').split(';')[0];
   const joined = await join.json();
   assert.ok(joined.operatorId);
+  assert.equal((await (await request('/api/session', undefined, operator)).json()).paired, true);
+  assert.equal((await request('/api/session/start', {}, host)).status, 200);
+  const repeatedStart = await (await request('/api/session', undefined, host)).json();
+  assert.equal(repeatedStart.pairingCode, session.pairingCode, 'Repeated Start preserves the current code');
+  assert.equal(repeatedStart.revision, session.revision);
+  assert.equal(repeatedStart.connectedOperators.length, 1);
+  assert.equal((await (await request('/api/session', undefined, operator)).json()).paired, true);
+  assert.equal((await request('/api/session/join', {name:'Stale',pairingCode:session.pairingCode,revision:session.revision-1})).status,409);
   assert.equal((await request('/api/session/stop', {}, operator)).status, 403);
   assert.equal((await request('/api/sync', { text: 'Bypass' }, operator)).status, 403);
   assert.equal((await request('/api/hold', { held: true }, host)).status, 200);
@@ -94,6 +103,14 @@ test('remote control requires pairing, enforces permissions without a client fla
     while (!(await reader.read()).done) { /* Drain queued events before the closed stream. */ }
   }
   assert.equal((await request('/api/control', { type: 'CLEAR' }, operator)).status, 403);
+  const stoppedSession = await (await request('/api/session', undefined, operator)).json();
+  assert.equal(stoppedSession.enabled, false);
+  assert.equal(stoppedSession.paired, false);
+  await request('/api/session/start', {}, host);
+  const restartedSession = await (await request('/api/session', undefined, operator)).json();
+  assert.equal(restartedSession.enabled, true);
+  assert.equal(restartedSession.paired, false);
+  assert.equal(restartedSession.pairingCode, undefined);
 });
 
 test('workspace patches cannot smuggle projection, deletion, or host settings', () => {
@@ -197,7 +214,7 @@ test('same-deck projection is immediate, preserves cards, and updates the previe
   const source = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
   const project = source.slice(source.indexOf('function applyProjectedSongTheme('), source.indexOf('function sendRemoteCommand('));
   const calls = [];
-  const state = { scriptureHistory: [], currentTab: 'songs' };
+  const state = { scriptureHistory: [], currentTab: 'songs', activeDeckType: 'song' };
   const themes = [];
   const window = { SONGS_DATABASE: [{ id: 'song_test' }] };
   const context = vm.createContext({ window, state, REMOTE_MODE: false, document: { getElementById: () => null },

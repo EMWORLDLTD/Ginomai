@@ -1,4 +1,4 @@
-# Ginomia
+﻿# Ginomai
 
 > **The Word in Motion**
 
@@ -70,7 +70,7 @@ npm run dist:mac:apple
 npm run dist:mac:intel
 ```
 
-The branded installers use Ginomia's compact feature showcase and offline setup.
+The branded installers use Ginomai's compact feature showcase and offline setup.
 See [installer build and validation notes](docs/installer.md). Use
 `npm run installer:preview` for a read-only preview of the setup interface.
 

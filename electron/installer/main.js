@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -25,9 +25,9 @@ app.whenReady().then(async () => {
   const manifest = preview ? { version:app.getVersion(), platform } : JSON.parse(fs.readFileSync(path.join(resources, 'installer-manifest.json'), 'utf8'));
   let directory;
   if (platform === 'darwin') {
-    try { await fs.promises.access('/Applications', fs.constants.W_OK); directory = '/Applications/Ginomia.app'; }
-    catch { directory = path.join(app.getPath('home'), 'Applications', 'Ginomia.app'); }
-  } else directory = path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'Programs', 'Ginomia');
+    try { await fs.promises.access('/Applications', fs.constants.W_OK); directory = '/Applications/Ginomai.app'; }
+    catch { directory = path.join(app.getPath('home'), 'Applications', 'Ginomai.app'); }
+  } else directory = path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'Programs', 'Ginomai');
 
   engine = new InstallEngine({ platform, resources, manifest, directory, onProgress:update => {
     if (window && !window.isDestroyed()) window.webContents.send('setup:progress', update);
@@ -36,7 +36,7 @@ app.whenReady().then(async () => {
   window = new BrowserWindow({
     width:Math.min(840, area.width), height:Math.min(570, area.height), minWidth:640,
     resizable:false, maximizable:false, fullscreenable:false, frame:false, show:false,
-    backgroundColor:'#131218', title:platform === 'darwin' ? 'Install Ginomia' : 'Ginomia Setup',
+    backgroundColor:'#131218', title:platform === 'darwin' ? 'Install Ginomai' : 'Ginomai Setup',
     webPreferences:{ preload:path.join(__dirname, 'preload.js'), contextIsolation:true, nodeIntegration:false, sandbox:true }
   });
   window.setMenu(null);
@@ -58,9 +58,9 @@ app.whenReady().then(async () => {
   });
   handle('choose-location', async () => {
     if (engine.busy || engine.complete || preview) return null;
-    const result = await dialog.showOpenDialog(window, { title:'Choose Ginomia installation folder', defaultPath:path.dirname(engine.directory), properties:['openDirectory', 'createDirectory'] });
+    const result = await dialog.showOpenDialog(window, { title:'Choose Ginomai installation folder', defaultPath:path.dirname(engine.directory), properties:['openDirectory', 'createDirectory'] });
     if (result.canceled) return null;
-    engine.setDirectory(path.join(result.filePaths[0], platform === 'darwin' ? 'Ginomia.app' : 'Ginomia'));
+    engine.setDirectory(path.join(result.filePaths[0], platform === 'darwin' ? 'Ginomai.app' : 'Ginomai'));
     return engine.directory;
   });
   handle('install', options => {
@@ -69,13 +69,13 @@ app.whenReady().then(async () => {
     return engine.install({ desktopShortcut:options.desktopShortcut });
   });
   handle('launch', async () => {
-    if (!engine.complete) throw new Error('Finish installing Ginomia first.');
-    const executable = platform === 'darwin' ? engine.directory : path.join(engine.directory, 'Ginomia.exe');
+    if (!engine.complete) throw new Error('Finish installing Ginomai first.');
+    const executable = platform === 'darwin' ? engine.directory : path.join(engine.directory, 'Ginomai.exe');
     const error = await shell.openPath(executable);
     if (error) throw new Error(error);
     app.quit();
   });
   if (preview) await window.loadFile(path.join(__dirname, 'index.html'), { query:{ platform } });
   else await window.loadFile(path.join(__dirname, 'index.html'));
-}).catch(error => { dialog.showErrorBox('Ginomia Setup could not start', error.message); app.quit(); });
+}).catch(error => { dialog.showErrorBox('Ginomai Setup could not start', error.message); app.quit(); });
 app.on('window-all-closed', () => app.quit());

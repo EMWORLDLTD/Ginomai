@@ -1,4 +1,4 @@
-const test = require('node:test');
+﻿const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -143,7 +143,7 @@ test('LiveAlertEngine: Filter and search saved announcements', () => {
 
   engine.savedAnnouncements = [
     { id: '1', tag: 'Parking', text: 'Silver Toyota plate ABC-123 is blocking the driveway.' },
-    { id: '2', tag: 'Welcome', text: 'Welcome to Ginomia sanctuary service.' },
+    { id: '2', tag: 'Welcome', text: 'Welcome to Ginomai sanctuary service.' },
     { id: '3', tag: 'Offering', text: 'Tithe and offering envelopes are available at the ushers desk.' }
   ];
 

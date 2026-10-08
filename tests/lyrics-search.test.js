@@ -10,7 +10,7 @@ test('Local Lyrics Search: resilient matching across line breaks, punctuation, a
 
   // Extract normalizeSearchText, extractSnippetAroundMatch, getSongSearchIndex, matchSongQuery
   const startIdx = appJsCode.indexOf('function normalizeSearchText');
-  const endIdx = appJsCode.indexOf('// Render Zone 1 Library');
+  const endIdx = appJsCode.indexOf('// Render the Bento library');
   const matchingCode = appJsCode.slice(startIdx, endIdx);
 
   const sandbox = {

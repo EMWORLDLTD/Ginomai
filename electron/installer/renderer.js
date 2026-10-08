@@ -1,7 +1,7 @@
-'use strict';
+﻿'use strict';
 (() => {
   const byId = id => document.getElementById(id);
-  const api = window.ginomiaInstaller;
+  const api = window.ginomaiInstaller;
   let preview = !api;
   const features = [0, 1, 2].map(index => byId(`feature-${index}`));
   const selectors = [...document.querySelectorAll('[data-feature]')];
@@ -45,7 +45,7 @@
     byId('progress-fill').style.width = percent === null ? '' : `${percent}%`;
     byId('progress-value').textContent = percent === null ? '' : `${percent}%`;
     primary.disabled = state === 'installing' || preview;
-    primary.textContent = state === 'complete' ? 'Open Ginomia' : state === 'installing' ? 'Installing…' : state === 'error' ? 'Try again' : 'Install Ginomia';
+    primary.textContent = state === 'complete' ? 'Open Ginomai' : state === 'installing' ? 'Installing…' : state === 'error' ? 'Try again' : 'Install Ginomai';
     byId('desktop-shortcut').disabled = state === 'installing' || state === 'complete' || preview;
     byId('change-location').disabled = state === 'installing' || state === 'complete' || preview;
     for (const id of ['close', 'mac-close']) byId(id).disabled = state === 'installing';
@@ -70,7 +70,7 @@
       catch (error) { byId('status-message').textContent = error.message; }
       return;
     }
-    update({ state:'installing', heading:'Preparing Ginomia', message:'Checking the installation package…', percent:null });
+    update({ state:'installing', heading:'Preparing Ginomai', message:'Checking the installation package…', percent:null });
     try { await api.install({ desktopShortcut:byId('desktop-shortcut').checked }); }
     catch (error) { update({ state:'error', heading:'Installation needs attention', message:error.message, percent:null }); }
   });
@@ -82,10 +82,10 @@
     };
     preview = !api || Boolean(info.preview);
     document.body.dataset.platform = info.platform;
-    byId('window-title').textContent = info.platform === 'darwin' ? 'Install Ginomia' : 'Ginomia Setup';
+    byId('window-title').textContent = info.platform === 'darwin' ? 'Install Ginomai' : 'Ginomai Setup';
     byId('shortcut-option').hidden = info.platform === 'darwin';
     byId('install-location').textContent = info.directory;
-    byId('version-label').textContent = `Ginomia ${info.version}${preview ? ' · Design preview' : ''}`;
+    byId('version-label').textContent = `Ginomai ${info.version}${preview ? ' · Design preview' : ''}`;
     showFeature(info.platform === 'darwin' ? 1 : 0);
     if (api) api.onProgress(update);
     if (preview) {

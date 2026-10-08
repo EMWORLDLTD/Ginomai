@@ -4,11 +4,22 @@
   window.normalizeStreamAppearance = (value = {}) => ({
     referenceStyle: value.referenceStyle === 'tab' ? 'tab' : 'inline',
     surface: ['solid', 'image', 'none'].includes(value.surface) ? value.surface : 'solid',
+    bottomFade: value.bottomFade === true,
     opacity: clamp(value.opacity, 0, 100, 90),
     height: [20, 28, 35].includes(Number(value.height)) ? Number(value.height) : 28,
     position: clamp(value.position, 0, 100, 50),
-    imageUrl: /^\/media\/uploads\/[a-zA-Z0-9_.-]+$/.test(value.imageUrl || '') ? value.imageUrl : ''
+    imageUrl: /^\/media\/uploads\/[a-zA-Z0-9_.-]+$/.test(value.imageUrl || '') || /^\/presentation\/files\/media_[a-f0-9-]+(?:-page-[1-9]\d*(?:-thumb)?)?\.(png|jpe?g|webp|gif|avif)$/.test(value.imageUrl || '') ? value.imageUrl : ''
   });
+  window.applyStreamBottomFade = (layer, data, enabled) => {
+    if (!layer) return;
+    const style = window.normalizeStreamAppearance(data.streamAppearance || {});
+    const visible = enabled && style.bottomFade && (data.transparentBg || style.surface === 'none') &&
+      !data.clear && !data.blackout && data.livestreamActive !== false &&
+      !data.isLexicon && !['lexicon', 'media', 'countdown'].includes(data.contentType) &&
+      !String(data.slideId || '').startsWith('lexicon_') && Boolean(data.text || data.reference);
+    layer.hidden = !visible;
+    layer.style.setProperty('--broadcast-fade-opacity', style.opacity / 100);
+  };
   window.applyStreamAppearance = (box, data, enabled) => {
     const active = enabled && !!data.streamAppearance && !data.isLexicon && data.contentType !== 'lexicon';
     box.classList.toggle('broadcast-card', active);

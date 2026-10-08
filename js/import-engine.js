@@ -1,4 +1,4 @@
-// Import Engine & Online Repository Service for Ginomia
+﻿// Import Engine & Online Repository Service for Ginomai
 
 // Canonical Bible Books & Aliases Map
 const CANONICAL_BIBLE_BOOKS = [
@@ -532,7 +532,7 @@ class LibraryImportEngine {
     return Boolean(json.title && (json.stanzas || json.lyrics || json.author));
   }
 
-  // Universal Bible Parser: parses JSON, XML, USFM, CSV, or Text into normalized Ginomia Bible object
+  // Universal Bible Parser: parses JSON, XML, USFM, CSV, or Text into normalized Ginomai Bible object
   parseBibleContent(content, fileName = 'Imported Bible') {
     const rawTrimmed = typeof content === 'string' ? content.trim() : '';
     const defaultCode = (fileName || 'BIBLE').replace(/\.[^/.]+$/, "").toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 10) || 'CUSTOM';
@@ -1473,7 +1473,7 @@ class LibraryImportEngine {
     try {
       const directUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(qTerm)}`;
       const resp = await fetch(directUrl, {
-        headers: { 'User-Agent': 'Ginomia/1.0' },
+        headers: { 'User-Agent': 'Ginomai/1.0' },
         signal: AbortSignal.timeout(5000)
       });
       if (resp.ok) {
@@ -1559,7 +1559,7 @@ class LibraryImportEngine {
 
             try {
               const lrcUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackTitle)}&artist_name=${encodeURIComponent(trackArtist)}`;
-              const lrcRes = await fetch(lrcUrl, { headers: { 'User-Agent': 'Ginomia/1.0' }, signal: AbortSignal.timeout(3000) });
+              const lrcRes = await fetch(lrcUrl, { headers: { 'User-Agent': 'Ginomai/1.0' }, signal: AbortSignal.timeout(3000) });
               if (lrcRes.ok) {
                 const lrcData = await lrcRes.json();
                 const rawLyrics = lrcData.plainLyrics || lrcData.syncedLyrics;
@@ -1644,6 +1644,10 @@ class LibraryImportEngine {
   async downloadCloudBible(code, name = '', onProgress = null) {
     if (!code) throw new Error('Bible code required');
     const upperCode = code.toUpperCase().trim();
+
+    if (typeof window.ensureContentPack === 'function') {
+      await window.ensureContentPack(upperCode, { prompt: false });
+    }
 
     if (typeof onProgress === 'function') onProgress({ status: 'downloading', percent: 20 });
 
@@ -1748,7 +1752,7 @@ class LibraryImportEngine {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ginomia_library_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `ginomai_library_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1815,7 +1819,7 @@ class LibraryImportEngine {
       .trim();
   }
 
-  // Convert VideoPsalm song object into Ginomia song format
+  // Convert VideoPsalm song object into Ginomai song format
   convertVideoPsalmSong(vpSong, songbookName = 'VideoPsalm Import', mediaMap = {}) {
     const rawTitle = (vpSong.Text || (vpSong.Verses && vpSong.Verses[0] && vpSong.Verses[0].Text) || 'Untitled Song').trim();
     const title = rawTitle.split('\n')[0].replace(/\[.*?\]/g, '').trim() || 'Untitled Song';

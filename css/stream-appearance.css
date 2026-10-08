@@ -1,3 +1,5 @@
+#stream-bottom-fade { position:absolute; inset:auto 0 0; height:35%; z-index:2; pointer-events:none; background:linear-gradient(to top,#000 0%,rgba(0,0,0,.72) 42%,transparent 100%); opacity:var(--broadcast-fade-opacity,.9); }
+#stream-bottom-fade[hidden] { display:none !important; }
 .card-box.broadcast-card { background:var(--broadcast-surface) !important; background-size:cover !important; background-position:var(--broadcast-image-position) !important; border:1px solid #ffffff26; border-radius:40px; padding:24px 40px; box-shadow:none !important; }
 .card-box.broadcast-card.transparent-bg,.card-box.broadcast-card.broadcast-text-only { border:0; }
 .card-box.broadcast-card .content-line { max-height:none; overflow:visible; }

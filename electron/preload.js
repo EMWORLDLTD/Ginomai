@@ -47,8 +47,23 @@ contextBridge.exposeInMainWorld('desktopApi', {
   },
 
   // Over-The-Air (OTA) Updates
+  getUpdateStatus: () => ipcRenderer.invoke('desktop:get-update-status'),
+  getUpdatePreferences: () => ipcRenderer.invoke('desktop:get-update-preferences'),
+  setUpdatePreferences: (preferences) => ipcRenderer.invoke('desktop:set-update-preferences', preferences),
   checkForUpdates: () => ipcRenderer.invoke('desktop:check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('desktop:download-update'),
+  cancelUpdateDownload: () => ipcRenderer.invoke('desktop:cancel-update-download'),
   installUpdate: () => ipcRenderer.invoke('desktop:install-update'),
+  onUpdateStatus: (callback) => {
+    const handler = (event, state) => callback(state);
+    ipcRenderer.on('desktop:update-status', handler);
+    return () => ipcRenderer.removeListener('desktop:update-status', handler);
+  },
+  onOpenUpdates: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('desktop:open-updates', handler);
+    return () => ipcRenderer.removeListener('desktop:open-updates', handler);
+  },
   onUpdateAvailable: (callback) => {
     const handler = (event, info) => callback(info);
     ipcRenderer.on('desktop:update-available', handler);
@@ -63,5 +78,10 @@ contextBridge.exposeInMainWorld('desktopApi', {
     const handler = (event, progress) => callback(progress);
     ipcRenderer.on('desktop:update-download-progress', handler);
     return () => ipcRenderer.removeListener('desktop:update-download-progress', handler);
+  },
+  onUpdateError: (callback) => {
+    const handler = (event, message) => callback(message);
+    ipcRenderer.on('desktop:update-error', handler);
+    return () => ipcRenderer.removeListener('desktop:update-error', handler);
   }
 });

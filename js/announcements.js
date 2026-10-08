@@ -1,4 +1,4 @@
-// Ginomia - Live Alert & Announcement Hub Engine
+﻿// Ginomai - Live Alert & Announcement Hub Engine
 'use strict';
 
 (function() {

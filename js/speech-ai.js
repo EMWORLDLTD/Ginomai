@@ -1,4 +1,4 @@
-// Ginomia - Web Speech AI & Intelligent Bible / Song Detection Engine
+﻿// Ginomai - Web Speech AI & Intelligent Bible / Song Detection Engine
 'use strict';
 
 class SpeechAiEngine {

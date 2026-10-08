@@ -1,4 +1,4 @@
-# Branded Ginomia installers
+﻿# Branded Ginomai installers
 
 Setup uses the approved compact dark/purple design, with three feature slides
 and installation progress. The 840 × 570 window grows only when Details opens.
@@ -18,16 +18,16 @@ npm run dist:mac:intel
 Build macOS on a Mac. Cross-building Windows requires the normal electron-builder
 prerequisites. Artifacts are written to `installers/`:
 
-- `Ginomia-Setup-<version>-win-x64.exe`: branded Windows setup.
-- `Ginomia-Setup-<version>-mac-arm64.dmg`: Apple Silicon setup.
-- `Ginomia-Setup-<version>-mac-x64.dmg`: Intel Mac setup.
+- `Ginomai-Setup-<version>-win-x64.exe`: branded Windows setup.
+- `Ginomai-Setup-<version>-mac-arm64.dmg`: Apple Silicon setup.
+- `Ginomai-Setup-<version>-mac-x64.dmg`: Intel Mac setup.
 - Native NSIS, portable Windows and macOS ZIP artifacts remain available for
   fallback installation and the app's existing updater.
 
-On macOS, open the DMG and double-click **Install Ginomia**. Setup copies Ginomia
+On macOS, open the DMG and double-click **Install Ginomai**. Setup copies Ginomai
 into Applications. If `/Applications` is not writable, it defaults to the user's
 `~/Applications`; Details → Change selects another parent folder.
-On Windows, run the branded EXE and click **Install Ginomia**. Setup defaults to
+On Windows, run the branded EXE and click **Install Ginomai**. Setup defaults to
 the current user's application folder. The embedded NSIS installer maintains
 Windows uninstall entries, shortcuts and upgrade logic.
 
@@ -36,10 +36,10 @@ reliable extraction percentages. macOS measures bytes in the staging bundle.
 Both show 100% only after verifying the installed app archive. Windows also
 verifies the embedded installer SHA-256 before execution. macOS copies with
 `ditto` to preserve modes, symlinks and signing metadata, verifies signed bundles,
-and stages updates before replacing the existing Ginomia bundle. An unrelated
-app is never replaced. Close Ginomia before a Mac update.
+and stages updates before replacing the existing Ginomai bundle. An unrelated
+app is never replaced. Close Ginomai before a Mac update.
 Setup cannot close during installation but can minimize. Errors remain visible
-and can be retried. **Open Ginomia** launches the installed app.
+and can be retried. **Open Ginomai** launches the installed app.
 
 ## Preview and validation
 
@@ -65,6 +65,13 @@ Local unsigned builds are for testing.
 `dist:publish` retains native updater publishing. Branded setup artifacts stay
 local for distribution after platform smoke tests. `--native-only` builds native
 artifacts without wrapping them. The wrapper version comes from the root package.
+
+Standard app builds keep their GitHub update feed even when upload is disabled.
+Use `node scripts/build-desktop.js --cloud-content --native-only` to prepare the
+Windows installer, blockmap and `latest.yml` locally. Upload those three files to
+a stable app release with a higher version than the installed app; keep the
+content-packs release separate. Earlier local installers built without an update
+feed need one manual installation of 2.4.1 before future automatic updates work.
 
 Before release, test a clean install, upgrade, selected folder, shortcut off/on,
 retry after failure, app launch, and Windows uninstall on actual platform hardware.
