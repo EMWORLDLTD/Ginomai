@@ -16,9 +16,10 @@
   <link rel="stylesheet" href="css/broadcast-hub.css?v=20261005-01">
   <link rel="stylesheet" href="css/stage-preview.css?v=20260927-01">
   <link rel="stylesheet" href="css/presentation-controls.css">
-  <link rel="stylesheet" href="css/presentation-media.css?v=20261006-05">
+  <link rel="stylesheet" href="css/presentation-media.css?v=20261008-03">
   <link rel="stylesheet" href="css/announcements.css?v=20260928-01">
   <link rel="stylesheet" href="css/app-updates.css">
+  <link rel="stylesheet" href="css/desktop-titlebar.css">
   <script src="js/accessibility.js"></script>
   <style id="sf-deck-grid-guarantee">
     .bento-single-deck:not(:has(> .bento-empty-unit.hero)),
@@ -48,6 +49,21 @@
   <script src="js/bento-integration.js?v=20260903-13"></script>
 </head>
 <body data-theme-style="bento" data-theme-mode="dark">
+
+  <header id="desktop-titlebar" hidden>
+    <nav class="desktop-menus" aria-label="Application menu" role="menubar">
+      <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" data-desktop-menu="File">File</button>
+      <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" data-desktop-menu="Projector">Projector</button>
+      <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" data-desktop-menu="View">View</button>
+      <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" data-desktop-menu="Help">Help</button>
+    </nav>
+    <div class="desktop-window-controls">
+      <button type="button" id="desktop-minimize" aria-label="Minimize" title="Minimize"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1 6h10"/></svg></button>
+      <button type="button" id="desktop-maximize" aria-label="Maximize" title="Maximize"><svg class="desktop-maximize-icon" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9"/></svg><svg class="desktop-restore-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 3.5v-2h7v7h-2"/><rect x="1.5" y="3.5" width="7" height="7"/></svg></button>
+      <button type="button" id="desktop-close" aria-label="Close" title="Close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m1.5 1.5 9 9m-9 0 9-9"/></svg></button>
+    </div>
+  </header>
+  <script src="js/desktop-titlebar.js"></script>
 
   <!-- BENTO STUDIO LAYOUT ROOT (Matches Styles/scriptureflow-studio-full.html) -->
   <div id="bento-layout-root" class="bento-app">
@@ -170,8 +186,9 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           <span>Projector</span>
         </button>
-<button type="button" id="desktop-update-indicator" class="bento-icon-btn sf-update-indicator" title="Software updates" aria-label="Software updates" aria-haspopup="dialog" aria-controls="update-panel-backdrop" aria-expanded="false" onclick="openUpdatePanel()" hidden>
+<button type="button" id="desktop-update-indicator" class="bento-icon-btn sf-update-indicator" title="Update available" aria-label="Update available" aria-haspopup="dialog" aria-controls="update-panel-backdrop" aria-expanded="false" onclick="openUpdatePanel()" hidden>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg>
+          <span>Update available</span>
           <span class="sf-update-dot" aria-hidden="true" hidden></span>
         </button>
 <button type="button" class="bento-icon-btn" title="Studio settings" onclick="openSettingsModal()">
@@ -1502,7 +1519,7 @@ My chains are gone, I've been set free..."></textarea>
           <div class="settings-version-tag">
             <div class="settings-version-title" style="font-weight:600;">GINOMAI</div>
             <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:2px;">
-              <span id="settings-build-version">Build 2.4.3</span>
+              <span id="settings-build-version">Build 2.4.4</span>
               <button id="check-update-btn-sidebar" type="button" onclick="checkForUpdates()" title="Check for software updates" style="background:none; border:none; color:var(--purple, #8a6dff); font-size:10px; font-weight:600; cursor:pointer; padding:0; text-decoration:underline;">Check</button>
             </div>
           </div>
@@ -3079,8 +3096,9 @@ My chains are gone, I've been set free..."></textarea>
   <script src="js/background-thumbnails.js"></script>
   <script src="js/stream-crop.js"></script>
   <script src="js/presentation-controls.js"></script>
-  <script src="js/presentation-model.js?v=20261005-02"></script>
+  <script src="js/presentation-model.js?v=20261008-01"></script>
   <script src="js/countdown-renderer.js"></script>
-  <script src="js/presentation-library.js?v=20261005-05"></script>
+  <script src="js/media-video-deck.js?v=20261008-02"></script>
+  <script src="js/presentation-library.js?v=20261008-01"></script>
 </body>
 </html>

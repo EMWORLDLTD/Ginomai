@@ -44,7 +44,16 @@
     return position;
   };
   const safeMediaUrl=url=>/^\/presentation\/files\/media_[a-f0-9-]+(?:-page-[1-9]\d*(?:-thumb)?)?\.(pdf|png|jpg|jpeg|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/.test(url || '') || /^Themes\/[a-zA-Z0-9_-]+\.(png|jpe?g|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/.test(url || '') || /^\/media\/uploads\/upload_[a-f0-9-]+\.(png|jpe?g|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/.test(url || '');
-  const api={formatCountdown,countdownAppearance,countdownBackground,countdownView,countdownDeadline,playbackPosition,safeMediaUrl};
+  const videoDeckSlots=slots=>Array.from({length:4},(_,index)=> {
+    const slot=Array.isArray(slots)?slots[index]:null;
+    if(!slot || typeof slot.assetId!=='string')return null;
+    return {assetId:slot.assetId,name:String(slot.name || 'Video'),cue:Number.isFinite(Number(slot.cue))?Math.max(0,Number(slot.cue)):0,
+      loop:!!slot.loop,volume:Number.isFinite(Number(slot.volume))?Math.max(0,Math.min(1,Number(slot.volume))):1,
+      destination:['sanctuary','livestream'].includes(slot.destination)?slot.destination:'both',liveMuted:!!slot.liveMuted};
+  });
+  const videoSoundEnabled=(playback,target,embedded=false)=>!embedded && playback?.muted!==true &&
+    (playback?.soundTarget==='both' || playback?.soundTarget===target);
+  const api={formatCountdown,countdownAppearance,countdownBackground,countdownView,countdownDeadline,playbackPosition,safeMediaUrl,videoDeckSlots,videoSoundEnabled};
   if(typeof module!=='undefined'&&module.exports) module.exports=api;
   else root.PresentationModel=api;
 })(typeof window!=='undefined'?window:globalThis);

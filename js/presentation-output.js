@@ -21,9 +21,17 @@
       const expected=window.PresentationModel.playbackPosition(playback,now,video.duration);
       if(Math.abs(video.currentTime-expected)>.35) video.currentTime=expected;
       video.loop=!!playback.loop;
-      video.muted=embedded || playback.soundTarget!==outputTarget;
-      if(playback.playing && !blocked && (video.loop || expected<video.duration)) video.play().catch(()=>{blocked=true;error.hidden=false;error.textContent='Playback blocked. Open this output and enable playback.';});
-      else video.pause();
+      video.muted=!window.PresentationModel.videoSoundEnabled(playback,outputTarget,embedded);
+      if(playback.playing && !blocked && (video.loop || expected<video.duration)) {
+        if(video.paused) {
+          const requestedIdentity=identity;
+          video.play().catch(failure=>{
+            // Pause/replacement can cancel a pending play; it is not an autoplay failure.
+            if(requestedIdentity!==identity || !current?.playback?.playing || failure?.name==='AbortError')return;
+            blocked=true;error.hidden=false;error.textContent=failure?.name==='NotAllowedError'?'Playback blocked. Open this output and enable playback.':'Media could not be played. Check its format or relink its file.';
+          });
+        }
+      } else video.pause();
     }
   }
   video.addEventListener('loadedmetadata',tick);

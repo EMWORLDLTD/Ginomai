@@ -6,6 +6,7 @@ const path = require('path');
 const http = require('http');
 const { autoUpdater, CancellationToken } = require('electron-updater');
 const createUpdateController = require('./update-controller');
+const resolveDisplayRouting = require('./display-routing')();
 const serverModule = require('../server.js');
 
 // Optimize memory and enforce proactive V8 Garbage Collection
@@ -21,7 +22,9 @@ process.on('unhandledRejection', (reason, promise) => {
 
 let mainWindow = null;
 let projectorWindow = null;
+let projectorDisplayId = null;
 let stageWindow = null;
+let stageDisplayId = null;
 let currentStageMode = 'stage';
 let serverPort = Number(process.env.PORT) || 8500;
 
@@ -83,6 +86,7 @@ function createMainWindow(port) {
     show: false, // Don't show until page is loaded so there is never an empty/blank window
     backgroundColor: '#0a0f1d',
     title: '',
+    ...(process.platform !== 'darwin' ? { titleBarStyle: 'hidden' } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -93,6 +97,17 @@ function createMainWindow(port) {
 
   // Keep the native title blank; the app header already displays the brand.
   mainWindow.on('page-title-updated', (event) => event.preventDefault());
+
+  const notifyWindowState = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('desktop:window-state-changed', {
+        maximized: mainWindow.isMaximized(), fullscreen: mainWindow.isFullScreen()
+      });
+    }
+  };
+  for (const name of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) {
+    mainWindow.on(name, notifyWindowState);
+  }
 
   const appUrl = `http://localhost:${activePort}/index.html`;
 
@@ -126,16 +141,13 @@ function createMainWindow(port) {
 // ─── Projector / Audience Display Window ──────────────────────────────────────
 function launchProjectorWindow(targetDisplayId = null, targetMode = 'sanctuary') {
   const displays = screen.getAllDisplays();
-  let targetDisplay = null;
-
-  if (targetDisplayId) {
-    targetDisplay = displays.find((d) => String(d.id) === String(targetDisplayId));
-  }
-
-  // If no target specified or not found, prefer the first non-primary display (external monitor / projector)
-  if (!targetDisplay) {
-    const primaryDisplay = screen.getPrimaryDisplay();
-    targetDisplay = displays.find((d) => d.id !== primaryDisplay.id) || primaryDisplay;
+  const routing = resolveDisplayRouting(displays, screen.getPrimaryDisplay().id, targetDisplayId);
+  const targetDisplay = routing.audience;
+  if (!targetDisplay) return { success: false, message: 'Connect an external display to launch the sanctuary projector.' };
+  projectorDisplayId = targetDisplay.id;
+  // Sanctuary takes precedence when stage was already using this screen.
+  if (stageWindow && String(stageDisplayId) === String(targetDisplay.id)) {
+    launchStageWindow(routing.stage.id, currentStageMode);
   }
 
   if (projectorWindow) {
@@ -179,6 +191,7 @@ function launchProjectorWindow(targetDisplayId = null, targetMode = 'sanctuary')
 
   projectorWindow.on('closed', () => {
     projectorWindow = null;
+    projectorDisplayId = null;
     notifyProjectorStatus();
   });
 
@@ -196,12 +209,23 @@ function closeProjectorWindow() {
   return { success: false, message: 'Projector window not open' };
 }
 
+function getProjectorStatus() {
+  const displays = screen.getAllDisplays();
+  const primaryId = screen.getPrimaryDisplay().id;
+  const isOpen = !!projectorWindow && !projectorWindow.isDestroyed();
+  const connected = displays.find(d => String(d.id) === String(projectorDisplayId));
+  return {
+    isOpen,
+    displayId: isOpen ? projectorDisplayId : null,
+    displayBounds: isOpen ? projectorWindow.getBounds() : null,
+    isExternal: isOpen && !!connected && String(connected.id) !== String(primaryId) && String(screen.getDisplayMatching(projectorWindow.getBounds()).id) === String(connected.id),
+    hasExternalDisplay: displays.some(d => String(d.id) !== String(primaryId))
+  };
+}
+
 function notifyProjectorStatus() {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    const status = {
-      isOpen: !!projectorWindow,
-      displayId: projectorWindow ? projectorWindow.getBounds() : null
-    };
+    const status = getProjectorStatus();
     mainWindow.webContents.send('desktop:projector-status-changed', status);
   }
 }
@@ -210,26 +234,8 @@ function notifyProjectorStatus() {
 function launchStageWindow(targetDisplayId = null, stageMode = 'stage') {
   currentStageMode = stageMode || 'stage';
   const displays = screen.getAllDisplays();
-  let targetDisplay = null;
-
-  if (targetDisplayId) {
-    targetDisplay = displays.find((d) => String(d.id) === String(targetDisplayId));
-  }
-
-  // If no target specified or not found, prefer a secondary display not currently occupied by the projector
-  if (!targetDisplay) {
-    const primaryDisplay = screen.getPrimaryDisplay();
-    let projectorDisplayId = null;
-    if (projectorWindow) {
-      try {
-        projectorDisplayId = screen.getDisplayMatching(projectorWindow.getBounds()).id;
-      } catch (e) {}
-    }
-
-    targetDisplay = displays.find((d) => d.id !== primaryDisplay.id && d.id !== projectorDisplayId) ||
-                    displays.find((d) => d.id !== primaryDisplay.id) ||
-                    primaryDisplay;
-  }
+  const targetDisplay = resolveDisplayRouting(displays, screen.getPrimaryDisplay().id, projectorDisplayId, targetDisplayId).stage;
+  stageDisplayId = targetDisplay.id;
 
   const { x, y, width, height } = targetDisplay.bounds;
 
@@ -276,6 +282,7 @@ function launchStageWindow(targetDisplayId = null, stageMode = 'stage') {
 
   stageWindow.on('closed', () => {
     stageWindow = null;
+    stageDisplayId = null;
     notifyStageStatus();
   });
 
@@ -462,16 +469,49 @@ function setupAppMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  if (!isMac && mainWindow) mainWindow.setMenuBarVisibility(false);
 }
 
 // ─── IPC Communication Handlers ──────────────────────────────────────────────
+ipcMain.handle('desktop:get-window-state', event => {
+  if (!isUpdateHost(event)) return null;
+  return { maximized: mainWindow.isMaximized(), fullscreen: mainWindow.isFullScreen() };
+});
+
+ipcMain.handle('desktop:minimize', event => {
+  if (isUpdateHost(event)) mainWindow.minimize();
+});
+
+ipcMain.handle('desktop:maximize', event => {
+  if (!isUpdateHost(event)) return;
+  if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+  else if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+
+ipcMain.handle('desktop:close', event => {
+  if (isUpdateHost(event)) mainWindow.close();
+});
+
+ipcMain.handle('desktop:open-menu', (event, options = {}) => {
+  if (!isUpdateHost(event) || !['File', 'Projector', 'View', 'Help'].includes(options.label)) return;
+  const submenu = Menu.getApplicationMenu()?.items.find(item => item.label === options.label)?.submenu;
+  if (!submenu) return;
+  const zoom = mainWindow.webContents.getZoomFactor();
+  const x = Number.isFinite(options.x) ? Math.max(0, Math.round(options.x * zoom)) : 0;
+  const y = Number.isFinite(options.y) ? Math.max(0, Math.round(options.y * zoom)) : 32;
+  return new Promise(resolve => submenu.popup({ window: mainWindow, x, y, callback: resolve }));
+});
+
 ipcMain.handle('desktop:get-displays', () => {
   const displays = screen.getAllDisplays();
   const primaryDisplay = screen.getPrimaryDisplay();
+  const routing = resolveDisplayRouting(displays, primaryDisplay.id);
   return displays.map((d) => ({
     id: d.id,
     label: d.label || `Display ${d.id}`,
     isPrimary: d.id === primaryDisplay.id,
+    externalOrder: routing.external.findIndex(external => String(external.id) === String(d.id)),
     bounds: d.bounds,
     workArea: d.workArea,
     scaleFactor: d.scaleFactor
@@ -487,10 +527,7 @@ ipcMain.handle('desktop:close-projector', () => {
 });
 
 ipcMain.handle('desktop:get-projector-status', () => {
-  return {
-    isOpen: !!projectorWindow,
-    displayBounds: projectorWindow ? projectorWindow.getBounds() : null
-  };
+  return getProjectorStatus();
 });
 
 ipcMain.handle('desktop:launch-stage-monitor', (event, options = {}) => {
@@ -619,15 +656,24 @@ if (gotTheLock) {
 
     // Listen for display changes (e.g. connecting/disconnecting projector cable)
     screen.on('display-added', () => {
+      resolveDisplayRouting(screen.getAllDisplays(), screen.getPrimaryDisplay().id);
+      notifyProjectorStatus();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('desktop:displays-updated');
       }
     });
 
     screen.on('display-removed', () => {
+      resolveDisplayRouting(screen.getAllDisplays(), screen.getPrimaryDisplay().id);
+      notifyProjectorStatus();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('desktop:displays-updated');
       }
+    });
+
+    screen.on('display-metrics-changed', () => {
+      notifyProjectorStatus();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:displays-updated');
     });
 
     app.on('activate', () => {

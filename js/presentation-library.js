@@ -2,7 +2,7 @@
 (() => {
   const state=window.state, el=id=>document.getElementById(id), model=window.PresentationModel;
   let assets=bundledMediaAssets(),loaded=false,selection=null,selectedPage=1,libraryQuery='',dialogItem=null,returnFocus=null;
-  let saveTimer=null,liveMediaCard=null,selectedMediaCard=null,playbackAssetId=null,outputFlags={clear:false,blackout:false};
+  let saveTimer=null,liveMediaCard=null,selectedMediaCard=null,outputFlags={clear:false,blackout:false};
   let countdownMode='time',durationDeadline=NaN,previewFinished=false,countdownPriorInert=false;
   let countdownSelectedBackground=null,countdownDialogToken=0,countdownUploading=false;
   let libraryPreviewVideo=null,librarySelectedRow=null,libraryPreviewObserver=null;
@@ -39,19 +39,19 @@
   async function json(response) {const data=await response.json();if(!response.ok) throw new Error(data.error || 'Media request failed.');return data.item;}
   async function load() {
     if(loaded) return;
-    try {const response=await fetch('/api/presentation-media');const data=await response.json();if(!response.ok) throw new Error(data.error);assets=[...(data.items || []),...bundledMediaAssets()];loaded=true;}
+    try {const response=await fetch('/api/presentation-media');const data=await response.json();if(!response.ok) throw new Error(data.error);assets=[...(data.items || []),...bundledMediaAssets()];loaded=true;window.MediaVideoDeck?.refresh();}
     catch(error) {if(el('media-upload-status')) el('media-upload-status').textContent=error.message || 'Could not load media.';}
     if(state.currentTab==='media') window.renderMediaLibrary();
   }
   window.refreshMediaLibrary=async()=>{loaded=false;await load();};
   window.onPresentationMediaDeleted=id=>{
-    assets=assets.filter(asset=>asset.id!==id);stopLibraryPreview();
+    assets=assets.filter(asset=>asset.id!==id);stopLibraryPreview();window.MediaVideoDeck?.deleted(id);
     document.querySelector(`[data-media-library-id="${id}"]`)?.remove();
     if(librarySelectedRow?.dataset.mediaLibraryId===id) librarySelectedRow=null;
     if(state.activePresentation?.media?.assetId===id) {
       state.activePresentation=null;state.activeLiveSlideId=null;state.activeLiveText='';state.activeLiveRef='';window.broadcastState({clear:true});
     }
-    if(selection?.id===id) showMissing(selection);
+    if(selection?.id===id && !state.mediaVideoDeckActive) showMissing(selection);
     for(const item of state.agendaItems || []) if(item.countdown?.background?.id===id) item.countdown.background=null;
     if(state.activePresentation?.countdown?.background?.id===id) {state.activePresentation.countdown.background=null;window.broadcastState();}
     save();
@@ -234,6 +234,8 @@
     if(item.type==='media') {
       await load();const asset=assets.find(asset=>asset.id===item.id);
       if(!asset) {selection=item;selectedPage=Number(item.page)||1;state.activeMediaId=item.id;showMissing(item);save();return;}
+      if(asset.kind==='video' && window.MediaVideoDeck) {selection={...item,title:asset.name};selectedPage=1;window.MediaVideoDeck.open(asset);save();return;}
+      state.mediaVideoDeckActive=false;window.MediaVideoDeck?.suspend();
       selection={...item,title:asset.name};selectedPage=Math.max(1,Math.min(asset.pageCount,Number(item.page)||state.mediaPageSelections?.[item.id]||1));
       state.activeMediaId=item.id;state.activeDeckType='media';state.isMedleyMode=false;
       window.renderDeck();
@@ -243,7 +245,7 @@
         const card=el('bento_card_'+asset.id+'_page_1');if(card) {card.dataset.ready='true';card.querySelector('.media-load-status').textContent='';card.querySelector('.play-circle-btn').disabled=false;}
       }}
       catch(error) {notify(error.message);showMissing(item);}
-    } else if(item.type==='countdown') {selection=item;selectedPage=1;state.activeCountdownId=item.id;state.activeDeckType='countdown';state.isMedleyMode=false;window.renderDeck();}
+    } else if(item.type==='countdown') {state.mediaVideoDeckActive=false;window.MediaVideoDeck?.suspend();selection=item;selectedPage=1;state.activeCountdownId=item.id;state.activeDeckType='countdown';state.isMedleyMode=false;window.renderDeck();}
     save();
   };
   function showMissing(item) {
@@ -253,131 +255,15 @@
     const picker=document.createElement('select');for(const asset of assets) {const option=document.createElement('option');option.value=asset.id;option.textContent=asset.name;picker.append(option);}
     const relink=document.createElement('button');relink.textContent='Relink';relink.onclick=()=>{const asset=assets.find(asset=>asset.id===picker.value);if(!asset)return;for(const entry of state.agendaItems) if(entry.type==='media'&&entry.id===item.id) {entry.id=asset.id;entry.title=asset.name;entry.page=1;}window.renderAgenda();save();window.openPresentationItem({type:'media',id:asset.id,title:asset.name});};host.append(text,upload,picker,relink);
   }
-  function formatMediaTime(seconds) {
-    if(!Number.isFinite(seconds) || seconds < 0) return '00:00';
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  }
-  function bindDeckVideoControls(card, item, page, asset) {
-    const videoEl = card.querySelector('.media-deck-video-preview');
-    const seekSlider = card.querySelector('.media-deck-seek-slider');
-    const durEl = card.querySelector('.media-deck-time-duration');
-    const curEl = card.querySelector('.media-deck-time-current');
-    const playBtn = card.querySelector('.media-deck-hero-play-btn');
-    const restartBtn = card.querySelector('.media-deck-restart-btn');
-    const rewindBtn = card.querySelector('.media-deck-rewind-btn');
-    const forwardBtn = card.querySelector('.media-deck-forward-btn');
-    const loopBtn = card.querySelector('.media-deck-loop-btn');
-    const soundSelect = card.querySelector('.media-deck-sound-select');
-
-    const updateDur = () => {
-      if (videoEl && Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
-        if (seekSlider && (!seekSlider.max || seekSlider.max === '0')) seekSlider.max = videoEl.duration;
-        if (durEl) durEl.textContent = formatMediaTime(videoEl.duration);
-      }
-    };
-    if (videoEl) {
-      videoEl.onloadedmetadata = updateDur;
-      if (videoEl.duration) updateDur();
-    }
-
-    if (playBtn) {
-      playBtn.onclick = e => {
-        e.stopPropagation();
-        const isLive = !!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && state.activePresentation?.media?.assetId === asset.id;
-        if (!isLive) {
-          take(item, page, true);
-        } else {
-          patchPlayback({ playing: !state.activePresentation?.playback?.playing });
-        }
-      };
-    }
-
-    if (restartBtn) {
-      restartBtn.onclick = e => {
-        e.stopPropagation();
-        const isLive = !!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && state.activePresentation?.media?.assetId === asset.id;
-        if (!isLive) {
-          take(item, page, true);
-        } else {
-          patchPlayback({ position: 0, playing: true });
-        }
-      };
-    }
-
-    if (rewindBtn) {
-      rewindBtn.onclick = e => {
-        e.stopPropagation();
-        const isLive = !!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && state.activePresentation?.media?.assetId === asset.id;
-        if (!isLive) return;
-        const dur = Number(seekSlider?.max) || videoEl?.duration || Infinity;
-        const pos = model.playbackPosition(state.activePresentation?.playback, Date.now(), dur);
-        patchPlayback({ position: Math.max(0, pos - 10) });
-      };
-    }
-
-    if (forwardBtn) {
-      forwardBtn.onclick = e => {
-        e.stopPropagation();
-        const isLive = !!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && state.activePresentation?.media?.assetId === asset.id;
-        if (!isLive) return;
-        const dur = Number(seekSlider?.max) || videoEl?.duration || Infinity;
-        const pos = model.playbackPosition(state.activePresentation?.playback, Date.now(), dur);
-        patchPlayback({ position: Math.min(dur, pos + 10) });
-      };
-    }
-
-    if (seekSlider) {
-      seekSlider.onclick = e => e.stopPropagation();
-      seekSlider.oninput = e => {
-        e.stopPropagation();
-        const isLive = !!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && state.activePresentation?.media?.assetId === asset.id;
-        if (!isLive) return;
-        if (curEl) curEl.textContent = formatMediaTime(Number(seekSlider.value));
-        patchPlayback({ position: Number(seekSlider.value) });
-      };
-    }
-
-    if (loopBtn) {
-      loopBtn.onclick = e => {
-        e.stopPropagation();
-        const isLive = !!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && state.activePresentation?.media?.assetId === asset.id;
-        if (!isLive) return;
-        patchPlayback({ loop: !state.activePresentation?.playback?.loop });
-      };
-    }
-
-    if (soundSelect) {
-      soundSelect.onclick = e => e.stopPropagation();
-      soundSelect.onchange = e => {
-        e.stopPropagation();
-        const isLive = !!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && state.activePresentation?.media?.assetId === asset.id;
-        if (!isLive) return;
-        patchPlayback({ soundTarget: soundSelect.value });
-      };
-    }
-  }
-
   function cardFor(item,page,asset) {
     const card=document.createElement('article'),id=item.type==='countdown'?item.id:`${item.id}_page_${page}`;
     card.id='bento_card_'+id;card.dataset.slideId=id;
-    const isVideo=asset?.kind==='video';
-    card.className='bento-single-card media-card' + (isVideo ? ' is-video' : '');
-    const ready=!asset || (isVideo ? !!asset.ready : loadedImages.has(asset.kind==='pdf'?asset.pages[page]?.url:asset.url));
+    card.className='bento-single-card media-card';
+    const ready=!asset || loadedImages.has(asset.kind==='pdf'?asset.pages[page]?.url:asset.url);
     card.dataset.ready=String(ready);if(asset) {card.dataset.mediaId=asset.id;card.dataset.page=page;}
-    if(isVideo) {
-      card.style.display = 'flex';
-      card.style.flexDirection = 'column';
-      card.style.position = 'relative';
-      card.style.zIndex = '5';
-      card.innerHTML=`<div class="head-tag-row" style="position:relative;z-index:10;display:flex;align-items:center;justify-content:space-between;width:100%;"><div class="media-deck-tag-group"><span class="media-deck-badge">VIDEO</span><span class="tag-title">${escaped(item.title)}</span></div><div class="media-deck-status-group"><span class="media-deck-quality-badge">1080P HD</span><span class="live-pill" hidden>LIVE</span></div></div><div class="media-deck-canvas" style="position:relative;z-index:10;width:100%;aspect-ratio:16/9;max-height:340px;background:#000;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;margin:10px 0 12px 0;"><video class="media-deck-video-preview" src="${asset.url}" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video></div><p class="media-load-status" style="position:relative;z-index:10;">${ready?'':'Preparing video…'}</p><div class="media-deck-player-bar" style="position:relative;z-index:10;width:100%;display:flex;flex-direction:column;gap:12px;padding:14px 16px;border-radius:12px;box-sizing:border-box;"><div class="media-deck-scrub-row" style="display:flex;align-items:center;gap:12px;width:100%;"><span class="media-deck-time-current">00:00</span><input class="media-deck-seek-slider" type="range" min="0" max="0" value="0" step="0.1" aria-label="Video scrubber"><span class="media-deck-time-duration">--:--</span></div><div class="media-deck-controls-row"><div class="media-deck-left-tools"><button type="button" class="media-deck-action-btn media-deck-restart-btn" title="Restart (0:00)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg><span>Restart</span></button></div><div class="media-deck-center-transport"><button type="button" class="media-deck-action-btn media-deck-rewind-btn" title="Rewind 10s"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg><span>10s</span></button><button type="button" class="media-deck-hero-play-btn" title="Play / Pause" aria-label="Play / Pause"><svg class="icon-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 19 12 7 20 7 4"/></svg><svg class="icon-pause" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button type="button" class="media-deck-action-btn media-deck-forward-btn" title="Fast Forward 10s"><span>10s</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></svg></button></div><div class="media-deck-right-tools"><button type="button" class="media-deck-action-btn media-deck-loop-btn" title="Toggle Loop"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg><span class="loop-label">Loop</span></button><div class="media-deck-sound-wrap" title="Sound Destination"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><select class="media-deck-sound-select"><option value="both">Both</option><option value="sanctuary">Projector</option><option value="livestream">Livestream</option><option value="off">Muted</option></select></div></div></div></div><div class="bento-corner-dock" style="display:none"><button type="button" class="play-circle-btn" aria-label="Take live" ${ready?'':'disabled'}>${playIcon}</button></div>`;
-      bindDeckVideoControls(card, item, page, asset);
-    } else {
-      card.innerHTML=`<svg class="bento-live-shape-svg" aria-hidden="true"><path d=""/></svg><div class="head-tag-row"><span class="tag-title">${asset?.kind==='pdf'?'PAGE '+page:escaped(item.title)}</span><span class="live-pill" hidden>LIVE</span></div>${item.type==='countdown'?'<div class="countdown-preview"></div>':'<img class="media-thumbnail" loading="lazy" alt="Slide preview">'}<p class="media-load-status">${ready?'':'Preparing page…'}</p><div class="bento-corner-dock"><button type="button" class="play-circle-btn" aria-label="Take live" ${ready?'':'disabled'}>${playIcon}</button></div>`;
-      if(asset && asset.kind!=='video') {const source=asset.kind==='pdf'?(asset.pages[page]?.thumbnailUrl || asset.pages[page]?.url):asset.url;if(source) card.querySelector('img').src=source;}
-      card.querySelector('button').onclick=event=>{event.stopPropagation();take(item,page,true);};
-    }
+    card.innerHTML=`<svg class="bento-live-shape-svg" aria-hidden="true"><path d=""/></svg><div class="head-tag-row"><span class="tag-title">${asset?.kind==='pdf'?'PAGE '+page:escaped(item.title)}</span><span class="live-pill" hidden>LIVE</span></div>${item.type==='countdown'?'<div class="countdown-preview"></div>':'<img class="media-thumbnail" loading="lazy" alt="Slide preview">'}<p class="media-load-status">${ready?'':'Preparing page…'}</p><div class="bento-corner-dock"><button type="button" class="play-circle-btn" aria-label="Take live" ${ready?'':'disabled'}>${playIcon}</button></div>`;
+    if(asset) {const source=asset.kind==='pdf'?(asset.pages[page]?.thumbnailUrl || asset.pages[page]?.url):asset.url;if(source) card.querySelector('img').src=source;}
+    card.querySelector('button').onclick=event=>{event.stopPropagation();take(item,page,true);};
     card.onclick=e=>{if(e.target.closest('.media-deck-player-bar')) return; take(item,page,false);};
     card.ondblclick=e=>{if(e.target.closest('.media-deck-player-bar')) return; take(item,page,true);};
     window.setupLiveCardObserver?.(card);
@@ -393,12 +279,18 @@
   }
   window.renderPresentationDeck=()=> {
     if(!['media','countdown'].includes(state.activeDeckType)) {
+      window.MediaVideoDeck?.suspend();
       el('media-controls-bar').hidden=true;
       for(const [id,display] of toolbarDisplays) if(el(id)) el(id).style.display=display;
       toolbarDisplays.clear();return false;
     }
+    if(state.activeDeckType==='media' && state.mediaVideoDeckActive && window.MediaVideoDeck) {
+      for(const id of ['bento-edit-btn','bento-add-song-btn','bento-compare-btn','bento-strongs-btn','bento-concordance-search-btn','bento-mode-seg','bento-lines-seg','bento-cols-seg']) if(el(id)) {if(!toolbarDisplays.has(id))toolbarDisplays.set(id,el(id).style.display);el(id).style.display='none';}
+      return window.MediaVideoDeck.render(el('bento-medley-container'));
+    }
     const item=selection || (state.activeMediaId?{type:'media',id:state.activeMediaId,title:'Media'}:null);if(!item)return false;
     const asset=assets.find(asset=>asset.id===item.id);if(item.type==='media'&&!asset) {showMissing(item);return true;}
+    if(asset?.kind==='video' && window.MediaVideoDeck) {state.mediaVideoDeckActive=true;return window.renderPresentationDeck();}
     const host=el('bento-medley-container');host.replaceChildren();host.className='bento-single-deck';host.dataset.cols=asset?.kind==='video'?'1':'2';
     for(const id of ['bento-edit-btn','bento-add-song-btn','bento-compare-btn','bento-strongs-btn','bento-lines-seg','bento-cols-seg']) if(el(id)) {if(!toolbarDisplays.has(id)) toolbarDisplays.set(id,el(id).style.display);el(id).style.display='none';}
     el('bento-deck-title').textContent=item.title;el('bento-deck-sub').textContent=asset?.kind==='pdf'?asset.pageCount+' pages':item.type==='countdown'?'Service-start countdown':asset?.kind || 'Media';
@@ -409,7 +301,7 @@
     if(el('media-agenda')) el('media-agenda').onclick=window.addMediaToAgenda;
     if(el('countdown-edit')) el('countdown-edit').onclick=()=>window.openCountdownSetup(selection);
     for(let page=1;page<=(asset?.pageCount || 1);page++) host.append(cardFor(item,page,asset));
-    syncPlaybackControls();
+    window.MediaVideoDeck?.sync();
     updateNavigation();highlight();tick();window.syncStagedCardVisuals?.();return true;
   };
   function navigate(delta) {
@@ -444,88 +336,9 @@
       if(liveMediaCard) {liveMediaCard.classList.add('live');const badge=liveMediaCard.querySelector('.live-pill');if(badge)badge.hidden=false;}
     }
   }
-  function syncPlaybackControls() {
-    const host=el('media-playback-controls'),current=state.activePresentation;
-    const asset=assets.find(item=>item.id===current?.media?.assetId);
-    host.hidden=!state.activeLiveSlideId || outputFlags.clear || outputFlags.blackout || current?.media?.kind!=='video' || !asset;
-    if(host.hidden || playbackAssetId===asset.id) return;
-    playbackAssetId=asset.id;
-    host.innerHTML='<div class="media-playback"><button id="media-play" type="button">Pause</button><button id="media-restart" type="button">Restart</button><input id="media-seek" type="range" min="0" max="0" value="0" step="0.1" aria-label="Video position"><label><input id="media-loop" type="checkbox"> Loop</label><label>Sound <select id="media-sound"><option value="">Off</option><option value="sanctuary">Projector</option><option value="livestream">Livestream</option></select></label></div>';
-    bindPlayback(asset);
-  }
-  function bindPlayback(asset) {
-    const metadata=documentElementVideo();metadata.src=asset.url;metadata.onloadedmetadata=()=> {if(el('media-seek')) el('media-seek').max=metadata.duration;metadata.removeAttribute('src');metadata.load();};
-    el('media-play').onclick=()=>patchPlayback({playing:!state.activePresentation?.playback?.playing});
-    el('media-restart').onclick=()=>patchPlayback({position:0,playing:true});
-    el('media-seek').oninput=()=>patchPlayback({position:Number(el('media-seek').value)});
-    el('media-loop').onchange=()=>patchPlayback({loop:el('media-loop').checked});
-    el('media-sound').onchange=()=>patchPlayback({soundTarget:el('media-sound').value});
-  }
-  function patchPlayback(patch) {
-    const current=state.activePresentation;if(state.isHoldLive || outputFlags.clear || outputFlags.blackout || !state.activeLiveSlideId || !current?.playback || current.media?.assetId!==playbackAssetId || REMOTE_MODE) return;
-    const duration=Number(el('media-seek')?.max)||Infinity;
-    current.playback={...current.playback,position:model.playbackPosition(current.playback,Date.now(),duration),...patch,updatedAt:Date.now()};window.broadcastState();
-  }
   function tick() {
     for(const card of document.querySelectorAll('.media-card .countdown-preview')) {const item=selection?.type==='countdown'?selection:null;if(item) {const text=model.countdownView(item.countdown).clock;if(card.textContent!==text)card.textContent=text;}}
     if(el('countdown-setup-preview') && !el('countdown-setup-shield').hidden) renderCountdownPreview();
-    const current=state.activePresentation;
-    if(el('media-play')) {const isLive=!!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && current?.media?.assetId===playbackAssetId;el('media-play').textContent=current?.playback?.playing?'Pause':'Play';for(const id of ['media-play','media-restart','media-seek','media-loop','media-sound']) el(id).disabled=!isLive || state.isHoldLive || REMOTE_MODE;if(isLive) {const seek=el('media-seek');if(document.activeElement!==seek)seek.value=model.playbackPosition(current.playback,Date.now(),Number(seek.max)||Infinity);el('media-loop').checked=!!current.playback.loop;el('media-sound').value=current.playback.soundTarget || '';}}
-
-    // Update in-deck video player controls
-    const liveDeckCard=state.activeLiveSlideId ? el('bento_card_'+state.activeLiveSlideId) : null;
-    if(liveDeckCard && liveDeckCard.classList.contains('is-video')) {
-      const isLive=!!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && current?.media?.assetId===liveDeckCard.dataset.mediaId;
-      const playBtn=liveDeckCard.querySelector('.media-deck-hero-play-btn');
-      const seek=liveDeckCard.querySelector('.media-deck-seek-slider');
-      const curTime=liveDeckCard.querySelector('.media-deck-time-current');
-      const durTime=liveDeckCard.querySelector('.media-deck-time-duration');
-      const loopBtn=liveDeckCard.querySelector('.media-deck-loop-btn');
-      const soundSelect=liveDeckCard.querySelector('.media-deck-sound-select');
-      const videoEl=liveDeckCard.querySelector('.media-deck-video-preview');
-
-      if(playBtn) {
-        const isPlaying=isLive && !!current?.playback?.playing;
-        const playIco=playBtn.querySelector('.icon-play');
-        const pauseIco=playBtn.querySelector('.icon-pause');
-        if(playIco) playIco.style.display=isPlaying?'none':'block';
-        if(pauseIco) pauseIco.style.display=isPlaying?'block':'none';
-        playBtn.title=isPlaying?'Pause Video':'Play Video';
-      }
-
-      if(isLive && current?.playback) {
-        const dur=Number(seek?.max) || videoEl?.duration || Infinity;
-        if(Number.isFinite(dur) && dur > 0) {
-          if(seek && (!seek.max || seek.max === '0')) seek.max=dur;
-          if(durTime && durTime.textContent === '--:--') durTime.textContent=formatMediaTime(dur);
-        }
-        const pos=model.playbackPosition(current.playback, Date.now(), dur);
-        if(curTime) curTime.textContent=formatMediaTime(pos);
-        if(seek && document.activeElement!==seek) seek.value=pos;
-
-        if(loopBtn) {
-          const isLooping=!!current.playback.loop;
-          loopBtn.classList.toggle('active', isLooping);
-          const lbl=loopBtn.querySelector('.loop-label');
-          if(lbl) lbl.textContent=isLooping ? 'Loop: On' : 'Loop';
-        }
-
-        if(soundSelect && document.activeElement!==soundSelect) {
-          soundSelect.value=current.playback.soundTarget || 'both';
-        }
-
-        if(videoEl && Number.isFinite(pos)) {
-          if(Math.abs(videoEl.currentTime - pos) > 0.6) {
-            videoEl.currentTime=pos;
-          }
-          if(current.playback.playing && videoEl.paused) {
-            videoEl.play().catch(()=>{});
-          } else if(!current.playback.playing && !videoEl.paused) {
-            videoEl.pause();
-          }
-        }
-      }
-    }
   }
   setInterval(tick,250);
   function countdownFields() {return {mode:countdownMode,date:el('countdown-date').value,time:el('countdown-start').value,minutes:el('countdown-minutes').value};}
@@ -705,11 +518,13 @@
   document.addEventListener('scroll',event=>{const menu=el('agenda-add-options');if(!menu.hidden&&!menu.contains(event.target))window.closeAgendaAdd();},true);
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!el('agenda-add-options').hidden){event.preventDefault();event.stopImmediatePropagation();window.closeAgendaAdd();el('agenda-add-trigger').focus();}},true);
   const originalSync=window.syncPresentationControls;
-  window.syncPresentationControls=payload=>{if(payload)outputFlags={clear:!!payload.clear,blackout:!!payload.blackout};originalSync(payload);syncPlaybackControls();highlight();updateNavigation();tick();};
+  window.syncPresentationControls=payload=>{if(payload)outputFlags={clear:!!payload.clear,blackout:!!payload.blackout};originalSync(payload);window.MediaVideoDeck?.sync(payload);highlight();updateNavigation();tick();};
+  window.MediaVideoDeck?.configure({assets:()=>assets,save});
   window.restorePresentationSelection=()=>{
-    selection=null;
+    selection=null;window.MediaVideoDeck?.restore();
+    if(state.activeDeckType==='media' && state.mediaVideoDeckActive) {load().then(()=>window.renderDeck());return;}
     if(state.activeDeckType==='countdown') {const item=state.agendaItems.find(item=>item.type==='countdown'&&item.id===state.activeCountdownId);if(item) window.openPresentationItem(item);}
-    else if(state.activeDeckType==='media' && state.activeMediaId) window.openPresentationItem({type:'media',id:state.activeMediaId,title:'Media',page:state.mediaPageSelections?.[state.activeMediaId]});
+    else if(state.activeDeckType==='media' && state.activeMediaId) load().then(()=>{const asset=assets.find(asset=>asset.id===state.activeMediaId);if(asset?.kind==='video') {state.mediaVideoDeckActive=true;window.renderDeck();}else window.openPresentationItem({type:'media',id:state.activeMediaId,title:'Media',page:state.mediaPageSelections?.[state.activeMediaId]});});
   };
   document.addEventListener('DOMContentLoaded',window.restorePresentationSelection);
 })();

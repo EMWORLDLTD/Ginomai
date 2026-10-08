@@ -12,6 +12,9 @@ const state = {
   activeMediaId: null,
   activeCountdownId: null,
   mediaPageSelections: {},
+  mediaVideoSlots: [],
+  activeVideoSlot: 0,
+  mediaVideoDeckActive: false,
   activePresentation: null,
   activeDeckType: 'song', // 'song' | 'bible' (Center presentation deck content type)
   currentMode: 'full', // 'full' | 'lt'
@@ -413,6 +416,9 @@ function restoreSavedWorkspaceState() {
       if (dash.currentTab) state.currentTab = dash.currentTab;
       if (dash.activeDeckType) state.activeDeckType = dash.activeDeckType;
       state.activeMediaId=dash.activeMediaId || null;
+      state.mediaVideoSlots=Array.isArray(dash.mediaVideoSlots)?dash.mediaVideoSlots:[];
+      state.activeVideoSlot=Number(dash.activeVideoSlot)||0;
+      state.mediaVideoDeckActive=!!dash.mediaVideoDeckActive;
       state.activeCountdownId=dash.activeCountdownId || null;
       state.mediaPageSelections=dash.mediaPageSelections || {};
       state.activePresentation=dash.activePresentation || (['media','countdown'].includes(saved.contentType) ? {contentType:saved.contentType,media:saved.media,countdown:saved.countdown,playback:saved.playback,destinations:saved.destinations}:null);
@@ -2621,6 +2627,9 @@ function createDashboardSnapshot() {
     currentTab: state.currentTab,
     activeDeckType: state.activeDeckType,
     activeMediaId: state.activeMediaId,
+    mediaVideoSlots: state.mediaVideoSlots,
+    activeVideoSlot: state.activeVideoSlot,
+    mediaVideoDeckActive: state.mediaVideoDeckActive,
     activeCountdownId: state.activeCountdownId,
     mediaPageSelections: state.mediaPageSelections,
     activePresentation: state.activePresentation,
@@ -2663,7 +2672,7 @@ function createDashboardSnapshot() {
 function applyDashboardPatch(patch = {}) {
   const changed = key => patch[key] !== undefined && JSON.stringify(patch[key]) !== JSON.stringify(state[key]);
   const deckChanged = ['activeDeckType', 'isMedleyMode', 'activeSongId', 'activeBibleBook', 'activeBibleChapter',
-    'bibleVersion', 'compareBibleVersion', 'isCompareMode', 'maxLinesPerSlide', 'medleySongIds', 'medleyVersionCodes', 'medleyBibleSlots'].some(changed);
+    'bibleVersion', 'compareBibleVersion', 'isCompareMode', 'maxLinesPerSlide', 'medleySongIds', 'medleyVersionCodes', 'medleyBibleSlots', 'mediaVideoSlots', 'mediaVideoDeckActive'].some(changed);
   const libraryChanged = deckChanged || changed('currentTab');
   const agendaChanged = changed('agendaItems');
   const allowed = ['currentTab', 'activeDeckType', 'isMedleyMode', 'activeSongId', 'activeBibleBook', 'activeBibleChapter', 'activeLiveSlideId', 'activeLiveText', 'activeLiveRef', 'currentMode', 'maxLinesPerSlide', 'textSize', 'songScaleFull', 'songScaleLt', 'textAutoScale', 'bibleVersion', 'compareBibleVersion', 'isCompareMode', 'projectorActive', 'livestreamActive', 'showSongTitleInDisplay', 'showBibleMedleyButtons', 'showMedleyView', 'bibleMedleyChangeTarget', 'transparentBg', 'transitionType', 'transitionDuration', 'background', 'autoProject'];
@@ -2672,6 +2681,9 @@ function applyDashboardPatch(patch = {}) {
   });
   if (patch.typography && typeof patch.typography === 'object') state.typography = { ...state.typography, ...patch.typography };
   if (Array.isArray(patch.agendaItems)) state.agendaItems = patch.agendaItems;
+  if (Array.isArray(patch.mediaVideoSlots)) state.mediaVideoSlots=window.PresentationModel.videoDeckSlots(patch.mediaVideoSlots);
+  if (patch.mediaVideoDeckActive !== undefined) state.mediaVideoDeckActive=!!patch.mediaVideoDeckActive;
+  if (patch.activeVideoSlot !== undefined) state.activeVideoSlot=Number(patch.activeVideoSlot)||0;
   if (Array.isArray(patch.medleySongIds)) state.medleySongIds = patch.medleySongIds;
   if (Array.isArray(patch.medleyVersionCodes)) state.medleyVersionCodes = patch.medleyVersionCodes;
   if (Array.isArray(patch.medleyBibleSlots)) state.medleyBibleSlots = patch.medleyBibleSlots;
@@ -10067,8 +10079,9 @@ async function refreshDesktopDisplays() {
     const primary = displays.find(d => d.isPrimary) || displays[0];
     const audiencePreference = select?.value || saved('sf_projector_display');
     const stagePreference = stageSelect?.value || saved('sf_stage_display');
-    const audienceId = valid(audiencePreference) ? audiencePreference : (displays.find(d => !d.isPrimary) || primary)?.id;
-    const stageId = valid(stagePreference) ? stagePreference : (displays.find(d => !d.isPrimary && String(d.id) !== String(audienceId)) || displays.find(d => String(d.id) !== String(audienceId)) || primary)?.id;
+    const external = displays.filter(d => !d.isPrimary).sort((a, b) => (a.externalOrder ?? 0) - (b.externalOrder ?? 0));
+    const audienceId = (external.find(d => String(d.id) === String(audiencePreference)) || external[0])?.id;
+    const stageId = valid(stagePreference) && String(stagePreference) !== String(audienceId) ? stagePreference : (external.find(d => String(d.id) !== String(audienceId)) || primary)?.id;
     [[select, audienceId, 'sf_projector_display'], [stageSelect, stageId, 'sf_stage_display']].forEach(([field, selected, key]) => {
       if (!field) return;
       field.replaceChildren();
@@ -10081,6 +10094,7 @@ async function refreshDesktopDisplays() {
       field.value = String(selected ?? '');
       field.onchange = () => { try { localStorage.setItem(key, field.value); } catch (_) {} };
     });
+    if (window.desktopApi.getProjectorStatus) updateDesktopProjectorUI(await window.desktopApi.getProjectorStatus());
   } catch (err) {
     console.error('Failed to query displays:', err);
   }
@@ -10089,24 +10103,20 @@ async function refreshDesktopDisplays() {
 function updateDesktopProjectorUI(status) {
   desktopProjectorStatus = status || { isOpen: false };
   const isOpen = !!desktopProjectorStatus.isOpen;
+  const isProjecting = isOpen && desktopProjectorStatus.isExternal === true;
 
   // Header Button
   const btn = document.getElementById('desktop-projector-btn');
   const label = document.getElementById('desktop-projector-label');
   if (btn) {
-    btn.classList.toggle('active', isOpen);
-    btn.title = isOpen ? 'Disconnect projector from external display' : 'Connect projector to external display';
+    btn.classList.toggle('active', isProjecting);
+    btn.title = isProjecting ? 'Disconnect sanctuary projector from external display' : isOpen ? 'Close projector — external display disconnected' : desktopProjectorStatus.hasExternalDisplay ? 'Launch sanctuary projector on external display' : 'No external display connected';
     btn.setAttribute('aria-label', btn.title);
-    btn.setAttribute('aria-pressed', String(isOpen));
-    if (isOpen) {
-      btn.style.background = 'rgba(16,185,129,0.3)';
-      btn.style.borderColor = '#10B981';
-    } else {
-      btn.style.background = 'rgba(16,185,129,0.12)';
-      btn.style.borderColor = 'rgba(16,185,129,0.35)';
-    }
+    btn.setAttribute('aria-pressed', String(isProjecting));
+    btn.style.removeProperty('background');
+    btn.style.removeProperty('border-color');
   }
-  if (label) label.textContent = isOpen ? 'Projector: LIVE' : 'Projector: Off';
+  if (label) label.textContent = isProjecting ? 'Projector: LIVE' : 'Projector: Off';
 
   // Modal Card Controls
   const toggleBtn = document.getElementById('desktop-projector-toggle-btn');
@@ -10117,9 +10127,9 @@ function updateDesktopProjectorUI(status) {
     toggleBtn.style.color = isOpen ? '#FFFFFF' : '#064E3B';
   }
   if (modalStatus) {
-    modalStatus.textContent = isOpen ? 'ONLINE (PROJECTING)' : 'OFFLINE';
-    modalStatus.style.background = isOpen ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)';
-    modalStatus.style.color = isOpen ? '#34D399' : '#94A3B8';
+    modalStatus.textContent = isProjecting ? 'ONLINE (PROJECTING)' : isOpen ? 'EXTERNAL DISPLAY DISCONNECTED' : 'OFFLINE';
+    modalStatus.style.background = isProjecting ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)';
+    modalStatus.style.color = isProjecting ? '#34D399' : '#94A3B8';
   }
 }
 
@@ -10152,10 +10162,13 @@ async function toggleDesktopProjector() {
     await window.desktopApi.closeProjector();
     showToast('Projector screen closed', 'info');
   } else {
+    await refreshDesktopDisplays();
     const select = document.getElementById('desktop-display-select');
     const selectedDisplayId = select ? select.value : null;
-    await window.desktopApi.launchProjector({ displayId: selectedDisplayId, targetMode: 'sanctuary' });
-    showToast('Audience projector output launched in full screen!', 'success');
+    const result = await window.desktopApi.launchProjector({ displayId: selectedDisplayId, targetMode: 'sanctuary' });
+    if (!result?.success) { showToast(result?.message || 'Could not launch the sanctuary projector.', 'warning'); return; }
+    if (window.desktopApi.getProjectorStatus) updateDesktopProjectorUI(await window.desktopApi.getProjectorStatus());
+    showToast('Sanctuary projector output launched on the external display!', 'success');
   }
 }
 window.toggleDesktopProjector = toggleDesktopProjector;

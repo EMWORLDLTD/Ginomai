@@ -37,6 +37,7 @@ const {server} = require('../server');
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/index.html`,{waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>window.sermonManager && !document.getElementById('desktop-update-indicator').hidden);
+    assert.equal((await page.locator('#desktop-update-indicator').textContent()).trim(),'Update available');
     await page.locator('#desktop-update-indicator').click();
     assert(await page.locator('#update-panel-backdrop').evaluate(node=>node.classList.contains('open')));
     assert.equal(await page.locator('#update-panel-action').textContent(),'Download Update');
@@ -131,6 +132,7 @@ const {server} = require('../server');
     assert.equal(await page.locator('#automatic-update-downloads').isChecked(),false);
     await page.evaluate(()=>window.__updateStatus({phase:'up-to-date',latestVersion:null}));
     assert.equal(await page.locator('#desktop-update-footer').isVisible(),false);
+    assert.equal(await page.locator('#desktop-update-indicator').isVisible(),false);
     console.log('Update UI passed: dismissal absorption, keyboard/focus, explicit actions, progress, activity guards, settings, and four theme combinations at 1024×650.');
   } finally {
     await browser?.close();

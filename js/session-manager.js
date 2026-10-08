@@ -108,6 +108,9 @@
       session.activeCountdownId=s.activeCountdownId || null;
       session.presentationDeck=['media','countdown'].includes(s.activeDeckType) ? s.activeDeckType:null;
       session.mediaPageSelections={...s.mediaPageSelections};
+      session.mediaVideoSlots=JSON.parse(JSON.stringify(s.mediaVideoSlots || []));
+      session.activeVideoSlot=s.activeVideoSlot || 0;
+      session.mediaVideoDeckActive=!!s.mediaVideoDeckActive;
       session.activeSongId = s.activeSongId || null;
       session.activeBibleBook = s.activeBibleBook || '';
       session.activeBibleChapter = s.activeBibleChapter || 1;
@@ -226,6 +229,9 @@
       s.activeCountdownId=session.activeCountdownId || null;
       s.activeDeckType=session.presentationDeck || (s.activeDeckType==='media'||s.activeDeckType==='countdown' ? 'song':s.activeDeckType);
       s.mediaPageSelections={...session.mediaPageSelections};
+      s.mediaVideoSlots=JSON.parse(JSON.stringify(session.mediaVideoSlots || []));
+      s.activeVideoSlot=session.activeVideoSlot || 0;
+      s.mediaVideoDeckActive=!!session.mediaVideoDeckActive;
       s.activeSongId = session.activeSongId || null;
       window.restorePresentationSelection?.();
       if (session.activeBibleBook) s.activeBibleBook = session.activeBibleBook;

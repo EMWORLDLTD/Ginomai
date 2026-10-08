@@ -28,6 +28,13 @@ contextBridge.exposeInMainWorld('desktopApi', {
   minimize: () => ipcRenderer.invoke('desktop:minimize'),
   maximize: () => ipcRenderer.invoke('desktop:maximize'),
   close: () => ipcRenderer.invoke('desktop:close'),
+  getWindowState: () => ipcRenderer.invoke('desktop:get-window-state'),
+  openMenu: (options) => ipcRenderer.invoke('desktop:open-menu', options),
+  onWindowStateChange: (callback) => {
+    const handler = (event, state) => callback(state);
+    ipcRenderer.on('desktop:window-state-changed', handler);
+    return () => ipcRenderer.removeListener('desktop:window-state-changed', handler);
+  },
 
   // Event Listeners from Main Process
   onProjectorStatusChange: (callback) => {

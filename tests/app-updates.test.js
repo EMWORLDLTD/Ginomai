@@ -234,8 +234,8 @@ test('restart rechecks after saving, deduplicates, and rejects failed saves/veri
 
 function renderer(desktop = true) {
   const nodes = {};
-  const ids = ['settings-build-version','settings-update-status-text','check-update-btn','check-update-btn-text','check-update-icon','check-update-btn-sidebar','updates-settings-status','automatic-update-downloads','updates-settings-action','update-notes-content','update-notes-version'];
-  for (const id of ids) nodes[id] = {textContent:'',hidden:false,disabled:false,classList:{remove(){}}};
+  const ids = ['settings-build-version','settings-update-status-text','check-update-btn','check-update-btn-text','check-update-icon','check-update-btn-sidebar','updates-settings-status','automatic-update-downloads','updates-settings-action','update-notes-content','update-notes-version','desktop-update-indicator','desktop-update-footer'];
+  for (const id of ids) nodes[id] = {textContent:'',hidden:false,disabled:false,classList:{remove(){}},setAttribute(){},querySelector(){return null;}};
   let state = {phase:'idle',currentVersion:'2.4.1',revision:0,preferences:{automaticDownloads:false},blockers:[]};
   let onStatus, checks = 0, installs = 0;
   const window = { addEventListener(){}, desktopApi: desktop ? {
@@ -249,6 +249,30 @@ function renderer(desktop = true) {
   });
   return {window,nodes,counts:()=>({checks,installs}),emit(next) {state={...state,...next};onStatus(state);}};
 }
+
+test('update controls only appear while an update is pending', async () => {
+  const h = renderer(); await tick();
+  const indicator = h.nodes['desktop-update-indicator'];
+  const footer = h.nodes['desktop-update-footer'];
+  for (const phase of ['idle','checking','up-to-date','unavailable','error']) {
+    h.emit({phase,errorPhase:'check'});
+    assert.equal(indicator.hidden,true,phase);
+    assert.equal(footer.hidden,true,phase);
+  }
+  for (const phase of ['available','downloading','ready','restarting','error']) {
+    h.emit({phase,latestVersion:'2.4.2',errorPhase:'download'});
+    assert.equal(indicator.hidden,false,phase);
+    assert.equal(footer.hidden,false,phase);
+  }
+  h.emit({phase:'available'});
+  assert.equal(indicator.title,'Update available');
+  assert.equal(footer.textContent,'Update available');
+  h.emit({phase:'up-to-date',latestVersion:null});
+  assert.equal(indicator.hidden,true);
+  assert.equal(footer.hidden,true);
+  const browser = renderer(false); await tick();
+  assert.equal(browser.nodes['desktop-update-indicator'].hidden,true);
+});
 
 test('renderer hydrates canonical metadata and Check never becomes an installer shortcut', async () => {
   const h = renderer(); await tick();

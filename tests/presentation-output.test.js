@@ -36,6 +36,31 @@ test('media never appears on fixed overlay-only sources or excluded destinations
  f.render({...media,destinations:['sanctuary']},{embedded:false});assert.equal(f.layer.hidden,true);
  f.render(media,{isSanctuary:true});assert.equal(f.layer.hidden,false);
 });
+
+test('Both plays on both selected outputs while mute, legacy off values, and embedded previews stay silent',()=>{
+ for(const isSanctuary of [true,false]) {
+   const f=fixture(),both={...media,playback:{...media.playback,soundTarget:'both'}};
+   f.render(both,{isSanctuary,embedded:false});assert.equal(f.video.muted,false);
+   f.render({...both,playback:{...both.playback,muted:true}},{isSanctuary});assert.equal(f.video.muted,true);
+   f.render(both,{isSanctuary,embedded:true});assert.equal(f.video.muted,true);
+   for(const soundTarget of ['', 'off',undefined]) {f.render({...both,playback:{...both.playback,soundTarget}},{isSanctuary});assert.equal(f.video.muted,true);}
+ }
+});
+
+test('non-looping video stops at its final frame and never advances to another source',()=>{
+ const f=fixture();f.render({...media,playback:{...media.playback,position:59,updatedAt:5000}},{isSanctuary:true});
+ const source=f.video.src;f.advance(10000);assert.equal(f.video.currentTime,60);assert.equal(f.video.paused,true);assert.equal(f.video.src,source);assert.equal(f.layer.hidden,false);
+});
+
+test('interrupted and superseded play requests cannot block the next live video',async()=>{
+ const f=fixture();let reject;
+ f.video.play=()=>new Promise((resolve,fail)=>{reject=fail;});
+ f.render(media,{isSanctuary:true});const oldReject=reject;
+ f.render({...media,media:{...media.media,url:'/presentation/files/media_beef.webm'}},{isSanctuary:true});
+ oldReject(Object.assign(new Error('Interrupted'),{name:'NotAllowedError'}));await Promise.resolve();
+ const error=f.layer.children.find(node=>node.className==='presentation-output-error');assert.equal(error.hidden,true);
+ reject(Object.assign(new Error('Paused'),{name:'AbortError'}));await Promise.resolve();assert.equal(error.hidden,true);
+});
 test('server time corrects countdown and video timing across output clock differences',()=>{
  const f=fixture();f.render({...media,_serverTime:1000},{embedded:true});assert.equal(f.video.currentTime,5);
  f.advance(10000);assert.equal(f.video.currentTime,10);

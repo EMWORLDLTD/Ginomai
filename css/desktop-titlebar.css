@@ -1,0 +1,40 @@
+#desktop-titlebar[hidden] { display: none; }
+#desktop-titlebar {
+  display: flex;
+  flex: 0 0 32px;
+  height: 32px;
+  justify-content: space-between;
+  align-items: stretch;
+  background: var(--card, #131218);
+  color: var(--text, #f3f2f7);
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+.desktop-menus, .desktop-window-controls {
+  display: flex;
+  align-items: stretch;
+  -webkit-app-region: no-drag;
+}
+.desktop-menus { padding-left: 4px; }
+#desktop-titlebar button {
+  border: 0;
+  border-radius: 0;
+  padding: 0 10px;
+  background: transparent;
+  color: inherit;
+  font: 12px 'Inter', 'Segoe UI', sans-serif;
+  cursor: default;
+  transition: none;
+  -webkit-app-region: no-drag;
+}
+#desktop-titlebar button:hover,
+#desktop-titlebar button[aria-expanded="true"] { background: var(--card-hover, #23222c); }
+#desktop-titlebar button:focus-visible { outline: 1px solid var(--purple, #8a6dff); outline-offset: -3px; }
+#desktop-titlebar .desktop-window-controls button { width: 46px; padding: 0; }
+#desktop-titlebar svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1; }
+#desktop-titlebar .desktop-restore-icon { display: none; }
+#desktop-titlebar.is-maximized .desktop-maximize-icon { display: none; }
+#desktop-titlebar.is-maximized .desktop-restore-icon { display: inline; }
+#desktop-titlebar #desktop-close:hover { background: #c42b1c; color: #fff; }

@@ -58,11 +58,11 @@
     if (progress) { progress.hidden = status.phase !== 'downloading'; progress.value = status.percent || 0; }
     const checkbox = byId('automatic-update-downloads');
     if (checkbox) { checkbox.checked = status.preferences?.automaticDownloads === true; checkbox.disabled = !desktop || !!status.isDev || !preferencesReady || savingPreference; }
-    hidden('desktop-update-indicator', !desktop);
+    hidden('desktop-update-indicator', !desktop || !actionable);
     hidden('desktop-update-footer', !desktop || !actionable);
     const indicator = byId('desktop-update-indicator');
     if (indicator) {
-      indicator.title = status.phase === 'ready' ? 'Update ready — restart when your service is finished' : actionable ? 'Software update available' : 'Software updates';
+      indicator.title = status.phase === 'ready' ? 'Update ready — restart when your service is finished' : 'Update available';
       indicator.setAttribute('aria-label', indicator.title);
       const dot = indicator.querySelector('.sf-update-dot');
       if (dot) dot.hidden = !actionable;
