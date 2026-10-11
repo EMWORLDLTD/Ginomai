@@ -72,6 +72,7 @@ let shadowDeckState = null;
 
 // ─── Lexicon Cache ────────────────────────────────────────────────────────────
 let lexiconCache = null;
+let storageCleanupRunning = false;
 
 // ─── Cloud Lyrics Cache (In-Memory, 1hr TTL, max 500 entries) ─────────────────
 const lyricsCache = new Map();
@@ -205,6 +206,7 @@ function isCommandAllowed(command, privileges) {
   if (ALWAYS_BLOCKED_FROM_REMOTE.has(command.type)) return false;
   switch (command.type) {
     case 'PROJECT':      return privileges.projectSlide;
+    case 'ALERT_UPDATE': return command.alert?.active ? privileges.projectSlide : privileges.clearScreen;
     case 'NAVIGATE':     return privileges.navigateSlides;
     case 'CLEAR':        return privileges.clearScreen;
     case 'BLACKOUT':     return privileges.clearScreen;
@@ -315,13 +317,48 @@ const server = http.createServer((req, res) => {
   const operatorAccess = identity?.role === 'operator' && remoteSession.enabled && (
     (req.method === 'POST' && operatorPosts.has(pathname)) ||
     (req.method === 'GET' && (operatorReads.has(pathname) || pathname === `/api/operator-events/${identity.operatorId}` || (remoteSession.privileges.importBibles && pathname.startsWith('/api/bibles/download/')))) ||
-    (remoteSession.privileges.importBibles && ['GET', 'POST'].includes(req.method) && /^\/api\/content-packs\/[A-Z0-9_]+$/.test(pathname))
+    (remoteSession.privileges.importBibles && ['GET', 'POST'].includes(req.method) && /^\/api\/content-packs\/(?!AI_SEMANTIC(?:\/|$))[A-Z0-9_]+(?:\/cancel)?$/.test(pathname))
   );
   if (pathname.startsWith('/api/') && !isHost && !publicRead && !operatorAccess && !['/api/session/join', '/api/output-ack'].includes(pathname)) {
     return json(403, { error: remoteSession.enabled ? 'Pair this device with the host to continue' : 'Remote session is offline', pairingRequired: remoteSession.enabled, sessionOffline: !remoteSession.enabled, revision: remoteSession.revision });
   }
   if (!isHost && pathname === '/api/session' && req.method === 'GET') {
     return json(200, { enabled: remoteSession.enabled, revision: remoteSession.revision, paired: identity?.role === 'operator', privileges: identity ? remoteSession.privileges : {}, importMode: remoteSession.importMode });
+  }
+  if (storageCleanupRunning && pathname.startsWith('/api/') && !['GET', 'HEAD'].includes(req.method)) {
+    return json(409, { error: 'Data cleanup is in progress. Please wait.' });
+  }
+  if (pathname === '/api/storage/clear' && req.method === 'POST') {
+    readBody((error, payload) => {
+      if (error || !['all', 'bibles'].includes(payload?.scope) || (payload.deleteMedia !== undefined && typeof payload.deleteMedia !== 'boolean')) return json(400, { error: 'Choose a valid cleanup option.' });
+      if (storageCleanupRunning) return json(409, { error: 'Data cleanup is in progress. Please wait.' });
+      storageCleanupRunning = true;
+      Promise.resolve().then(async () => {
+        if (payload.scope === 'all') await semanticService.close();
+        await contentPacks.clearDownloads(payload.scope);
+        lexiconCache = null;
+        if (payload.scope === 'all') {
+          if (payload.deleteMedia === true) {
+            await sanctuaryMedia.clear();
+            await presentationMedia.clear();
+          }
+          lyricsCache.clear();
+          held = false;
+          shadowDeckState = null;
+          controlCatalog = { bible: {}, songs: [] };
+          hostSpeechState = { isListening: false, transcript: '', detectedVerses: [], detectedSongs: [], paraphraseMatches: [], updatedAt: Date.now() };
+          remoteSession.enabled = false;
+          revokeOperatorAccess();
+          remoteSession = { enabled: false, revision: Date.now(), importMode: 'direct', privileges: { ...FULL_CONTROL_PRIVILEGES }, connectedOperators: [], savedProfiles: [], pendingImports: [] };
+          currentState = { mode: 'full', projectorActive: true, livestreamActive: true, text: '', reference: '', version: '', compare: false, textSize: 1, textAutoScale: true, bg: '#0F172A', clear: true, clearBg: true, _timestamp: Date.now() };
+          publishState();
+          await liveStateStore.flush({ strict: true });
+        }
+        json(200, { success: true });
+      }).catch(() => json(500, { error: 'Cleanup could not finish. Some data may already have been cleared. Please retry.' }))
+        .finally(() => { storageCleanupRunning = false; });
+    });
+    return;
   }
   if (!isHost && pathname === '/api/session/push-to-host' && (!remoteSession.privileges.importSongsDirect || !remoteSession.privileges.addAgendaItems)) {
     return json(403, { error: 'The host has not allowed library and agenda uploads' });
@@ -332,7 +369,13 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/semantic/query' && req.method === 'POST') {
     readBody((err, payload) => {
       if (err || typeof payload.text !== 'string' || payload.text.length > 2000 || payload.version !== 'KJV') return json(400, { error: 'Expected KJV text up to 2000 characters.' });
-      semanticService.query(payload.text).then(result => json(200, { result })).catch(() => json(503, { error: 'Semantic retrieval unavailable or busy.' }));
+      Promise.resolve().then(async () => {
+        if (!(await contentPacks.status('AI_SEMANTIC')).installed) return json(409, { error: 'Download the AI Bible detection pack in Settings to enable semantic suggestions.', downloadRequired: true });
+        const manifest = await contentPacks.filePath('assets/semantic/manifest.json');
+        semanticService.setFolder(path.dirname(manifest));
+        const result = await semanticService.query(payload.text);
+        json(200, { result });
+      }).catch(() => json(503, { error: 'Semantic retrieval unavailable or busy.' }));
     });
     return;
   }
@@ -2131,10 +2174,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  const contentPackMatch = /^\/api\/content-packs\/([A-Z0-9_]+)$/.exec(pathname);
+  const contentPackMatch = /^\/api\/content-packs\/([A-Z0-9_]+)(\/cancel)?$/.exec(pathname);
   if (contentPackMatch && ['GET', 'POST', 'DELETE'].includes(req.method)) {
     const code = contentPackMatch[1];
-    Promise.resolve().then(() => req.method === 'POST' ? contentPacks.install(code) : req.method === 'DELETE' ? contentPacks.remove(code) : contentPacks.status(code))
+    if (contentPackMatch[2] && req.method !== 'POST') return json(405, { error: 'Use POST to cancel a download.' });
+    Promise.resolve().then(async () => {
+      if (req.method === 'DELETE' && code === 'AI_SEMANTIC') await semanticService.close();
+      const result = await (contentPackMatch[2] ? contentPacks.cancel(code) : req.method === 'POST' ? contentPacks.install(code) : req.method === 'DELETE' ? contentPacks.remove(code) : contentPacks.status(code));
+      if (req.method === 'DELETE' && code === 'KJV_STRONGS') lexiconCache = null;
+      return result;
+    })
       .then(status => json(200, status)).catch(error => json(error.status || 502, { error: error.message }));
     return;
   }

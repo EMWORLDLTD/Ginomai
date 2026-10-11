@@ -1,69 +1,64 @@
-﻿# Optional Bible and Strong’s downloads
+# Optional AI, Bible and Strong's downloads
 
-KJV stays bundled. The optional cloud-content desktop build excludes the other
-translations and the Strong’s dictionaries. Downloaded files live under
-`~/.ginomai/content-packs`, outside the application installation. Desktop updates
-do not remove them. `GINOMAI_CONTENT_DIR` can override this location.
+KJV stays bundled. Desktop builds exclude other translations, Strong's dictionaries,
+and the semantic ONNX model / verse index by default. Native AI runtime dependencies
+remain bundled. Downloaded files live under `~/.ginomai/content-packs`, outside the
+installation, so application updates keep them. `GINOMAI_CONTENT_DIR` can override
+this location.
 
-The first content release is published at
-https://github.com/EMWORLDLTD/Ginomai/releases/tag/content-v1. The bundled manifest
-now points to its public download URL. Pack generation preserves this URL unless
-an explicit replacement is supplied. A cloud-content build uses this saved URL
-when no environment override is provided.
+Content is hosted separately on the public GitHub prerelease:
+https://github.com/EMWORLDLTD/Ginomai/releases/tag/content-v1.
+The small trusted manifest shipped with the application pins the download URLs,
+sizes and compressed / decompressed SHA-256 checksums. Users need no GitHub account.
 
-The current development checkout still contains every Bible, so selecting one
-here normally reads its bundled copy without a download prompt. The optional
-download flow applies when a pack is absent, as in the future smaller installer.
+The development checkout keeps its source datasets. Prompts appear only when the
+requested pack is absent. Download buttons also require confirmation; no background
+lookup or Settings visit starts a download. Starting speech recognition offers the
+semantic pack once per app visit. Declining leaves transcription and explicit
+scripture detection available. Settings > AI & Transcript shows availability,
+download sizes, downloads and AI removal. Translations stay in the Bible repository.
+User-facing descriptions show each pack's purpose without hosting or storage details.
+Both AI and Strong's offer confirmed removal and can be downloaded again later.
+Clear Bibles removes imported translations and downloaded Bible packs (including
+Strong's) while retaining bundled KJV. Clear Everything also removes AI downloads,
+saved sessions, transcript history and saved API keys. Uploaded media is kept by
+default; its confirmation offers an unchecked **Also delete uploaded media** option.
+Theme appearance and external exports are kept. Successful removal shows a toast;
+full reset shows its result once after reloading. Cleanup waits for database commits and
+file deletion before reporting success, and displays failures so users can retry.
 
-The local development checkout keeps all source datasets, so it remains usable
-offline. First-use prompts appear when optional files are actually absent.
-Background verse lookups never start a download. The download button itself
-authorizes a download without a second prompt. Strong’s downloads its tagged Bible
-and both dictionaries as one transaction. Network progress reports actual received
-bytes; incomplete downloads are never served. Compressed and decompressed SHA-256
-checksums are pinned by the small manifest bundled with the application.
+A shared modal shows actual received bytes, verification, cancellation and retry.
+Partial downloads are discarded and never served. Strong's installs its tagged KJV
+and both dictionaries together. AI installs its license, model, tokenizer and KJV
+verse index together. The semantic worker loads the downloaded folder with remote
+model fetching disabled. Semantic results remain suggestions and cannot auto-project.
+After installation these packs work offline; live speech transcription still uses
+the user's selected speech provider.
 
-## Prepare and publish
+## Prepare and publish content
 
-1. Run `npm run build:content-packs`. This creates individually compressed files
-   and a manifest in `output/content-packs/`, plus the trusted manifest at
-   `assets/content-packs/manifest.json`.
-2. In the public `EMWORLDLTD/Ginomai` GitHub repository, create a separate content
-   release (for example `content-v1`) and upload the generated `.gz` files and
-   manifest. Keep this separate from app versions: the desktop updater must keep
-   selecting application releases. Upload as a prerelease rather than marking it
-   the latest app release. Never upload repository credentials.
-3. Set the public HTTPS asset base URL when regenerating the packs:
+1. Run `npm run build:content-packs` to generate immutable, hash-named compressed
+   assets and manifest in `output/content-packs/`. The trusted manifest is also saved
+   to `assets/content-packs/manifest.json`.
+2. Upload new assets to the separate `content-v1` GitHub release, then upload the
+   manifest. Preserve old immutable assets for existing app versions. Keep the
+   content release a prerelease, separate from desktop updater releases.
+3. To change the host, set `GINOMAI_CONTENT_BASE_URL` to the public HTTPS GitHub
+   release asset base URL before generating packs. Never ship credentials.
 
-```powershell
-$env:GINOMAI_CONTENT_BASE_URL = 'https://github.com/EMWORLDLTD/Ginomai/releases/download/content-v1'
-npm run build:content-packs
-```
+## Installer packaging
 
-The generated hash-based asset filenames are immutable: changing data changes the
-filename. Upload every newly generated file before distributing a new installer.
-Users need no GitHub account or cloud storage credentials for public downloads.
-
-## Build the smaller installer
-
-```powershell
-npm run dist:win -- --cloud-content
-```
-
-This command requires the configured HTTPS source and verifies every optional
-remote file against its compressed checksum before packaging. If hosting is absent,
-incomplete, or different from the local datasets, the build stops before excluding
-content. Ordinary `npm run dist:win` continues to produce the fully bundled app.
-
-For macOS, add `--cloud-content` to the existing Mac build command on a Mac.
-This phase leaves AI assets and runtime dependencies bundled. Moving AI into its
-own download requires a separate worker/dependency loading change and validation.
-Previously built installers are not modified by these source changes.
+`npm run dist:win` uses optional downloads by default. Mac build commands do the
+same on a Mac. Packaging first verifies every published optional asset against the
+trusted checksum; missing or mismatched hosting stops the build before excluding files.
+The legacy `--cloud-content` flag remains accepted.
+Use `npm run dist:win -- --bundled-content` for a fully bundled offline installer.
+Each target keeps only its own native AI runtime. Previously built installers are
+not modified by source changes.
 
 ## Verification
 
-`node --test tests/content-packs.test.js tests/installer.test.js`
-
-Before distribution, test first-use download, cancellation, interrupted download,
-offline relaunch, Strong’s lookups, removal/re-download, and desktop update on the
-actual target platform. The content release must be publicly accessible.
+Run the focused content-pack, desktop-packaging, semantic-model-loading and
+live-feed integration tests. Before distribution, check first-use consent,
+cancellation, interrupted transfer / retry, offline relaunch, Strong's lookups,
+AI removal / re-download, and desktop update on the target platform.

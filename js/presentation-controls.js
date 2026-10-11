@@ -51,7 +51,10 @@
     if (payload) lastPayload = payload;
     const state = window.state;
     const liveStatus = el('bento-live-status');
-    if (liveStatus) liveStatus.textContent = lastPayload?.blackout ? 'BLACKOUT' : lastPayload?.clear ? 'CLEARED' : state.activeLiveSlideId ? 'LIVE' : 'IDLE';
+    const alert = lastPayload?.alert;
+    const destination = window.previewTargetMode === 'livestream' ? 'livestream' : 'sanctuary';
+    const announcementLive = alert?.active && alert.text && (!alert.expiresAt || alert.expiresAt > Date.now()) && (!alert.destinations || alert.destinations[destination]);
+    if (liveStatus) liveStatus.textContent = announcementLive ? 'ANNOUNCEMENT LIVE' : lastPayload?.blackout ? 'BLACKOUT' : lastPayload?.clear ? 'CLEARED' : state.activeLiveSlideId ? 'LIVE' : 'IDLE';
     const label = el('bento-hold-btn')?.querySelector('.btn-label');
     if (label) label.textContent = state.isHoldLive ? 'Release hold' : 'Hold live';
     if (!draft) return;

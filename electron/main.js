@@ -503,6 +503,15 @@ ipcMain.handle('desktop:open-menu', (event, options = {}) => {
   return new Promise(resolve => submenu.popup({ window: mainWindow, x, y, callback: resolve }));
 });
 
+ipcMain.handle('desktop:select-migration-folder', async event => {
+  if (!isUpdateHost(event)) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select your presentation software folder',
+    properties: ['openDirectory']
+  });
+  return result.canceled ? null : result.filePaths[0] || null;
+});
+
 ipcMain.handle('desktop:get-displays', () => {
   const displays = screen.getAllDisplays();
   const primaryDisplay = screen.getPrimaryDisplay();

@@ -56,8 +56,8 @@ test('platform build options and updater configuration stay separate from setup'
   assert.ok(setup.files.every(name => !name.includes('server')));
 });
 
-test('cloud builds retain KJV and remove optional Bibles only in the cloud configuration', () => {
-  const normal = payloadConfig(options([]), '/tmp/native');
+test('bundled builds retain optional content while default cloud builds retain KJV', () => {
+  const normal = payloadConfig(options(['--bundled-content']), '/tmp/native');
   const cloud = payloadConfig(options(['--cloud-content']), '/tmp/native');
   assert.ok(!normal.files.includes('!lexicon/**'));
   assert.ok(cloud.files.includes('!lexicon/**'));

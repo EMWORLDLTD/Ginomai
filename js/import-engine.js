@@ -90,7 +90,8 @@ class LibraryImportEngine {
         SONGBOOKS_DATABASE.length = 0;
       }
       if (typeof BIBLE_DATABASE !== 'undefined') {
-        for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k];
+        for (let k in BIBLE_DATABASE) if (k !== 'KJV') delete BIBLE_DATABASE[k];
+        BIBLE_DATABASE.KJV ||= {};
       }
       this.customBibles = {};
       this.customSongs = [];
@@ -133,7 +134,8 @@ class LibraryImportEngine {
     this.sanitizeExistingLibrary();
   }
 
-  clearAllData() {
+  async clearAllData() {
+    await this.clearDatabaseStores(['bibles', 'songs']);
     this.customBibles = {};
     this.customSongs = [];
     this.customSongbooks = [];
@@ -141,9 +143,10 @@ class LibraryImportEngine {
     localStorage.removeItem('sf_installed_bibles');
     localStorage.removeItem('sf_custom_songs');
     localStorage.removeItem('sf_custom_songbooks');
-    localStorage.setItem('sf_system_formatted', 'true');
+    localStorage.removeItem('sf_system_formatted');
     if (typeof BIBLE_DATABASE !== 'undefined') {
-      for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k];
+      for (let k in BIBLE_DATABASE) if (k !== 'KJV') delete BIBLE_DATABASE[k];
+      BIBLE_DATABASE.KJV ||= {};
     }
     if (typeof SONGS_DATABASE !== 'undefined') {
       SONGS_DATABASE.length = 0;
@@ -151,18 +154,27 @@ class LibraryImportEngine {
     if (typeof SONGBOOKS_DATABASE !== 'undefined') {
       SONGBOOKS_DATABASE.length = 0;
     }
-    if (this.db) {
-      try {
-        const tx = this.db.transaction(['bibles', 'songs'], 'readwrite');
-        tx.objectStore('bibles').clear();
-        tx.objectStore('songs').clear();
-      } catch (e) {}
-    }
+  }
+
+  async clearDatabaseStores(stores) {
+    if (!this.db && this.dbReady) await this.dbReady;
+    if (!this.db) return;
+    await new Promise((resolve, reject) => {
+      const tx = this.db.transaction(stores, 'readwrite');
+      tx.oncomplete = resolve;
+      tx.onerror = tx.onabort = () => reject(Error('Could not clear the local library database. Please retry.'));
+      for (const store of stores) tx.objectStore(store).clear();
+    });
   }
 
   initIndexedDB() {
     if (!('indexedDB' in window)) return;
     const request = indexedDB.open('ScriptureFlowStore', 1);
+    this.dbReady = new Promise((resolve, reject) => {
+      request.onerror = () => reject(Error('Could not open the local library database. Please retry.'));
+      this.resolveDbReady = resolve;
+    });
+    this.dbReady.catch(() => {});
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('bibles')) {
@@ -175,6 +187,7 @@ class LibraryImportEngine {
     request.onsuccess = (e) => {
       this.db = e.target.result;
       this.loadFromIndexedDB();
+      this.resolveDbReady();
     };
   }
 
@@ -183,7 +196,7 @@ class LibraryImportEngine {
     if (localStorage.getItem('sf_system_formatted') === 'true') {
       if (typeof SONGS_DATABASE !== 'undefined') SONGS_DATABASE.length = 0;
       if (typeof SONGBOOKS_DATABASE !== 'undefined') SONGBOOKS_DATABASE.length = 0;
-      if (typeof BIBLE_DATABASE !== 'undefined') { for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k]; }
+      if (typeof BIBLE_DATABASE !== 'undefined') { for (let k in BIBLE_DATABASE) if (k !== 'KJV') delete BIBLE_DATABASE[k]; BIBLE_DATABASE.KJV ||= {}; }
       if (typeof onComplete === 'function') onComplete();
       return;
     }
@@ -702,7 +715,7 @@ class LibraryImportEngine {
     };
   }
 
-  // Parse XML Bible formats (Zefania, OSIS, OpenSong, USX)
+  // Parse XML Bible formats (Zefania, OSIS, numbered books, OpenSong, USX)
   parseBibleXML(xmlText, defaultCode = 'BIBLE') {
     let translationCode = defaultCode;
     let translationName = defaultCode;
@@ -738,6 +751,35 @@ class LibraryImportEngine {
           });
         });
 
+        return { code: translationCode, name: translationName, data: bibleData };
+      }
+
+      // Numbered Scripture XML: <bible> <testament> <book number="1"> <chapter number="1"> <verse number="1">
+      const numberedBible = doc.querySelector('bible');
+      const numberedBooks = numberedBible ? numberedBible.querySelectorAll('book') : [];
+      if (numberedBooks.length > 0) {
+        translationName = numberedBible.getAttribute('translation') || numberedBible.getAttribute('name') || defaultCode;
+        numberedBooks.forEach(bEl => {
+          const canonicalBook = CANONICAL_BIBLE_BOOKS.find(book => book.num === Number(bEl.getAttribute('number')));
+          const rawBook = canonicalBook?.name || bEl.getAttribute('name');
+          if (!rawBook) return;
+          const normBook = this.normalizeBookName(rawBook);
+
+          bEl.querySelectorAll('chapter').forEach(chEl => {
+            const chNum = Number(chEl.getAttribute('number'));
+            if (!Number.isInteger(chNum) || chNum < 1) return;
+            const verses = [];
+            chEl.querySelectorAll('verse').forEach(vEl => {
+              const vNum = Number(vEl.getAttribute('number'));
+              if (!Number.isInteger(vNum) || vNum < 1) return;
+              verses.push({ verse: vNum, text: this.cleanMarkup(vEl.textContent) });
+            });
+            if (verses.length > 0) {
+              bibleData[normBook] = bibleData[normBook] || {};
+              bibleData[normBook][chNum] = verses;
+            }
+          });
+        });
         return { code: translationCode, name: translationName, data: bibleData };
       }
 
@@ -1399,18 +1441,31 @@ class LibraryImportEngine {
   }
 
   // Clear Only Downloaded Bibles
-  clearBiblesOnly() {
+  async removeStoredBible(code) {
+    if (!this.db && this.dbReady) await this.dbReady;
+    if (this.db) await new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['bibles'], 'readwrite');
+      tx.oncomplete = resolve;
+      tx.onerror = tx.onabort = () => reject(Error('Could not remove saved Bible data. Please retry.'));
+      tx.objectStore('bibles').delete(code);
+    });
+    delete this.customBibles[code];
+    localStorage.setItem('sf_custom_bibles', JSON.stringify(this.customBibles));
+    const installed = JSON.parse(localStorage.getItem('sf_installed_bibles') || '[]');
+    localStorage.setItem('sf_installed_bibles', JSON.stringify(installed.filter(item => item !== code)));
+    if (typeof BIBLE_DATABASE !== 'undefined') delete BIBLE_DATABASE[code];
+  }
+
+  async clearBiblesOnly() {
+    await this.clearDatabaseStores(['bibles']);
+    const importedKjv = Boolean(this.customBibles.KJV);
     this.customBibles = {};
     localStorage.removeItem('sf_custom_bibles');
     localStorage.removeItem('sf_installed_bibles');
     if (typeof BIBLE_DATABASE !== 'undefined') {
-      for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k];
-    }
-    if (this.db) {
-      try {
-        const tx = this.db.transaction(['bibles'], 'readwrite');
-        tx.objectStore('bibles').clear();
-      } catch (e) {}
+      for (let k in BIBLE_DATABASE) if (k !== 'KJV') delete BIBLE_DATABASE[k];
+      if (importedKjv) BIBLE_DATABASE.KJV = {};
+      BIBLE_DATABASE.KJV ||= {};
     }
     if (typeof window.onLibraryDataUpdated === 'function') {
       window.onLibraryDataUpdated();
@@ -1418,7 +1473,8 @@ class LibraryImportEngine {
   }
 
   // Clear Only Saved Songs
-  clearSongsOnly() {
+  async clearSongsOnly() {
+    await this.clearDatabaseStores(['songs']);
     this.customSongs = [];
     this.customSongbooks = [];
     localStorage.removeItem('sf_custom_songs');
@@ -1428,12 +1484,6 @@ class LibraryImportEngine {
     }
     if (typeof SONGBOOKS_DATABASE !== 'undefined') {
       SONGBOOKS_DATABASE.length = 0;
-    }
-    if (this.db) {
-      try {
-        const tx = this.db.transaction(['songs'], 'readwrite');
-        tx.objectStore('songs').clear();
-      } catch (e) {}
     }
     if (typeof window.onLibraryDataUpdated === 'function') {
       window.onLibraryDataUpdated();
@@ -1646,7 +1696,7 @@ class LibraryImportEngine {
     const upperCode = code.toUpperCase().trim();
 
     if (typeof window.ensureContentPack === 'function') {
-      await window.ensureContentPack(upperCode, { prompt: false });
+      if (!await window.ensureContentPack(upperCode)) return { cancelled: true };
     }
 
     if (typeof onProgress === 'function') onProgress({ status: 'downloading', percent: 20 });

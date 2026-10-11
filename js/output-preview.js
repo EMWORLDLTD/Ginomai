@@ -2,6 +2,7 @@
 (() => {
   const dimensions = new Map();
   const entries = [];
+  let latestPayload = null;
   const channel = new BroadcastChannel('ginomai_output_viewports');
   function layout(entry) {
     const target = entry.target;
@@ -16,13 +17,14 @@
   window.getOutputPreviewDimensions = target => dimensions.get(target) || {width:1920,height:1080};
   window.syncOutputPreviews = () => entries.forEach(layout);
   window.updateOutputPreviews = payload => {
+    latestPayload = { ...latestPayload, ...payload };
     for (const {frame} of entries) {
       const output = frame.contentWindow;
       if (output && payload._operatorRequestId && !payload._timestamp) {
         output.pendingOperatorPreview = {id:payload._operatorRequestId,startedAt:Date.now()};
       }
       // Local selection must not wait for a host echo or advance the server timestamp.
-      const next = {...output?.LATEST_STATE, ...payload, _timestamp:undefined};
+      const next = {...output?.LATEST_STATE, ...payload};
       if (payload.contentType && payload.contentType !== 'lexicon') {
         next.isLexicon = false;
         next.lexiconData = null;
@@ -34,6 +36,9 @@
     const host = document.getElementById(id);
     if (!host) continue;
     const frame = document.createElement('iframe');
+    frame.addEventListener('load', () => {
+      if (latestPayload) frame.contentWindow?.applyState?.(latestPayload);
+    });
     frame.className = 'actual-output-preview';
     frame.style.background = '#0A0E18';
     frame.src = `display.html?target=${target}&embedded=1`;

@@ -10,6 +10,29 @@ const { gzipSync } = require('node:zlib');
 const { ContentPacks } = require('../lib/content-packs');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 
+test('optional pack removal reports success only after confirmed successful deletion', async () => {
+  const source = await fs.readFile(path.join(__dirname, '../js/content-packs.js'), 'utf8');
+  for (const code of ['AI_SEMANTIC', 'KJV_STRONGS']) {
+    for (const outcome of ['cancel', 'success', 'failure']) {
+      const requests = [], notices = [];
+      const window = { showCustomConfirm: async () => outcome !== 'cancel', showToast: (message, type) => notices.push({ message, type }) };
+      const context = vm.createContext({ window, document: { addEventListener() {} }, fetch: async (url, options) => {
+        requests.push(options.method);
+        return { ok: outcome === 'success', json: async () => ({}) };
+      } });
+      vm.runInContext(source, context);
+      window.refreshAiContentSettings = async () => {};
+      await window.removeOptionalPack(code);
+      assert.deepEqual(requests, outcome === 'cancel' ? [] : ['DELETE']);
+      assert.equal(notices.length, outcome === 'cancel' ? 0 : 1);
+      if (notices.length) {
+        assert.equal(notices[0].type, outcome === 'success' ? 'success' : 'error');
+        if (outcome === 'success') assert.match(notices[0].message, /removed/);
+      }
+    }
+  }
+});
+
 async function fixture(t, strongs = false) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ginomai-content-test-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
@@ -104,24 +127,27 @@ test('a valid gzip hash cannot bypass the expected decompressed checksum', async
 
 async function browserFixture(confirm) {
   const window = { showCustomConfirm: confirm };
-  const notices = [];
+  const dialogs = new Map();
+  for (const id of ['content-download-backdrop', 'content-download-dialog', 'content-download-title', 'content-download-detail', 'content-download-progress', 'content-download-dismiss', 'content-download-retry']) {
+    dialogs.set(id, { hidden: true, style: {}, classList: { add() {}, remove() {} } });
+  }
   let installs = 0;
-  const context = vm.createContext({ window, document: { addEventListener() {}, createElement() { return { style: {}, setAttribute() {} }; }, body: { appendChild(notice) { notices.push(notice); } } }, setInterval, clearInterval, fetch: async (url, options) => {
+  const context = vm.createContext({ window, document: { addEventListener() {}, getElementById(id) { return dialogs.get(id); } }, setInterval, clearInterval, fetch: async (url, options) => {
     if (options?.method === 'POST') installs++;
     return { ok: true, json: async () => ({ code: 'NIV', name: 'NIV', installed: false, cloudAvailable: true, downloadBytes: 1024 }) };
   } });
   vm.runInContext(await fs.readFile(path.join(__dirname, '../js/content-packs.js'), 'utf8'), context);
-  return { window, notices, installs: () => installs };
+  return { window, dialogs, installs: () => installs };
 }
 
 test('cancelling the first-use prompt performs no download', async () => {
   const browser = await browserFixture(async () => false);
   assert.equal(await browser.window.ensureContentPack('NIV'), false);
   assert.equal(browser.installs(), 0);
-  assert.equal(browser.notices.length, 0);
+  assert.equal(browser.dialogs.get('content-download-backdrop').hidden, true);
 });
 
-test('accepting first-use downloads once and updates one notice in place', async () => {
+test('accepting first-use downloads once and updates progress in place', async () => {
   let prompts = 0;
   const browser = await browserFixture(async () => { prompts++; return true; });
   const first = browser.window.ensureContentPack('NIV');
@@ -130,8 +156,9 @@ test('accepting first-use downloads once and updates one notice in place', async
   assert.equal(await browser.window.ensureContentPack('NIV'), true);
   assert.equal(prompts, 1);
   assert.equal(browser.installs(), 1);
-  assert.equal(browser.notices.length, 1);
-  assert.equal(browser.notices[0].hidden, true);
+  assert.equal(browser.dialogs.get('content-download-backdrop').hidden, false);
+  assert.equal(browser.dialogs.get('content-download-progress').value, 100);
+  assert.equal(browser.dialogs.get('content-download-detail').textContent, 'Installed and ready to use offline.');
 });
 
 test('cancelling a translation download restores selection without projecting or rebuilding', async () => {
@@ -153,4 +180,77 @@ test('cancelling a translation download restores selection without projecting or
   await change;
   assert.equal(state.bibleVersion, 'KJV');
   assert.equal(elements.get('bento-active-version-label').textContent, 'KJV');
+});
+
+test('an explicit false prompt option cannot bypass download consent', async () => {
+  const browser = await browserFixture(async () => false);
+  assert.equal(await browser.window.ensureContentPack('NIV', { prompt: false }), false);
+  assert.equal(browser.installs(), 0);
+});
+
+test('declining AI download keeps transcript processing available without prompting repeatedly', async () => {
+  let prompts = 0;
+  const browser = await browserFixture(async () => { prompts++; return false; });
+  assert.equal(await browser.window.querySemanticContent('A sentence for meaning based Bible detection', 'KJV'), null);
+  await browser.window.offerSemanticDownload();
+  await browser.window.offerSemanticDownload();
+  assert.equal(prompts, 1);
+  assert.equal(browser.installs(), 0);
+});
+
+test('translation import stops after declining consent without reading or storing Bible data', async () => {
+  const source = await fs.readFile(path.join(__dirname, '../js/import-engine.js'), 'utf8');
+  const start = source.indexOf('  async downloadCloudBible(');
+  const end = source.indexOf('\n  }', start) + '\n  }'.length;
+  const method = source.slice(start, end).trim();
+  const context = vm.createContext({ window: { ensureContentPack: async () => false }, fetch() { throw Error('Read Bible after cancellation'); } });
+  const importer = vm.runInContext(`({ ${method} })`, context);
+  const result = await importer.downloadCloudBible('NIV');
+  assert.equal(result.cancelled, true);
+});
+
+test('cancelling an in-flight transfer discards staging and permits a fresh retry', async t => {
+  const f = await fixture(t);
+  let entered;
+  const transferring = new Promise(resolve => { entered = resolve; });
+  const store = new ContentPacks({ ...f.options, fetcher: async (url, { signal }) => {
+    entered();
+    return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  } });
+  const download = store.install('NIV');
+  const rejected = assert.rejects(download, /abort/i);
+  await transferring;
+  const status = await store.cancel('NIV');
+  await rejected;
+  assert.equal(status.installed, false);
+  assert.equal(status.downloading, undefined);
+  assert.deepEqual(await fs.readdir(path.join(f.options.directory, 'NIV')), []);
+  store.fetch = async () => new Response(f.compressed);
+  await store.install('NIV');
+  assert.equal((await store.status('NIV')).installed, true);
+});
+
+test('semantic binary files and verse arrays install atomically and persist offline', async t => {
+  const f = await fixture(t);
+  const data = new Map([
+    ['assets/semantic/manifest.json', Buffer.from('{"dimensions":384}')],
+    ['assets/semantic/verses.json', Buffer.from('[{"reference":"John 3:16"}]')],
+    ['assets/semantic/vectors.f32', Buffer.from([0, 1, 2, 3])],
+    ['assets/semantic/models/Xenova/bge-small-en-v1.5/onnx/model_quantized.onnx', Buffer.from([5, 0, 0, 255])]
+  ]);
+  const responses = new Map();
+  const files = Array.from(data, ([relative, bytes]) => {
+    const compressed = gzipSync(bytes);
+    const asset = `${path.basename(relative)}.gz`;
+    responses.set(asset, compressed);
+    return { path: relative, asset, bytes: bytes.length, downloadBytes: compressed.length, sha256: hash(bytes), compressedSha256: hash(compressed) };
+  });
+  f.options.manifest.packs = [{ code: 'AI_SEMANTIC', name: 'AI', version: hash(Buffer.from('test')), files }];
+  const store = new ContentPacks({ ...f.options, fetcher: async url => new Response(responses.get(path.basename(url.pathname))) });
+  await store.install('AI_SEMANTIC');
+  const restarted = new ContentPacks({ ...f.options, fetcher: async () => { throw Error('Offline'); } });
+  await restarted.install('AI_SEMANTIC');
+  for (const [relative, bytes] of data) assert.deepEqual(await fs.readFile(await restarted.filePath(relative)), bytes);
+  await restarted.remove('AI_SEMANTIC');
+  assert.equal((await restarted.status('AI_SEMANTIC')).installed, false);
 });

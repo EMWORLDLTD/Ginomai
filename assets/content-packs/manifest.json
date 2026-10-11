@@ -452,6 +452,77 @@
           "compressedSha256": "99952d980593448095d4bdd685cf2a71c0a8bc93c5be4d7570bfb3b2d15f11b8"
         }
       ]
+    },
+    {
+      "code": "AI_SEMANTIC",
+      "name": "Offline AI Bible detection",
+      "version": "73824726a238939131ee1d29298d33ed065a816787a810d80578ae787d7de1e9",
+      "files": [
+        {
+          "path": "assets/semantic/manifest.json",
+          "asset": "AI_SEMANTIC--manifest.json--6a02522ff2267aab.gz",
+          "bytes": 1146,
+          "downloadBytes": 635,
+          "sha256": "6a02522ff2267aabbe60e0cd441429013e467b2fc527d75c3f06336f09d761b4",
+          "compressedSha256": "0b5ede79af27e8862460a8ca0bdd99aff3a2e343a187651de02c0d41f0fab2fa"
+        },
+        {
+          "path": "assets/semantic/vectors.f32",
+          "asset": "AI_SEMANTIC--vectors.f32--2cb91b2505d6902f.gz",
+          "bytes": 47772672,
+          "downloadBytes": 44223807,
+          "sha256": "2cb91b2505d6902fcb67b6bdf04643d19852c5a6bde6575d9f88f618624521c4",
+          "compressedSha256": "6fd191f8737fc0f984442450d8036a063eeb70f29d3ab4af2a782b5115008097"
+        },
+        {
+          "path": "assets/semantic/verses.json",
+          "asset": "AI_SEMANTIC--verses.json--88778275cb5303d8.gz",
+          "bytes": 6592649,
+          "downloadBytes": 1509915,
+          "sha256": "88778275cb5303d8f8eafbe77135599d03c2e24a18a230caadfa4fbec6cff4bc",
+          "compressedSha256": "16adc80be4498f5594ac0d3cc5881587e36322a3868cd553d69880360874fdb6"
+        },
+        {
+          "path": "assets/semantic/BGE-LICENSE.txt",
+          "asset": "AI_SEMANTIC--BGE-LICENSE.txt--d2066728cf4edc75.gz",
+          "bytes": 1086,
+          "downloadBytes": 664,
+          "sha256": "d2066728cf4edc752cb7542fb20b97a3cde20fdb26e8d0f0e0900f0fa0ac43ef",
+          "compressedSha256": "cb4b12f880768357827411082c6fcdbd2b98122e5a8e229e55db4eddfa111c4c"
+        },
+        {
+          "path": "assets/semantic/models/Xenova/bge-small-en-v1.5/tokenizer_config.json",
+          "asset": "AI_SEMANTIC--tokenizer_config.json--ac4db152b467998d.gz",
+          "bytes": 381,
+          "downloadBytes": 224,
+          "sha256": "ac4db152b467998d8ded6c68803f885b964945df9dda3d58fea1f5d4cb55b882",
+          "compressedSha256": "7b841d033f7e6ce3f2c1118ec88aa4222c37f5507be7f652b9739b60fd77313a"
+        },
+        {
+          "path": "assets/semantic/models/Xenova/bge-small-en-v1.5/config.json",
+          "asset": "AI_SEMANTIC--config.json--0e58de1928f93361.gz",
+          "bytes": 713,
+          "downloadBytes": 389,
+          "sha256": "0e58de1928f93361fb1a1b11435bc8fe11dec5447d8d4634a6d748c73a470764",
+          "compressedSha256": "e0e2da5b199576f5636d7136dbe07381e3c304a6e3f989699b532d90e48c6fce"
+        },
+        {
+          "path": "assets/semantic/models/Xenova/bge-small-en-v1.5/tokenizer.json",
+          "asset": "AI_SEMANTIC--tokenizer.json--ffb28886478b9b17.gz",
+          "bytes": 742067,
+          "downloadBytes": 206049,
+          "sha256": "ffb28886478b9b17a8c06f4fe6741b970d5dd3de13330ccc3b9f686df8a0545a",
+          "compressedSha256": "3d9e40d30d04939f76049dabb4c71810b99b10c4ed978ced7da1d8180f4469b8"
+        },
+        {
+          "path": "assets/semantic/models/Xenova/bge-small-en-v1.5/onnx/model_quantized.onnx",
+          "asset": "AI_SEMANTIC--model_quantized.onnx--6c9c6101a956d62d.gz",
+          "bytes": 34014426,
+          "downloadBytes": 23851104,
+          "sha256": "6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4",
+          "compressedSha256": "ce720d44eba4b8be8fb80ba248232ac59af296fe8f1e2013150d9f4642733684"
+        }
+      ]
     }
   ]
 }

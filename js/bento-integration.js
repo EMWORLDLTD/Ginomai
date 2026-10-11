@@ -155,8 +155,8 @@
         <div class="bento-drag-handle" style="cursor:grab; opacity:0.4; font-size:12px; padding:0 4px;">⠿</div>
         <div class="bento-type-ico ${icoClass}">${icoSvg}</div>
         <div class="info" style="flex:1; min-width:0; overflow:hidden;">
-          <div class="title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600; font-size:12px; color:var(--txt);">${escapeHtml(item.title)}</div>
-          <div class="meta" style="font-size:10.5px; color:var(--mute); font-family:var(--font-mono);">${escapeHtml(item.meta || (item.type === 'song' ? (item.author || 'Song') : (item.book || 'Scripture')))}</div>
+          <div class="title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600; color:var(--txt);">${escapeHtml(item.title)}</div>
+          <div class="meta" style="color:var(--mute); font-family:var(--font-mono);">${escapeHtml(item.meta || (item.type === 'song' ? (item.author || 'Song') : (item.book || 'Scripture')))}</div>
         </div>
         <button class="bento-agenda-act-btn" style="background:none; border:none; color:var(--mute); padding:4px 6px; cursor:pointer; border-radius:4px; font-size:11px; display:flex; align-items:center;" onclick="event.stopPropagation(); window.removeAgendaItem(${idx})" title="Remove from agenda">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -532,7 +532,7 @@
       // SONGS MODE
       const songs = window.SONGS_DATABASE || [];
       const filtered = q 
-        ? songs.filter(s => (typeof window.matchSongQuery === 'function' ? window.matchSongQuery(s, q) : (typeof window.getSongSearchIndex === 'function' ? window.getSongSearchIndex(s) : (s.title + ' ' + (s.author || ''))).toLowerCase().includes(q)))
+        ? window.searchSongs(songs, q)
         : songs;
 
       const emptyHtml = `
@@ -541,7 +541,7 @@
               ${q ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>'}
             </div>
             <div class="empty-title">${q ? 'No matching songs' : 'No songs in library'}</div>
-            <div class="empty-desc">${q ? 'Try searching by title, artist, or lyric phrase.' : 'Import song files via the top toolbar to start.'}</div>
+            <div class="empty-desc">${q ? 'Try searching by song title or lyric phrase.' : 'Import song files via the top toolbar to start.'}</div>
           </div>
         `;
 
@@ -3349,7 +3349,7 @@
     }
 
     if (searchInput) {
-      searchInput.placeholder = curTab === 'media' ? 'Search media…' : curTab === 'bible' ? 'Filter books & chapters (Ctrl+L)...' : 'Search title, artist, lyric line (Ctrl+L)...';
+      searchInput.placeholder = curTab === 'media' ? 'Search media…' : curTab === 'bible' ? 'Filter books & chapters (Ctrl+L)...' : 'Search song title or lyric phrase (Ctrl+L)...';
     }
   }
 

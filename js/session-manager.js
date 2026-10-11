@@ -42,6 +42,7 @@
     }
 
     saveToStorage() {
+      if (window.sfResettingDevice) return true;
       try {
         localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(this.sessions));
         if (this.activeSessionId) {

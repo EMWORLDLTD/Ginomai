@@ -17,17 +17,26 @@ async function buildContentPacks({ baseUrl, output = path.join(root, 'output', '
   const bibles = JSON.parse(await fs.readFile(path.join(root, 'bibles', 'manifest.json'), 'utf8'));
   const manifest = { schemaVersion: 1, baseUrl: baseUrl.replace(/\/$/, ''), packs: [] };
   await fs.mkdir(output, { recursive: true });
-  for (const bible of bibles) {
-    const paths = [`bibles/${bible.code}.json`];
+  const semantic = JSON.parse(await fs.readFile(path.join(root, 'assets/semantic/manifest.json'), 'utf8'));
+  const packs = [...bibles.map(bible => ({ ...bible, paths: [`bibles/${bible.code}.json`] })), {
+    code: 'AI_SEMANTIC', name: 'Offline AI Bible detection', paths: [
+      'assets/semantic/manifest.json', 'assets/semantic/vectors.f32', 'assets/semantic/verses.json', 'assets/semantic/BGE-LICENSE.txt',
+      ...Object.keys(semantic.modelFiles).map(file => `assets/semantic/models/${file}`)
+    ]
+  }];
+  for (const bible of packs) {
+    const paths = bible.paths;
     if (bible.code === 'KJV_STRONGS') paths.push('lexicon/strongs_unified.json', 'lexicon/strongs_lexicon.json');
     const files = [];
     for (const relative of paths) {
       const bytes = await fs.readFile(path.join(root, relative));
       const compressed = await compress(bytes, { level: 9 });
       const sha256 = digest(bytes);
-      const asset = `${bible.code}--${path.basename(relative, '.json')}--${sha256.slice(0, 16)}.json.gz`;
-      await fs.writeFile(path.join(output, asset), compressed);
-      files.push({ path: relative, asset, bytes: bytes.length, downloadBytes: compressed.length, sha256, compressedSha256: digest(compressed) });
+      const asset = `${bible.code}--${path.basename(relative)}--${sha256.slice(0, 16)}.gz`;
+      // Preserve the immutable names already published for Bible and Strong's packs.
+      const assetName = bible.code === 'AI_SEMANTIC' ? asset : `${bible.code}--${path.basename(relative, '.json')}--${sha256.slice(0, 16)}.json.gz`;
+      await fs.writeFile(path.join(output, assetName), compressed);
+      files.push({ path: relative, asset: assetName, bytes: bytes.length, downloadBytes: compressed.length, sha256, compressedSha256: digest(compressed) });
     }
     manifest.packs.push({ code: bible.code, name: bible.name, version: digest(Buffer.from(files.map(file => file.sha256).join(':'))), files });
   }

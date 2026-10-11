@@ -76,7 +76,7 @@ test('remote verse and song slide selections do not rebuild the current deck', (
   assert.equal(previews.at(-1).text,'Slide 31');
 });
 
-test('operator preview forwarding happens immediately without a host response', () => {
+test('operator and host preview forwarding happens immediately without a host response', () => {
   const calls = [];
   const context = vm.createContext({REMOTE_MODE:true,window:{updateOutputPreviews:payload=>calls.push(payload)},document:{getElementById:()=>null}});
   vm.runInContext(section(app,'function updateLivePreview(','function clearAllOutputs('),context);
@@ -85,7 +85,8 @@ test('operator preview forwarding happens immediately without a host response', 
   assert.equal(calls[0],payload);
   context.REMOTE_MODE=false;
   context.updateLivePreview(payload);
-  assert.equal(calls.length,1,'Host preview delivery is unchanged');
+  assert.equal(calls.length,2,'Host preview delivery also forwards immediately');
+  assert.equal(calls[1],payload);
 });
 
 test('echoed remote commands never send workspace patches or rebuild operator decks', () => {
@@ -140,7 +141,7 @@ test('remote recording start and halt send host commands, not local recording mo
   const transcript = fs.readFileSync(require.resolve('../js/sermon-transcript.js'),'utf8');
   const commands = [];
   const context = vm.createContext({window:{isRemoteOperator:true,sendRemoteCommand:command=>commands.push(command)}});
-  vm.runInContext('class Recorder {'+section(transcript,'  toggleSermonRecording() {','  flushPendingUtterance() {')+'}; window.Recorder=Recorder;',context);
+  vm.runInContext('class Recorder {'+section(transcript,'  toggleSermonRecording() {','  flushPendingUtterance(')+'}; window.Recorder=Recorder;',context);
   const recorder = new context.window.Recorder();
   recorder.isRecordingSermon=false;
   recorder.syncTopBarRecordBtn=()=>{};

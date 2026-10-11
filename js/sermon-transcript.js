@@ -17,6 +17,18 @@ class SermonTranscriptManager {
     this.userScrolledUp = false;
     this.searchFilter = '';
     this.sessionSearchFilter = '';
+    this.aiListening = false;
+    for (const session of this.sessions) {
+      for (const moment of session.recordings || []) {
+        if (moment.isRecording && Number.isFinite(moment.startTimestamp)) {
+          moment.endTimestamp = moment.startTimestamp + (moment.durationSeconds || 0) * 1000;
+          moment.endTime = new Date(moment.endTimestamp).toLocaleTimeString([], {
+            timeZone: session.timeZone, hour: '2-digit', minute: '2-digit'
+          });
+        }
+        moment.isRecording = false;
+      }
+    }
 
     this.startTimer();
   }
@@ -26,7 +38,7 @@ class SermonTranscriptManager {
       const raw = localStorage.getItem(this.historyKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
@@ -48,20 +60,25 @@ class SermonTranscriptManager {
       }
     } catch (e) {}
 
-    const initial = this.createInitialSession();
-    initial.isActive = true;
-    const initialList = [initial];
-    this.persistSessions(initialList);
-    return initialList;
+    return [];
   }
 
   persistSessions(list = this.sessions) {
+    if (window.sfResettingDevice) return true;
     try {
       localStorage.setItem(this.historyKey, JSON.stringify(list));
-      if (this.session) {
+      if (this.session && list.some(session => session.id === this.session.id)) {
         localStorage.setItem(this.storageKey, JSON.stringify(this.session));
+      } else if (list.length === 0) {
+        localStorage.removeItem(this.storageKey);
       }
-    } catch (e) {}
+      this.saveError = false;
+      return true;
+    } catch (e) {
+      if (!this.saveError) window.showToast?.('Session could not be saved. Export a copy before closing the app.', 'error');
+      this.saveError = true;
+      return false;
+    }
   }
 
   getActiveSession() {
@@ -74,8 +91,8 @@ class SermonTranscriptManager {
     return active || this.createInitialSession();
   }
 
-  createInitialSession(customTitle, customSpeaker) {
-    const now = new Date();
+  createInitialSession(customTitle, customSpeaker, timestamp = Date.now()) {
+    const now = new Date(timestamp);
     const formattedDate = now.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -83,14 +100,18 @@ class SermonTranscriptManager {
       day: 'numeric'
     });
     const dateShort = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const defaultTitle = customTitle || `Sunday Service • ${dateShort}`;
+    const defaultTitle = customTitle || `Service • ${dateShort}`;
 
     return {
-      id: 'sermon_' + Date.now(),
+      id: 'sermon_' + timestamp + '_' + Math.random().toString(36).slice(2, 8),
       title: defaultTitle,
       speaker: customSpeaker || localStorage.getItem('sf_sermon_speaker') || 'Pastor',
       date: formattedDate,
-      startTimestamp: Date.now(),
+      startTimestamp: timestamp,
+      dayKey: this.getDayKey(timestamp),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      isAutomatic: !customTitle,
+      transcriptLog: [],
       totalDurationSeconds: 0,
       recordings: [], // [{ id, title, type, startTime, endTime, startTimestamp, endTimestamp, durationSeconds, paragraphs: [], scriptures: [], concordance: [], isRecording: false }]
       paragraphs: [], // consolidated paragraphs
@@ -102,6 +123,111 @@ class SermonTranscriptManager {
       isActive: true,
       isBookmarked: false
     };
+  }
+
+  getDayKey(timestamp = Date.now(), timeZone) {
+    if (!timeZone) {
+      const date = new Date(timestamp);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+    this.dayFormatters ||= new Map();
+    if (!this.dayFormatters.has(timeZone)) {
+      this.dayFormatters.set(timeZone, new Intl.DateTimeFormat('en-US', {
+        timeZone, year: 'numeric', month: '2-digit', day: '2-digit'
+      }));
+    }
+    const parts = this.dayFormatters.get(timeZone).formatToParts(new Date(timestamp));
+    const part = type => parts.find(p => p.type === type).value;
+    return `${part('year')}-${part('month')}-${part('day')}`;
+  }
+
+  getSessionDay(session = this.session) {
+    return session.dayKey || this.getDayKey(session.startTimestamp || Date.now(), session.timeZone);
+  }
+
+  formatTimestamp(timestamp, fallback = '', session = this.session) {
+    if (!Number.isFinite(timestamp)) return fallback;
+    const timeZone = session?.timeZone;
+    this.timestampFormatters ||= new Map();
+    if (!this.timestampFormatters.has(timeZone)) {
+      this.timestampFormatters.set(timeZone, new Intl.DateTimeFormat(undefined, {
+        timeZone, year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short'
+      }));
+    }
+    return this.timestampFormatters.get(timeZone).format(new Date(timestamp));
+  }
+
+  hasSessionActivity(session) {
+    return !!session.activityStartedAt || ['recordings', 'paragraphs', 'scriptures', 'concordance', 'transcriptLog']
+      .some(key => session[key]?.length > 0);
+  }
+
+  ensureDailySession(timestamp = Date.now()) {
+    if (window.isRemoteOperator || this.rollingDailySession) return this.session;
+    const day = this.getDayKey(timestamp);
+    if (this.getSessionDay() === day) return this.session;
+
+    const previous = this.session;
+    const recording = this.isRecordingSermon;
+    const previousMoment = this.activeRecordingMoment;
+    const boundaryDate = new Date(previousMoment?.startTimestamp || previous.startTimestamp || timestamp);
+    boundaryDate.setHours(24, 0, 0, 0);
+    const boundary = Math.min(timestamp, boundaryDate.getTime());
+    this.rollingDailySession = true;
+    try {
+      if (recording) {
+        this.flushPendingUtterance(boundary - 1);
+        this.stopCurrentRecordingMoment(boundary);
+      }
+      if (this.saveSession() === false) return null;
+      const target = this.sessions.find(s => this.getSessionDay(s) === day) ||
+        this.createInitialSession(null, previous.speaker, timestamp);
+      this.sessions.forEach(s => { s.isActive = false; });
+      target.isActive = true;
+      this.session = target;
+      this.currentInterimText = '';
+      this.lastUtteranceTime = 0;
+      if (typeof speechAi !== 'undefined') speechAi?.resetScriptureContext?.();
+      window.cancelPendingAutoProjection?.('service-changed');
+      if (recording) {
+        const start = new Date(timestamp);
+        start.setHours(0, 0, 0, 0);
+        this.startNewRecordingMoment(previousMoment?.type || 'teaching', start.getTime());
+      }
+    } finally {
+      this.rollingDailySession = false;
+    }
+    return this.session;
+  }
+
+  recordAiActivity() {
+    const session = this.ensureDailySession();
+    if (!session || window.isRemoteOperator) return;
+    if (!session.activityStartedAt) {
+      session.activityStartedAt = Date.now();
+      this.saveSession();
+      this.notifyUpdate(true);
+    }
+    return session;
+  }
+
+  setAiListening(enabled) {
+    this.aiListening = !!enabled;
+    if (enabled) {
+      this.listeningDay = this.getDayKey();
+      this.recordAiActivity();
+    }
+  }
+
+  recordAiTranscript(text, isFinal) {
+    if (window.isRemoteOperator || !text?.trim() || !this.recordAiActivity()) return;
+    if (!isFinal) return;
+    const timestamp = Date.now();
+    this.session.transcriptLog ||= [];
+    this.session.transcriptLog.push({ timestamp, text: text.trim(), recordingId: this.activeRecordingMoment?.id || null });
+    this.saveSession();
+    if (!this.isRecordingSermon) this.notifyUpdate(true);
   }
 
   ensureRecordings(sess = this.session) {
@@ -143,20 +269,21 @@ class SermonTranscriptManager {
     return null;
   }
 
-  startNewRecordingMoment(type = 'teaching') {
+  startNewRecordingMoment(type = 'teaching', timestamp = Date.now()) {
+    if (!this.ensureDailySession(timestamp)) return null;
     this.ensureRecordings(this.session);
-    const now = new Date();
+    const now = new Date(timestamp);
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const count = this.session.recordings.length + 1;
     const defaultTitle = `${this.capitalizeFirst(type)} #${count}`;
 
     const moment = {
-      id: 'rec_' + Date.now(),
+      id: 'rec_' + timestamp + '_' + Math.random().toString(36).slice(2, 8),
       title: defaultTitle,
       type: type, // 'teaching' | 'prophecy' | 'instruction' | 'prayer' | 'other'
       startTime: timeStr,
       endTime: null,
-      startTimestamp: Date.now(),
+      startTimestamp: timestamp,
       endTimestamp: null,
       durationSeconds: 0,
       paragraphs: [],
@@ -171,12 +298,13 @@ class SermonTranscriptManager {
     return moment;
   }
 
-  stopCurrentRecordingMoment() {
+  stopCurrentRecordingMoment(timestamp = Date.now()) {
     const moment = this.activeRecordingMoment || (this.session.recordings && this.session.recordings.length > 0 ? this.session.recordings[this.session.recordings.length - 1] : null);
     if (moment && moment.isRecording) {
-      const now = new Date();
+      const now = new Date(timestamp);
+      this.updateRecordingDuration(timestamp);
       moment.endTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      moment.endTimestamp = Date.now();
+      moment.endTimestamp = timestamp;
       moment.isRecording = false;
     }
     this.activeRecordingMoment = null;
@@ -226,9 +354,14 @@ class SermonTranscriptManager {
 
     if (!confirmed) return;
 
+    if (this.activeRecordingMoment?.id === momentId) this.setRecordingState(false);
     this.session.recordings = this.session.recordings.filter(r => r.id !== momentId);
-    this.session.paragraphs = this.getAllParagraphs();
-    this.session.scriptures = this.getAllScriptures();
+    this.session.paragraphs = this.session.recordings.flatMap(r => r.paragraphs || []);
+    const deletedScriptures = new Set((moment.scriptures || []).map(sc => sc.id));
+    this.session.scriptures = (this.session.scriptures || []).filter(sc => !deletedScriptures.has(sc.id));
+    this.session.concordance = (this.session.concordance || []).filter(entry =>
+      !(moment.concordance || []).some(term => term.id === entry.id && term.timestamp === entry.timestamp));
+    this.session.transcriptLog = (this.session.transcriptLog || []).filter(entry => entry.recordingId !== momentId);
     this.saveSession();
     this.notifyUpdate(true);
 
@@ -238,24 +371,35 @@ class SermonTranscriptManager {
   }
 
   saveSession() {
-    if (!this.session) return;
+    if (!this.session) return false;
     const idx = this.sessions.findIndex(s => s.id === this.session.id);
+    if (idx === -1 && this.session.isAutomatic && !this.hasSessionActivity(this.session)) return true;
     if (idx !== -1) {
       this.sessions[idx] = this.session;
     } else {
       this.sessions.unshift(this.session);
     }
-    this.persistSessions();
+    return this.persistSessions();
+  }
+
+  updateRecordingDuration(timestamp = Date.now()) {
+    const moment = this.activeRecordingMoment;
+    if (!moment || !Number.isFinite(moment.startTimestamp)) return;
+    const duration = Math.max(0, Math.floor((timestamp - moment.startTimestamp) / 1000));
+    this.session.totalDurationSeconds = (this.session.totalDurationSeconds || 0) + duration - (moment.durationSeconds || 0);
+    moment.durationSeconds = duration;
   }
 
   startTimer() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.timerInterval = setInterval(() => {
+      if (!window.isRemoteOperator && (this.isRecordingSermon || (this.aiListening && this.listeningDay !== this.getDayKey()))) {
+        if (!this.ensureDailySession()) return;
+        this.recordAiActivity();
+        this.listeningDay = this.getDayKey();
+      }
       if (this.isRecordingSermon && !window.isRemoteOperator) {
-        this.session.totalDurationSeconds = (this.session.totalDurationSeconds || 0) + 1;
-        if (this.activeRecordingMoment) {
-          this.activeRecordingMoment.durationSeconds = (this.activeRecordingMoment.durationSeconds || 0) + 1;
-        }
+        this.updateRecordingDuration();
         this.notifyUpdate(false);
       }
     }, 1000);
@@ -274,6 +418,7 @@ class SermonTranscriptManager {
     if (willRecord) {
       // 1. Start a new recording moment in the current service session
       const moment = this.startNewRecordingMoment('teaching');
+      if (!moment) return;
       this.isRecordingSermon = true;
 
       // Auto start AI mic if recording was activated while AI mic was off
@@ -309,12 +454,13 @@ class SermonTranscriptManager {
     }
   }
 
-  flushPendingUtterance() {
+  flushPendingUtterance(timestamp = Date.now()) {
     clearTimeout(this.interimCommitTimer);
     if (!this.isRecordingSermon || !this.currentInterimText) return;
+    if (!this.ensureDailySession(timestamp) || !this.currentInterimText) return;
     const pending = this.currentInterimText;
-    this.commitFinalUtterance(pending);
     this.currentInterimText = '';
+    this.commitFinalUtterance(pending, timestamp);
   }
 
   setRecordingState(isListening) {
@@ -352,8 +498,7 @@ class SermonTranscriptManager {
 
   async promptCloseOrNewSession() {
     this.ensureRecordings(this.session);
-    const hasContent = (this.session.recordings && this.session.recordings.length > 0) ||
-                       (this.session.paragraphs && this.session.paragraphs.length > 0);
+    const hasContent = this.hasSessionActivity(this.session);
 
     if (!hasContent) {
       this.startNewServiceSession();
@@ -400,9 +545,10 @@ class SermonTranscriptManager {
     window.cancelPendingAutoProjection?.('service-changed');
     const now = new Date();
     const dateShort = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const defaultTitle = customTitle || `Sunday Service • ${dateShort}`;
+    const defaultTitle = customTitle || `Service • ${dateShort}`;
     const currentSpeaker = (this.session && this.session.speaker) ? this.session.speaker : 'Pastor';
     const newSession = this.createInitialSession(defaultTitle, currentSpeaker);
+    newSession.isAutomatic = false;
 
     this.sessions.forEach(s => { s.isActive = false; });
     newSession.isActive = true;
@@ -435,11 +581,12 @@ class SermonTranscriptManager {
 
     if (!confirmed) return;
 
+    if (this.session?.id === sessionId) this.setRecordingState(false);
     this.sessions = this.sessions.filter(s => s.id !== sessionId);
     if (this.sessions.length === 0) {
       const fresh = this.createInitialSession();
       fresh.isActive = true;
-      this.sessions = [fresh];
+      this.sessions = [];
       this.session = fresh;
     } else if (this.session && this.session.id === sessionId) {
       this.session = this.sessions[0];
@@ -500,6 +647,7 @@ class SermonTranscriptManager {
     if (!rawText || typeof rawText !== 'string') return;
     const cleanText = this.cleanSpeechStutter(rawText);
     if (!cleanText) return;
+    if (!this.ensureDailySession()) return;
 
     // Keep provisional text editable until the provider finalizes it. Pause/stop
     // already flush pending text; a timer here duplicates delayed corrections.
@@ -515,11 +663,12 @@ class SermonTranscriptManager {
   }
 
   // Commit finalized speech segments cleanly to paragraphs
-  commitFinalUtterance(cleanText) {
+  commitFinalUtterance(cleanText, timestamp = Date.now()) {
     if (!this.isRecordingSermon || !cleanText) return;
+    if (!this.ensureDailySession(timestamp)) return;
 
-    const now = Date.now();
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const now = timestamp;
+    const timeStr = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const timeSinceLastUtterance = now - (this.lastUtteranceTime || 0);
 
     let moment = this.activeRecordingMoment || this.getActiveMoment();
@@ -576,7 +725,7 @@ class SermonTranscriptManager {
     if (typeof window.detectConcordanceTerms === 'function') {
       const detectedTerms = window.detectConcordanceTerms(cleanText);
       if (detectedTerms && detectedTerms.length > 0) {
-        this.addConcordance(detectedTerms);
+        this.addConcordance(detectedTerms, now);
       }
     }
 
@@ -588,6 +737,7 @@ class SermonTranscriptManager {
   // Track detected scriptures in transcript & active moment
   addScripture(detected) {
     if (!detected || (!detected.reference && !detected.rawReference)) return;
+    if (!this.ensureDailySession()) return;
     const ref = (detected.reference || detected.rawReference).trim();
     const text = (detected.text || '').trim();
     const now = Date.now();
@@ -630,11 +780,12 @@ class SermonTranscriptManager {
   }
 
   // Track detected Greek & Hebrew concordance terms in transcript
-  addConcordance(terms) {
+  addConcordance(terms, timestamp = Date.now()) {
     if (!terms || !Array.isArray(terms) || terms.length === 0) return;
+    if (!this.ensureDailySession(timestamp)) return;
     if (!this.session.concordance) this.session.concordance = [];
-    const now = Date.now();
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const now = timestamp;
+    const timeStr = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     const moment = this.activeRecordingMoment || this.getActiveMoment();
     const currentPara = moment && moment.paragraphs ? moment.paragraphs[moment.paragraphs.length - 1] : null;
@@ -694,27 +845,21 @@ class SermonTranscriptManager {
   getAllScriptures(sess = this.session) {
     if (!sess) return [];
     this.ensureRecordings(sess);
-    if (sess.recordings && sess.recordings.length > 0) {
-      const all = [];
-      const seen = new Set();
-      for (const m of sess.recordings) {
-        if (Array.isArray(m.scriptures)) {
-          for (const sc of m.scriptures) {
-            if (!seen.has(sc.reference)) {
-              seen.add(sc.reference);
-              all.push(sc);
-            }
-          }
-        }
+    const all = [], seen = new Set();
+    const entries = [...(sess.scriptures || []), ...(sess.recordings || []).flatMap(m => m.scriptures || [])];
+    entries.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    for (const sc of entries) {
+      if (!seen.has(sc.reference)) {
+        seen.add(sc.reference);
+        all.push(sc);
       }
-      return all;
     }
-    return sess.scriptures || [];
+    return all;
   }
 
   getWordCount(sess = this.session) {
     if (!sess) return 0;
-    const paras = this.getAllParagraphs(sess);
+    const paras = [...this.getAllParagraphs(sess), ...(sess.transcriptLog || []).filter(entry => !entry.recordingId)];
     let count = 0;
     for (const p of paras) {
       if (p.text) {
@@ -769,7 +914,7 @@ class SermonTranscriptManager {
     lines.push(` Service:     ${this.session.title || 'Sunday Service'}`);
     lines.push(` Speaker:     ${this.session.speaker || 'Pastor'}`);
     lines.push(` Date:        ${this.session.date || new Date().toLocaleDateString()}`);
-    lines.push(` Time:        ${moment.startTime} ${moment.endTime ? '– ' + moment.endTime : ''}`);
+    lines.push(` Time:        ${this.formatTimestamp(moment.startTimestamp, moment.startTime)} ${moment.endTime ? '– ' + this.formatTimestamp(moment.endTimestamp, moment.endTime) : ''}`);
     lines.push(` Duration:    ${this.formatDuration(moment.durationSeconds)}`);
     lines.push(` Word Count:  ${this.getMomentWordCount(moment).toLocaleString()} words`);
     lines.push(` Scriptures:  ${(moment.scriptures || []).length} cited`);
@@ -783,7 +928,7 @@ class SermonTranscriptManager {
       for (let i = 0; i < moment.paragraphs.length; i++) {
         const p = moment.paragraphs[i];
         if (!p.text || !p.text.trim()) continue;
-        lines.push(`[${p.time || '00:00:00'}]`);
+        lines.push(`[${this.formatTimestamp(p.timestamp, p.time || '00:00:00')}]`);
         lines.push(p.text.trim());
         if (p.scriptures && p.scriptures.length > 0) {
           lines.push(`  ↳ Cited Scripture: ${p.scriptures.join(', ')}`);
@@ -798,7 +943,7 @@ class SermonTranscriptManager {
       lines.push(subSep);
       for (let i = 0; i < moment.scriptures.length; i++) {
         const sc = moment.scriptures[i];
-        lines.push(`${(i + 1).toString().padStart(2, ' ')}. [${sc.time}] ${sc.reference}`);
+        lines.push(`${(i + 1).toString().padStart(2, ' ')}. [${this.formatTimestamp(sc.timestamp, sc.time)}] ${sc.reference}`);
         if (sc.text) lines.push(`    "${sc.text.trim()}"`);
       }
       lines.push('');
@@ -821,7 +966,7 @@ class SermonTranscriptManager {
       .replace(/[^a-zA-Z0-9_\- ]/g, '')
       .trim()
       .replace(/\s+/g, '_');
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = this.getSessionDay();
     const filename = `${safeTitle}_${dateStr}.txt`;
 
     const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
@@ -894,7 +1039,7 @@ class SermonTranscriptManager {
         for (let i = 0; i < paras.length; i++) {
           const p = paras[i];
           if (!p.text || !p.text.trim()) continue;
-          lines.push(`[${p.time || '00:00:00'}] #${i + 1}`);
+          lines.push(`[${this.formatTimestamp(p.timestamp, p.time || '00:00:00')}] #${i + 1}`);
           lines.push(p.text.trim());
           if (p.scriptures && p.scriptures.length > 0) {
             lines.push(`  ↳ Cited Scripture: ${p.scriptures.join(', ')}`);
@@ -907,7 +1052,7 @@ class SermonTranscriptManager {
         const m = moments[mIdx];
         lines.push(separator);
         lines.push(` MOMENT ${mIdx + 1}: ${m.title.toUpperCase()} [${m.type.toUpperCase()}]`);
-        lines.push(` Time: ${m.startTime} ${m.endTime ? '– ' + m.endTime : '(Recording...)'} • Duration: ${this.formatDuration(m.durationSeconds)} • ${this.getMomentWordCount(m)} words`);
+        lines.push(` Time: ${this.formatTimestamp(m.startTimestamp, m.startTime)} ${m.endTime ? '– ' + this.formatTimestamp(m.endTimestamp, m.endTime) : (m.isRecording ? '(Recording...)' : '')} • Duration: ${this.formatDuration(m.durationSeconds)} • ${this.getMomentWordCount(m)} words`);
         lines.push(separator);
         lines.push('');
 
@@ -918,7 +1063,7 @@ class SermonTranscriptManager {
           for (let i = 0; i < m.paragraphs.length; i++) {
             const p = m.paragraphs[i];
             if (!p.text || !p.text.trim()) continue;
-            lines.push(`[${p.time || '00:00:00'}]`);
+            lines.push(`[${this.formatTimestamp(p.timestamp, p.time || '00:00:00')}]`);
             lines.push(p.text.trim());
             if (p.scriptures && p.scriptures.length > 0) {
               lines.push(`  ↳ Cited Scripture: ${p.scriptures.join(', ')}`);
@@ -929,6 +1074,14 @@ class SermonTranscriptManager {
       }
     }
 
+    const unrecordedLog = (this.session.transcriptLog || []).filter(entry => !entry.recordingId);
+    if (unrecordedLog.length > 0) {
+      lines.push(separator, ' AI TRANSCRIPTION LOG (OUTSIDE RECORDED MOMENTS)', separator, '');
+      for (const entry of unrecordedLog) {
+        lines.push(`[${this.formatTimestamp(entry.timestamp)}]`, entry.text, '');
+      }
+    }
+
     if (allScriptures.length > 0) {
       lines.push(separator);
       lines.push(' SCRIPTURES REFERENCED IN THIS SERVICE (CHRONOLOGICAL)');
@@ -936,7 +1089,7 @@ class SermonTranscriptManager {
       lines.push('');
       for (let i = 0; i < allScriptures.length; i++) {
         const sc = allScriptures[i];
-        lines.push(`${(i + 1).toString().padStart(2, ' ')}. [${sc.time}] ${sc.reference}`);
+        lines.push(`${(i + 1).toString().padStart(2, ' ')}. [${this.formatTimestamp(sc.timestamp, sc.time)}] ${sc.reference}`);
         if (sc.text) {
           lines.push(`    "${sc.text.trim()}"`);
         }
@@ -957,7 +1110,7 @@ class SermonTranscriptManager {
       .replace(/[^a-zA-Z0-9_\- ]/g, '')
       .trim()
       .replace(/\s+/g, '_');
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = this.getSessionDay();
     const filename = `${safeTitle}_Transcript_${dateStr}.txt`;
 
     const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
@@ -1116,6 +1269,7 @@ class SermonTranscriptManager {
             <span class="session-row-title">${this.escapeHtml(sess.title)}</span>
             ${isLiveRec ? `<span class="session-live-tag">LIVE</span>` : (isActive ? `<span class="session-active-tag">ACTIVE</span>` : '')}
           </div>
+          <div class="session-row-sub">${this.escapeHtml(sess.date || this.getSessionDay(sess))}</div>
           <div class="session-row-sub">
             <span>${momentLabel} • ${duration} • ${words.toLocaleString()}w</span>
             <button type="button" class="session-row-del-btn" onclick="event.stopPropagation(); window.sermonManager.confirmDeleteSession('${sess.id}')" title="Delete Service Session">
@@ -1154,7 +1308,7 @@ class SermonTranscriptManager {
     const allConcordance = this.session.concordance || [];
 
     if (statsEl) {
-      statsEl.textContent = `${totalWords.toLocaleString()} words • ${totalDuration} • ${momentsCount} recorded moment${momentsCount === 1 ? '' : 's'} • ${allScriptures.length} scriptures`;
+      statsEl.textContent = `${this.session.date} • ${totalWords.toLocaleString()} words • ${totalDuration} • ${momentsCount} recorded moment${momentsCount === 1 ? '' : 's'} • ${allScriptures.length} scriptures`;
     }
     if (statusBadge) {
       statusBadge.className = this.isRecordingSermon ? 'sermon-status-tag live' : 'sermon-status-tag standby';
@@ -1170,7 +1324,8 @@ class SermonTranscriptManager {
 
     const hasMoments = momentsCount > 0;
     const hasInterim = Boolean(this.currentInterimText && this.isRecordingSermon);
-    const hasAnyContent = hasMoments || hasInterim || allScriptures.length > 0;
+    const unrecordedLog = (this.session.transcriptLog || []).filter(entry => !entry.recordingId);
+    const hasAnyContent = hasMoments || hasInterim || allScriptures.length > 0 || unrecordedLog.length > 0;
 
     if (!hasAnyContent) {
       listEl.innerHTML = '';
@@ -1221,7 +1376,7 @@ class SermonTranscriptManager {
             </div>
 
             <div class="moment-header-right">
-              <span class="moment-time-meta">${moment.startTime} ${moment.endTime ? '– ' + moment.endTime : '(Recording...)'} • ${momentDur} • ${momentWords.toLocaleString()}w</span>
+              <span class="moment-time-meta" title="${this.escapeHtml(this.formatTimestamp(moment.startTimestamp, moment.startTime))}">${moment.startTime} ${moment.endTime ? '– ' + moment.endTime : (isLiveThisMoment ? '(Recording...)' : '')} • ${momentDur} • ${momentWords.toLocaleString()}w</span>
               
               <button type="button" class="moment-btn" onclick="window.sermonManager.copyMoment('${moment.id}')" title="Copy this moment to clipboard">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -1249,7 +1404,7 @@ class SermonTranscriptManager {
 
           html += `
             <div class="doc-para-block">
-              <span class="doc-para-time">${p.time}</span>
+              <span class="doc-para-time" title="${this.escapeHtml(this.formatTimestamp(p.timestamp, p.time))}">${p.time}</span>
               <div class="doc-para-content">
                 <p class="doc-para-text">${this.highlightText(this.escapeHtml(p.text), filterQuery)}</p>
                 
@@ -1285,6 +1440,14 @@ class SermonTranscriptManager {
       }
 
       html += `</div></div>`; // Close moment-body and sermon-moment-card
+    }
+
+    if (unrecordedLog.length > 0) {
+      html += '<div class="doc-appendix-title">AI transcription log</div>';
+      for (const entry of unrecordedLog) {
+        if (filterQuery && !entry.text.toLowerCase().includes(filterQuery)) continue;
+        html += `<div class="doc-para-block"><span class="doc-para-time" title="${this.escapeHtml(this.formatTimestamp(entry.timestamp))}">${this.escapeHtml(new Date(entry.timestamp).toLocaleTimeString([], {timeZone:this.session.timeZone, hour:'2-digit', minute:'2-digit', second:'2-digit'}))}</span><div class="doc-para-content"><p class="doc-para-text">${this.highlightText(this.escapeHtml(entry.text), filterQuery)}</p></div></div>`;
+      }
     }
 
     html += `</div>`; // Close .doc-sheet-article

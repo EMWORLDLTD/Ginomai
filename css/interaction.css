@@ -56,6 +56,13 @@ body * { backdrop-filter: none !important; -webkit-backdrop-filter: none !import
 .sf-modal-backdrop:not(.open):not([data-modal-visible="true"]) { visibility: hidden; }
 [hidden] { display: none !important; }
 .app-toast-container, #session-save-warning { z-index: 2147483647 !important; }
+.sf-dialog-checkbox-wrap { display:flex; align-items:center; gap:10px; margin-top:16px; font-size:13px; color:var(--text-primary, #f1f0f5); cursor:pointer; }
+.sf-dialog-checkbox-wrap[hidden] { display:none; }
+.sf-dialog-checkbox-wrap input { width:16px; height:16px; margin:0; accent-color:#cf3d4d; flex-shrink:0; }
+:root[data-theme-mode="light"] .sf-dialog-checkbox-wrap,
+body[data-theme-mode="light"] .sf-dialog-checkbox-wrap { color:#252530; }
+:root[data-theme-mode="light"] .sf-dialog-checkbox-wrap input,
+body[data-theme-mode="light"] .sf-dialog-checkbox-wrap input { color-scheme:light; }
 .app-toast { background: #161522; transition-duration: .04s !important; }
 body .bento-deck-toolbar { flex-wrap: wrap; height: auto; gap: 8px; }
 body .bento-deck-title-wrap { min-width: 0; flex: 1 0 100%; margin-bottom: 2px; }
@@ -491,3 +498,30 @@ body #omni-search-palette .bento-omni-hero-title-row { flex-wrap:wrap; row-gap:4
 .uses-output-renderer { position:relative; isolation:isolate; overflow:hidden; background:#000; }
 .uses-output-renderer > :not(.actual-output-preview) { visibility:hidden !important; }
 .actual-output-preview { position:absolute; border:0; transform-origin:top left; pointer-events:none; max-width:none; max-height:none; z-index:1; }
+
+/* Settings navigation uses the same surface for native buttons and div tabs. */
+body #settings-modal-backdrop :is(.settings-nav-item, .settings-close-btn, input, textarea, select, .mode-toggle-btn, .audio-mic-refresh-btn, .speech-key-visibility) { transition: none !important; }
+body #settings-modal-backdrop .settings-nav-item { background: transparent !important; font-family: inherit !important; font-size: 12px !important; line-height: 1.4; }
+body #settings-modal-backdrop button.settings-nav-item { appearance: none; width: 100%; text-align: left; cursor: pointer; }
+body #settings-modal-backdrop .speech-input-controls .custom-select-trigger { width: 100%; min-width: 0; box-sizing: border-box; }
+body #settings-modal-backdrop .speech-input-controls .custom-select-trigger span { flex: 1; min-width: 0; text-align: left; }
+body #settings-modal-backdrop .speech-input-controls .custom-select-chevron { flex-shrink: 0; }
+body #settings-modal-backdrop .settings-nav-item.active { background: var(--purple-dim, rgba(138,109,255,.16)) !important; color: var(--purple-text, #c3b6ff) !important; }
+body #settings-modal-backdrop .settings-nav-item.active span { color: inherit !important; }
+body #settings-modal-backdrop .settings-nav-item:hover { background: var(--card-hover, #23222c) !important; }
+body[data-theme-mode="light"] #settings-modal-backdrop .settings-nav-item { color: #5a5769 !important; }
+body[data-theme-mode="light"] #settings-modal-backdrop .settings-nav-item.active { background: #e9e2ff !important; color: #6037e6 !important; border-color: #cbbcf6 !important; }
+body[data-theme-mode="light"] #settings-modal-backdrop .settings-nav-item:hover { background: #e8e4f0 !important; color: #252530 !important; }
+body[data-theme-mode="light"] #settings-modal-backdrop :is(.search-input, .import-text-field, .import-textarea, .settings-select-custom),
+body[data-theme-mode="light"] #settings-modal-backdrop #tab-speech :is(#setting-deepgram-api-key, #setting-church-custom-terms) { background: #fff !important; color: #252530 !important; border-color: #d5d0e0 !important; color-scheme: light; }
+body[data-theme-mode="light"] #settings-modal-backdrop :is(input, textarea)::placeholder { color: #757080 !important; opacity: 1; }
+body[data-theme-mode="light"] #settings-modal-backdrop :is(input, textarea, select):focus { border-color: #7852ff !important; }
+body[data-theme-mode="light"] #settings-modal-backdrop .settings-close-btn { background: #f2eff8 !important; border-color: #d5d0e0 !important; color: #5a5769 !important; }
+body[data-theme-mode="light"] #settings-modal-backdrop .settings-close-btn:hover { background: #fbe9ed !important; color: #b42338 !important; transform: none !important; }
+body[data-theme-mode="light"] #settings-modal-backdrop :is(.mode-toggle-btn, .audio-mic-refresh-btn, .speech-key-visibility):not(.active) { background: #fff !important; color: #5a5769 !important; border-color: #d5d0e0 !important; }
+body[data-theme-mode="light"] #settings-modal-backdrop .speech-key-visibility { background: transparent !important; }
+body #system-reset-modal-backdrop .reset-confirm-btn { background: #dc2626 !important; color: #fff !important; border-color: #b91c1c !important; }
+body[data-theme-mode="light"] #system-reset-modal-backdrop .reset-choice-title { color: #252530 !important; }
+body[data-theme-mode="light"] #system-reset-modal-backdrop .reset-choice-description { color: #625c74 !important; }
+body[data-theme-mode="light"] #system-reset-modal-backdrop button[onclick="performClearBiblesOnly()"] { color: #1d4ed8 !important; background: #eff6ff !important; border-color: #b7cef1 !important; }
+body[data-theme-mode="light"] #system-reset-modal-backdrop button[onclick="performClearSongsOnly()"] { color: #9d174d !important; background: #fdf2f8 !important; border-color: #efb4d1 !important; }

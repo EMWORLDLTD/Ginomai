@@ -30,6 +30,11 @@ into Applications. If `/Applications` is not writable, it defaults to the user's
 On Windows, run the branded EXE and click **Install Ginomai**. Setup defaults to
 the current user's application folder. The embedded NSIS installer maintains
 Windows uninstall entries, shortcuts and upgrade logic.
+Windows uninstall offers an unchecked **Remove saved data and downloads** option.
+Selecting it removes the current account's Ginomai settings, libraries, histories,
+downloaded content and uploaded media. Exported files outside app storage are kept.
+Silent uninstall retains data unless `--delete-app-data` is supplied. Normal
+application upgrades retain data and skip the cleanup page.
 
 Windows shows an activity bar during native installation: NSIS does not expose
 reliable extraction percentages. macOS measures bytes in the staging bundle.
@@ -61,6 +66,14 @@ Configure standard electron-builder signing credentials on the release machine.
 The DMG is created locally with `hdiutil`; sign/notarize the final distribution
 image as part of the release process.
 Local unsigned builds are for testing.
+
+Desktop packages include only the application entry points and runtime asset
+folders. KJV and PDF assets remain bundled. Other Bible translations, Strong's
+lexicons and the semantic model / verse index use confirmed GitHub downloads by
+default; use `--bundled-content` for a fully bundled build. The Node AI entry points and target-specific ONNX
+binaries are retained; browser AI distributions, duplicate PDF dependencies and
+development files are excluded. PDF.js remains installed for development, while
+the desktop renderer uses the local `assets/pdfjs/` distribution.
 
 `dist:publish` retains native updater publishing. Branded setup artifacts stay
 local for distribution after platform smoke tests. `--native-only` builds native

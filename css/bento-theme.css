@@ -716,6 +716,10 @@ body[data-theme-mode="light"] .bento-vu:not(.live-active) i.active { background:
 }
 
 /* ============ SERVICE AGENDA ============ */
+#bento-agenda-list {
+  gap: 4px;
+}
+
 .bento-agenda-row {
   display: flex;
   align-items: center;
@@ -723,11 +727,12 @@ body[data-theme-mode="light"] .bento-vu:not(.live-active) i.active { background:
   background: var(--card-2);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 5px 10px;
   cursor: pointer;
   transition: opacity 0.04s ease, background 0.04s ease, border-color 0.04s ease;
   min-width: 0;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .bento-agenda-row:hover {
@@ -795,7 +800,7 @@ body[data-theme-mode="light"] .bento-vu:not(.live-active) i.active { background:
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .bento-agenda-row .title {
@@ -803,13 +808,13 @@ body[data-theme-mode="light"] .bento-vu:not(.live-active) i.active { background:
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--txt, var(--text, #f8fafc));
   line-height: 1.25;
 }
 
 .bento-agenda-row .meta {
-  font-size: 10.5px;
+  font-size: 9.5px;
   color: var(--mute, var(--dim, #94a3b8));
   font-family: var(--font-mono, monospace);
   white-space: nowrap;
@@ -3657,16 +3662,16 @@ body[data-theme-mode="light"] .bento-sbtn.theme {
 }
 
 @container (max-height: 110px) {
-  .bento-list .bento-empty-unit .empty-desc {
+  .bento-list:not(#bento-library-list) .bento-empty-unit .empty-desc {
     display: none !important;
   }
 }
 
 @container (max-height: 70px) {
-  .bento-list .bento-empty-unit .empty-icon {
+  .bento-list:not(#bento-library-list) .bento-empty-unit .empty-icon {
     display: none !important;
   }
-  .bento-list .bento-empty-unit {
+  .bento-list:not(#bento-library-list) .bento-empty-unit {
     padding: 4px;
     gap: 0;
   }
@@ -3676,6 +3681,14 @@ body[data-theme-mode="light"] .bento-sbtn.theme {
   padding: 12px 8px;
   border-radius: 10px;
   margin: 0;
+}
+
+#bento-library-list .bento-empty-unit {
+  container-type: normal;
+  flex: 0 0 auto;
+  min-height: 104px;
+  padding: 16px 12px;
+  gap: 6px;
 }
 
 .bento-single-deck:has(> .bento-empty-unit.hero),
@@ -7303,7 +7316,7 @@ body[data-theme-style="bento"][data-theme-mode="light"] .custom-select-option.se
     padding: 5px 6px;
     gap: 5px;
   }
-  .bento-agenda-row .t {
+  .bento-agenda-row .title {
     font-size: 10.5px;
   }
   .bento-song-row {
@@ -11738,10 +11751,10 @@ body[data-theme-mode="light"] .session-foot-hint code {
 }
 
 /* ============ SCRIPTUREFLOW CUSTOM PROMPT & CONFIRM DIALOG ============ */
-.sf-dialog-backdrop {
+#sf-custom-dialog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.68) !important;
+  background: rgba(8, 8, 12, 0.48) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   z-index: 99999;
@@ -11753,18 +11766,19 @@ body[data-theme-mode="light"] .session-foot-hint code {
   transition: opacity 0.04s ease;
 }
 
-.sf-dialog-backdrop.open {
+#sf-custom-dialog-backdrop.open {
   display: flex !important;
   opacity: 1;
 }
 
 .sf-custom-dialog-card {
   width: 460px;
-  max-width: 92vw;
+  max-width: calc(100vw - 36px);
+  box-sizing: border-box;
   background: var(--card, #131218);
   border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.16));
   border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.88), 0 4px 18px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -11813,7 +11827,7 @@ body[data-theme-mode="light"] .session-foot-hint code {
 .sf-dialog-title {
   font-size: 15px;
   font-weight: 700;
-  color: #FFFFFF;
+  color: var(--text, #f3f2f7);
   margin: 0;
   line-height: 1.25;
 }
@@ -11842,8 +11856,8 @@ body[data-theme-mode="light"] .session-foot-hint code {
 }
 
 .sf-dialog-close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #FFFFFF;
+  background: var(--card-hover, rgba(255, 255, 255, 0.1));
+  color: var(--text, #f3f2f7);
 }
 
 .sf-dialog-body {
@@ -11881,6 +11895,7 @@ body[data-theme-mode="light"] .session-foot-hint code {
   font-size: 13px;
   line-height: 1.55;
   color: var(--text, #f3f2f7);
+  overflow-wrap: anywhere;
 }
 
 .sf-dialog-foot {

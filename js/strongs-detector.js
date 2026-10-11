@@ -173,14 +173,39 @@
   // HIGH-SPEED CONCORDANCE SEARCH ENGINE (GREEK & HEBREW + ENGLISH LOOKUP)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // Asynchronously ensure unified lexicon and KJV_STRONGS are cached in memory (< 0ms blocking)
+  let lexiconSearchSource = null;
+  let lexiconSearchRows = [];
+  function prepareLexiconSearch(cache) {
+    if (cache === lexiconSearchSource) return lexiconSearchRows;
+    lexiconSearchSource = cache;
+    lexiconSearchRows = Object.entries(cache).filter(([, entry]) => entry).map(([key, entry]) => {
+      const entryId = (entry.id || key).toUpperCase();
+      const translit = (entry.transliteration || '').toLowerCase();
+      const cleanTranslit = translit.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const alphaTranslit = cleanTranslit.replace(/[^a-z0-9]/g, '');
+      return { entry, entryId, entryNum: parseInt(entryId.replace(/^[HG]/, ''), 10),
+        isGreek: entry.lang === 'Greek' || entryId.startsWith('G'),
+        isHebrew: entry.lang === 'Hebrew' || entryId.startsWith('H'),
+        lemma: entry.lemma || '', translit, cleanTranslit, alphaTranslit,
+        alphaTranslitWithoutW: alphaTranslit.replace(/w/g, ''),
+        shortDef: (entry.short_definition || '').toLowerCase(),
+        kjvDef: (entry.kjv_definition || '').toLowerCase() };
+    });
+    return lexiconSearchRows;
+  }
+
+  // Share in-flight loads instead of fetching the same data for successive queries.
+  let strongsDataLoading = null;
+  let strongsGeneration = 0;
   window.ensureStrongsDataLoaded = async function() {
+    if (strongsDataLoading) return strongsDataLoading;
     const promises = [];
+    const generation = strongsGeneration;
     if (!window.STRONGS_LEXICON_CACHE) {
       promises.push(
         fetch('/lexicon/strongs_unified.json')
           .then(r => r.ok ? r.json() : null)
-          .then(data => { if (data) window.STRONGS_LEXICON_CACHE = data; })
+          .then(data => { if (data && generation === strongsGeneration) window.STRONGS_LEXICON_CACHE = data; })
           .catch(e => { console.warn('Could not load unified lexicon:', e); })
       );
     }
@@ -188,12 +213,12 @@
       promises.push(
         fetch('/bibles/KJV_STRONGS.json')
           .then(r => r.ok ? r.json() : null)
-          .then(data => { if (data) BIBLE_DATABASE['KJV_STRONGS'] = data; })
+          .then(data => { if (data && generation === strongsGeneration) BIBLE_DATABASE['KJV_STRONGS'] = data; })
           .catch(e => { console.warn('Could not load KJV_STRONGS:', e); })
       );
     }
-    await Promise.all(promises);
-    return true;
+    strongsDataLoading = Promise.all(promises).then(() => true).finally(() => { strongsDataLoading = null; });
+    return strongsDataLoading;
   };
 
   // Multi-directional search: English word -> Greek/Hebrew, or Greek/Hebrew -> English
@@ -222,28 +247,21 @@
     // Safe regex for exact word boundary
     const escapedQ = qLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const wordBoundaryRegex = new RegExp(`(^|[^a-zA-Z0-9])${escapedQ}([^a-zA-Z0-9]|$)`, 'i');
+    const kwMatch = KEYWORD_MAP.get(qLower);
+    const alphaQ = qLower.replace(/[^a-z0-9]/g, '');
+    const alphaQWithoutW = alphaQ.replace(/w/g, '');
 
     if (cache && typeof cache === 'object') {
-      for (const key in cache) {
-        const entry = cache[key];
-        if (!entry) continue;
-
-        const isGreek = entry.lang === 'Greek' || entry.id.startsWith('G');
-        const isHebrew = entry.lang === 'Hebrew' || entry.id.startsWith('H');
+      for (const row of prepareLexiconSearch(cache)) {
+        const { entry, entryId, entryNum, isGreek, isHebrew, lemma, translit,
+          cleanTranslit, alphaTranslit, alphaTranslitWithoutW, shortDef, kjvDef } = row;
 
         if (lang === 'greek' && !isGreek) continue;
         if (lang === 'hebrew' && !isHebrew) continue;
 
         let score = 0;
-        const entryId = (entry.id || key).toUpperCase();
-        const lemma = entry.lemma || '';
-        const translit = (entry.transliteration || '').toLowerCase();
-        const shortDef = (entry.short_definition || '').toLowerCase();
-        const kjvDef = (entry.kjv_definition || '').toLowerCase();
-
         // 1. Direct Strong ID Match
         if (targetNum > 0) {
-          const entryNum = parseInt(entryId.replace(/^[HG]/, ''), 10);
           if (entryNum === targetNum) {
             if (!targetPrefix || entryId.startsWith(targetPrefix)) {
               score += 1500;
@@ -252,21 +270,16 @@
         }
 
         // Check if query matches primary keyword in KEYWORD_MAP
-        const kwMatch = KEYWORD_MAP.get(qLower);
         if (kwMatch && (entryId === kwMatch.id || entryId === kwMatch.id.replace(/^([GH])0+/, '$1'))) {
           score += 1150;
         }
 
         // 2. Exact Lemma or Transliteration Match
-        const cleanTranslit = translit.normalize ? translit.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : translit;
-        const alphaTranslit = cleanTranslit.replace(/[^a-z0-9]/g, '');
-        const alphaQ = qLower.replace(/[^a-z0-9]/g, '');
-
         if (lemma === q) {
           score += 1200;
         } else if (translit === qLower || cleanTranslit === qLower) {
           score += 1000;
-        } else if (alphaTranslit === alphaQ || (alphaQ.length >= 4 && alphaTranslit.replace(/w/g, '') === alphaQ.replace(/w/g, ''))) {
+        } else if (alphaTranslit === alphaQ || (alphaQ.length >= 4 && alphaTranslitWithoutW === alphaQWithoutW)) {
           score += 950;
         } else if (alphaTranslit.startsWith(alphaQ) && alphaQ.length >= 4) {
           score += 400;
@@ -337,6 +350,74 @@
     candidates.sort((a, b) => b.score - a.score);
 
     return candidates.slice(0, limit).map(c => c.entry);
+  };
+
+  let searchWorker = null;
+  let searchWorkerFailed = false;
+  let searchRequestId = 0;
+  const pendingSearches = new Map();
+  let occurrenceCounts = null;
+  window.resetStrongsContent = function({ keepMode = false } = {}) {
+    strongsGeneration++;
+    strongsDataLoading = null;
+    window.STRONGS_LEXICON_CACHE = null;
+    lexiconSearchSource = null;
+    lexiconSearchRows = [];
+    occurrenceCounts = null;
+    searchWorker?.terminate();
+    searchWorker = null;
+    searchWorkerFailed = false;
+    for (const pending of pendingSearches.values()) pending.reject(Error('Strong’s content was removed.'));
+    pendingSearches.clear();
+    if (typeof BIBLE_DATABASE !== 'undefined') delete BIBLE_DATABASE.KJV_STRONGS;
+    if (window.state?.bibleVersion === 'KJV_STRONGS') window.state.bibleVersion = 'KJV';
+    if (!keepMode && window.state?.strongsMode) window.toggleStrongsMode?.();
+    window.closeStrongsDrawer?.();
+  };
+  window.getStrongsBibleOccurrenceCount = strongId => {
+    if (!occurrenceCounts) return undefined;
+    const id = String(strongId).toUpperCase().trim().replace(/^([GH])0+(\d+)/, '$1$2');
+    return occurrenceCounts[id] || 0;
+  };
+  window.prepareStrongsSearch = function() {
+    if (searchWorker || searchWorkerFailed || typeof document === 'undefined' || typeof Worker !== 'function') return searchWorker;
+    try {
+      const worker = searchWorker = new Worker('js/strongs-search-worker.js');
+      const fail = message => {
+        searchWorkerFailed = true;
+        searchWorker?.terminate();
+        searchWorker = null;
+        for (const pending of pendingSearches.values()) pending.reject(new Error(message));
+        pendingSearches.clear();
+      };
+      searchWorker.onerror = () => { if (searchWorker === worker) fail('Concordance search could not start. Please retry.'); };
+      searchWorker.onmessage = ({data}) => {
+        if (searchWorker !== worker) return;
+        if (data.type === 'ready') { occurrenceCounts = data.counts; return; }
+        if (data.type === 'error' && data.id === undefined) { fail(data.message); return; }
+        const pending = pendingSearches.get(data.id);
+        if (!pending) return;
+        pendingSearches.delete(data.id);
+        if (data.type === 'error') pending.reject(new Error(data.message));
+        else pending.resolve(data.results);
+      };
+    } catch (_) { searchWorkerFailed = true; searchWorker = null; }
+    return searchWorker;
+  };
+  window.searchStrongsConcordanceAsync = function(query, options = {}) {
+    const worker = window.prepareStrongsSearch();
+    if (!worker) {
+      // Older browsers retain search support without blocking the input handler.
+      return new Promise((resolve, reject) => setTimeout(() => {
+        try { resolve(window.searchStrongsConcordance(query, options)); } catch (error) { reject(error); }
+      }, 0));
+    }
+    return new Promise((resolve, reject) => {
+      const id = ++searchRequestId;
+      pendingSearches.set(id, {resolve, reject});
+      try { worker.postMessage({type:'query',id,query,options}); }
+      catch (error) { pendingSearches.delete(id); reject(error); }
+    });
   };
 
   // Find all scripture verses containing a given Strong's ID in KJV_STRONGS

@@ -388,7 +388,7 @@ function restoreSavedWorkspaceState() {
     if (localStorage.getItem('sf_system_formatted') === 'true') {
       if (typeof SONGS_DATABASE !== 'undefined') SONGS_DATABASE.length = 0;
       if (typeof SONGBOOKS_DATABASE !== 'undefined') SONGBOOKS_DATABASE.length = 0;
-      if (typeof BIBLE_DATABASE !== 'undefined') { for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k]; }
+      if (typeof BIBLE_DATABASE !== 'undefined') { for (let k in BIBLE_DATABASE) if (k !== 'KJV') delete BIBLE_DATABASE[k]; BIBLE_DATABASE.KJV ||= {}; }
       state.activeSongId = null;
       state.activeBibleBook = '';
       state.activeBibleChapter = 1;
@@ -712,7 +712,7 @@ function switchLibraryTab(targetTab) {
   const bentoSearchInput = document.getElementById('bento-search-input');
   if (bentoSearchInput) {
     bentoSearchInput.value = '';
-    bentoSearchInput.placeholder = (targetTab === 'songs') ? 'Search title, artist, lyric line (Ctrl+L)...' : 'Filter books & chapters (Ctrl+L)...';
+    bentoSearchInput.placeholder = (targetTab === 'songs') ? 'Search song title or lyric phrase (Ctrl+L)...' : 'Filter books & chapters (Ctrl+L)...';
   }
 
   renderLibrary();
@@ -2424,13 +2424,9 @@ window.getNextSlideAnticipation = getNextSlideAnticipation;
 
 // Helper to auto-activate song-specific visual theme when selecting a song
 function applySongBoundTheme(songId, deferBroadcast = false) {
-  if (!songId) return;
-  state.boundThemeSongId = songId;
-  if (window.themeManager && typeof window.themeManager.getSongBoundTheme === 'function') {
-    const boundTheme = window.themeManager.getSongBoundTheme(songId);
-    if (boundTheme) {
-      window.themeManager.setSanctuaryTheme(boundTheme, !deferBroadcast);
-    }
+  state.boundThemeSongId = songId || null;
+  if (window.themeManager && typeof window.themeManager.applySongTheme === 'function') {
+    window.themeManager.applySongTheme(songId, !deferBroadcast);
   }
 }
 window.applySongBoundTheme = applySongBoundTheme;
@@ -2506,14 +2502,20 @@ async function replyToOutputStateRequest() {
 }
 
 function flushCommittedLiveStorage() {
+  if (window.sfResettingDevice) return;
   if (!pendingLiveStorage || REMOTE_MODE) return;
   try { localStorage.setItem(LIVE_STATE_STORAGE_KEY, JSON.stringify(pendingLiveStorage)); } catch (_) {}
 }
 window.addEventListener('pagehide', flushCommittedLiveStorage);
 
 function broadcastState(override = {}, previewAlreadyUpdated = false) {
+  if (window.sfResettingDevice) return;
   if (REMOTE_MODE) {
-    if (override.clear) sendRemoteCommand({ type: 'CLEAR' });
+    if (override.alert !== undefined) {
+      updateLivePreview({ alert: override.alert });
+      sendRemoteCommand({ type: 'ALERT_UPDATE', alert: override.alert });
+    }
+    else if (override.clear) sendRemoteCommand({ type: 'CLEAR' });
     else if (override.blackout) sendRemoteCommand({ type: 'BLACKOUT' });
     else sendRemoteCommand({ type: 'STATE_PATCH', patch: createDashboardSnapshot() });
     return;
@@ -2739,6 +2741,7 @@ window.prepareDesktopUpdateRestart = async function prepareDesktopUpdateRestart(
 };
 
 function syncDashboardWorkspace(immediate = false) {
+  if (window.sfResettingDevice) return;
   const doSync = () => {
     try {
       localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({ dashboard: createDashboardSnapshot() }));
@@ -3284,6 +3287,9 @@ function initCustomSelects() {
     wrapper.appendChild(popover);
 
     select.parentNode.insertBefore(wrapper, select.nextSibling);
+    if (select.classList.contains('ann-custom-select')) {
+      window.configureAnnouncementSelect?.(select, wrapper, trigger, popover, buildOptions);
+    }
   });
 
   // Global document click to close custom select popovers
@@ -3356,6 +3362,12 @@ function updateTextScale(val) {
 }
 
 function getPreviewTextScaleControl() {
+  const alert = window.liveAlertEngine?.currentAlert;
+  const target = ['livestream', 'lt', 'lowerthird'].includes(window.previewTargetMode) ? 'livestream' : 'sanctuary';
+  if (alert?.active && alert.position === 'fullscreen' && alert.text?.trim() &&
+      (!alert.expiresAt || alert.expiresAt > Date.now()) && (!alert.destinations || alert.destinations[target])) {
+    return {key:'songScaleFull',value:Number(state.songScaleFull ?? 2.2),song:true,lowerThird:false};
+  }
   if (state.activePresentation?.contentType === 'countdown') return {key:'textSize',value:state.textSize || 1,song:false,lowerThird:false};
   const id = String(state.activeLiveSlideId || '');
   const ref = state.activeLiveRef || '';
@@ -3384,12 +3396,12 @@ function adjustTextScale(delta) {
       updateSongScaleLtSetting(cur);
     } else {
       let cur = (state.songScaleFull !== undefined ? state.songScaleFull : 2.2) + delta;
-      cur = Math.max(1.0, Math.min(3.5, Math.round(cur * 10) / 10));
+      cur = Math.max(1.0, Math.min(6.0, Math.round(cur * 10) / 10));
       updateSongScaleFullSetting(cur);
     }
   } else {
     let size = (state.textSize || 1.0) + delta;
-    size = Math.max(0.6, Math.min(2.5, Math.round(size * 10) / 10));
+    size = Math.max(0.6, Math.min(6.0, Math.round(size * 10) / 10));
     updateTextScale(size);
   }
 }
@@ -3620,7 +3632,7 @@ function toggleTextAutoScale(isAuto) {
 }
 
 function updateLivePreview(payload) {
-  if (REMOTE_MODE) window.updateOutputPreviews?.(payload);
+  window.updateOutputPreviews?.(payload);
   if (typeof window.syncBentoStagePreview === 'function') {
     window.syncBentoStagePreview();
   }
@@ -3649,7 +3661,7 @@ function clearAllOutputs() {
   }
 }
 
-// Clean and normalize text for resilient lyrics, title, and artist searching
+// Normalize case, punctuation and whitespace for song phrase searches.
 function normalizeSearchText(text) {
   if (!text) return '';
   return String(text)
@@ -3685,7 +3697,7 @@ function extractSnippetAroundMatch(stanzaText, queryTokens) {
   return bestLine;
 }
 
-// Cache normalized lyrics and words without persisting derived data in the songbook.
+// Cache normalized title and lyric phrases without persisting derived data in the songbook.
 const songSearchCache = new WeakMap();
 let lastSongSearchQuery = null;
 
@@ -3695,7 +3707,7 @@ function prepareSongSearchQuery(rawQuery) {
   if (lastSongSearchQuery?.raw === raw) return lastSongSearchQuery;
   const text = normalizeSearchText(raw);
   const tokens = [...new Set(text.split(/\s+/).filter(Boolean))];
-  lastSongSearchQuery = { raw, text, tokens, singleWord: text && !text.includes(' ') };
+  lastSongSearchQuery = { raw, text, tokens };
   return lastSongSearchQuery;
 }
 
@@ -3709,13 +3721,10 @@ function getSongSearchData(song) {
   const normalizedStanzas = rawStanzas.map(normalizeSearchText);
   const title = normalizeSearchText(song.title);
   const author = normalizeSearchText(song.author);
-  const text = [title, author, ...normalizedStanzas].filter(Boolean).join(' ');
+  const text = [title, ...normalizedStanzas].filter(Boolean).join(' ');
   const data = {
     title: song.title, author: song.author, rawStanzas, normalizedStanzas, text,
-    titleText: title, authorText: author,
-    metadataWords: `${title} ${author}`.split(/\s+/).filter(Boolean),
-    stanzaWords: normalizedStanzas.map(text => new Set(text.split(/\s+/).filter(Boolean))),
-    words: new Set(text.split(/\s+/).filter(Boolean))
+    titleText: title, authorText: author
   };
   songSearchCache.set(song, data);
   return data;
@@ -3734,27 +3743,30 @@ function invalidateSongSearchIndex(song) {
   }
 }
 
-// Resilient matching across song title, author, and full-text lyrics
-function matchSongQuery(song, rawQuery) {
-  if (!song || !rawQuery) return false;
+// Match title phrases as they are typed; lyrics still require complete words in order.
+function getSongSearchMatchRank(song, rawQuery) {
+  if (!song || !rawQuery) return -1;
   song._matchedSnippet = '';
   const query = prepareSongSearchQuery(rawQuery);
   const qClean = query.text;
-  if (!qClean) return false;
+  if (!qClean) return -1;
   const data = getSongSearchData(song);
   const qTokens = query.tokens;
   const firstStanza = data.rawStanzas[0] || '';
 
-  // 1. Direct title or author match
-  const containsPhrase = text => query.singleWord
+  // Han text has no space-delimited words; retain literal phrase matching for it.
+  const containsPhrase = text => /^\p{Script=Han}+$/u.test(qClean)
     ? text.includes(qClean)
-    : (` ${text}`).includes(` ${qClean}`);
-  if (containsPhrase(data.titleText) || containsPhrase(data.authorText)) {
+    : (` ${text} `).includes(` ${qClean} `);
+  const containsTitlePrefix = /^\p{Script=Han}+$/u.test(qClean)
+    ? data.titleText.includes(qClean)
+    : (` ${data.titleText} `).includes(` ${qClean}`);
+  if (containsTitlePrefix) {
     song._matchedSnippet = firstStanza;
-    return true;
+    return data.titleText === qClean ? 0 : 1;
   }
 
-  // 2. Full-text lyrics match across stanzas (handling line breaks, punctuation, and contractions)
+  // Whitespace and punctuation may vary, but do not combine unrelated words or stanzas.
   for (let i = 0; i < data.normalizedStanzas.length; i++) {
     const rawStText = data.rawStanzas[i];
     const stNorm = data.normalizedStanzas[i];
@@ -3763,33 +3775,30 @@ function matchSongQuery(song, rawQuery) {
     // Direct continuous phrase match in stanza
     if (containsPhrase(stNorm)) {
       song._matchedSnippet = extractSnippetAroundMatch(rawStText, qTokens);
-      return true;
-    }
-    // Retain forgiving lyric searches, counting unique whole words only.
-    if (qTokens.length >= 3 && qTokens.filter(token => data.stanzaWords[i].has(token)).length / qTokens.length >= 0.75) {
-      song._matchedSnippet = extractSnippetAroundMatch(rawStText, qTokens);
-      return true;
+      return 2;
     }
   }
 
-  // 3. Words can span title, artist, and stanzas, in any order.
-  // Unique, whole words keep short titles and repeated substrings from inflating matches.
-  const hits = qTokens.filter(token => data.words.has(token)).length;
-  if (hits === qTokens.length || (qTokens.length >= 3 && hits / qTokens.length >= 0.8)) {
-    song._matchedSnippet = extractSnippetAroundMatch(data.rawStanzas.join('\n'), qTokens) || firstStanza;
-    return true;
-  }
-  // Allow the final title/artist word to be unfinished while typing.
-  if (qTokens.length >= 2 && qTokens.every((token, i) => data.metadataWords.some(word =>
-      i === qTokens.length - 1 ? word.startsWith(token) : word === token))) {
-    song._matchedSnippet = firstStanza;
-    return true;
-  }
+  return -1;
+}
 
-  return false;
+function matchSongQuery(song, rawQuery) {
+  return getSongSearchMatchRank(song, rawQuery) >= 0;
+}
+
+function searchSongs(songs, rawQuery) {
+  const query = prepareSongSearchQuery(rawQuery);
+  if (!query.raw.trim()) return songs;
+  const matches = [[], [], []];
+  for (const song of songs) {
+    const rank = getSongSearchMatchRank(song, query);
+    if (rank >= 0) matches[rank].push(song);
+  }
+  return matches.flat();
 }
 
 window.matchSongQuery = matchSongQuery;
+window.searchSongs = searchSongs;
 window.normalizeSearchText = normalizeSearchText;
 
 // Keep existing song rows and materialize at most one batch of new rows per render.
@@ -4072,7 +4081,7 @@ function renderSongPickerResults(query = '') {
   const songs = (typeof SONGS_DATABASE !== 'undefined' && Array.isArray(SONGS_DATABASE)) ? SONGS_DATABASE : [];
   const q = (query || '').trim();
   const filtered = q
-    ? songs.filter(song => matchSongQuery(song, q))
+    ? searchSongs(songs, q)
     : songs;
 
   if (filtered.length === 0) {
@@ -4601,10 +4610,11 @@ function syncStateFromSlideId(slideId) {
 }
 
 function applyProjectedSongTheme(slideId) {
-  // Activate a binding only when entering another song, preserving manual overrides.
+  // Resolve song defaults separately from the global theme, including Bible transitions.
   const projectedSong = (window.SONGS_DATABASE || []).slice().sort((a, b) => b.id.length - a.id.length).find(song =>
     [song.id + '_', 'medley_' + song.id + '_', 'song_' + song.id + '_', 'ai_song_' + song.id + '_'].some(prefix => slideId.startsWith(prefix)));
-  if (projectedSong && state.boundThemeSongId !== projectedSong.id) applySongBoundTheme(projectedSong.id, true);
+  const songId = projectedSong ? projectedSong.id : null;
+  if (state.boundThemeSongId !== songId) applySongBoundTheme(songId, true);
 
 }
 
@@ -5179,6 +5189,8 @@ function handleSpeechAiStatus({ status, message, isRequested, isListening }) {
     state.aiTranscriptInterim = '';
   }
   if (status === 'connecting' || status === 'reconnecting') window.sermonManager?.flushPendingUtterance?.();
+  if (status === 'listening') window.sermonManager?.setAiListening?.(true);
+  if (!isRequested) window.sermonManager?.setAiListening?.(false);
   if (!isRequested) window.sermonManager?.setRecordingState(false);
   syncSpeechAiStatusControls();
   if (typeof syncActiveSpeechSettings === 'function') syncActiveSpeechSettings();
@@ -5198,6 +5210,7 @@ function initSpeechAi() {
         const version = state.bibleVersion || 'KJV';
         return { version, bible: BIBLE_DATABASE[version] || BIBLE_DATABASE };
       },
+      semanticSearch: (text, version) => window.querySemanticContent?.(text, version) || null,
       onStatusChange: handleSpeechAiStatus,
       onAudioHealth: syncSpeechInputHealth,
       onVerseDetected: (detected) => {
@@ -5207,6 +5220,7 @@ function initSpeechAi() {
         handleDetectedSong(songMatch);
       },
       onTranscript: (transcript, isFinal = false) => {
+        window.sermonManager?.recordAiTranscript?.(transcript, isFinal);
         state.aiTranscript = transcript;
         syncLiveTranscript(transcript, isFinal);
         if (typeof window.detectConcordanceTerms === 'function') {
@@ -5310,6 +5324,7 @@ function toggleSpeechAi() {
   }
 
   speechAi.toggle();
+  window.offerSemanticDownload?.();
   startAudioVuMeter(selectedAudioDeviceId);
 
 }
@@ -6212,6 +6227,11 @@ function applyRemoteCommand(command) {
 
   // Remote operator commands forwarded to host
   if (command._fromRemote) {
+    if (command.type === 'ALERT_UPDATE') {
+      window.liveAlertEngine?.receiveLiveAlert(command.alert);
+      if (!REMOTE_MODE) broadcastState({ alert: command.alert || null });
+      return;
+    }
     // The live feed confirms projections. Never send an echoed command back to the host.
     if (REMOTE_MODE && ['PROJECT', 'CLEAR', 'BLACKOUT', 'NAVIGATE', 'SET_SPEECH_AI', 'SET_SERMON_RECORDING', 'SET_HOLD'].includes(command.type)) return;
     if (command.type === 'SET_HOLD' && typeof command.enabled === 'boolean') {
@@ -6561,6 +6581,7 @@ function switchSettingsTab(tabId, tabEl) {
   initCustomSelects();
 
   if (tabId === 'speech') {
+    window.refreshAiContentSettings?.();
     syncAiSettingsUI();
     refreshAudioInputDevices();
   }
@@ -6699,6 +6720,7 @@ function openOmniSearchPalette(mode = 'all', initialQuery = '') {
 }
 
 function closeOmniSearchPalette() {
+  omniStrongsSearchGeneration++;
   const palette = document.getElementById('omni-search-palette');
   if (palette) palette.style.display = 'none';
   const backdrop = document.getElementById('omni-search-backdrop');
@@ -6754,12 +6776,20 @@ function switchOmniSearchMode(mode, reSearch = true) {
     } else if (omniSearchCurrentMode === 'strongs') {
       input.placeholder = "Search Strong's (e.g. church, love, G1577, shalom)...";
     } else {
-      input.placeholder = "Search songs by title, artist, or lyrics...";
+      input.placeholder = "Search songs by title or lyric phrase...";
     }
   }
 
   if (reSearch && input) {
     handleOmniSearchInput(input.value);
+  }
+  if (omniSearchCurrentMode === 'strongs' && window.ensureContentPack) {
+    window.ensureContentPack('KJV_STRONGS').then(available => {
+      if (available && omniSearchCurrentMode === 'strongs') {
+        window.prepareStrongsSearch?.();
+        handleOmniSearchInput(input?.value || '');
+      }
+    }).catch(error => showToast(error.message, 'error'));
   }
 }
 
@@ -6911,8 +6941,8 @@ function renderOmniUnifiedResults(query, container) {
     bibleTextMatches = searchBibleFullText(query, activeVer, 3);
   }
 
-  // 3. Search Local Saved Songs in SONGS_DATABASE (Resilient matching on Title, Author & Full-Text Lyrics)
-  const localSongMatches = (SONGS_DATABASE || []).filter(s => matchSongQuery(s, query));
+  // 3. Search saved song titles and lyric phrases, with exact titles first.
+  const localSongMatches = searchSongs(SONGS_DATABASE || [], query);
 
   // Intent classification: If exact scripture reference detected, prioritize Scriptures section at top!
   const prioritizeScriptures = isExactRefMatch || (bibleTextMatches.length > 0 && localSongMatches.length === 0);
@@ -7371,7 +7401,7 @@ function renderOmniSongsResults(query, container) {
     return;
   }
 
-  const localMatches = (SONGS_DATABASE || []).filter(s => matchSongQuery(s, query));
+  const localMatches = searchSongs(SONGS_DATABASE || [], query);
 
   let html = '';
 
@@ -7432,6 +7462,7 @@ function renderOmniSongsResults(query, container) {
 
 // ─── 4. Concordance & Strong\'s Filter Mode ──────────────────────────────────
 let omniStrongsLangFilter = 'all';
+let omniStrongsSearchGeneration = 0;
 
 function switchOmniStrongsLang(lang) {
   omniStrongsLangFilter = lang || 'all';
@@ -7459,11 +7490,9 @@ function renderOmniStrongsCardHtml(entry, showOccurrencesAction = true) {
   const safeWordParam = (entry.short_definition || entry.lemma || entry.id).replace(/'/g, "\\'");
 
   let occCountText = '';
-  if (typeof window.getStrongsBibleOccurrences === 'function') {
-    const occInfo = window.getStrongsBibleOccurrences(entry.id, 1);
-    if (occInfo && occInfo.totalCount > 0) {
-      occCountText = `${occInfo.totalCount} verse${occInfo.totalCount === 1 ? '' : 's'} in KJV`;
-    }
+  const occurrenceCount = entry._occurrenceCount ?? window.getStrongsBibleOccurrenceCount?.(entry.id);
+  if (occurrenceCount > 0) {
+    occCountText = `${occurrenceCount} verse${occurrenceCount === 1 ? '' : 's'} in KJV`;
   }
 
   return `
@@ -7560,8 +7589,15 @@ function omniProjectStrongsWord(strongId, wordText) {
 }
 window.omniProjectStrongsWord = omniProjectStrongsWord;
 
-function renderOmniStrongsResults(query, container) {
+async function renderOmniStrongsResults(query, container) {
   if (!container) return;
+  const generation = ++omniStrongsSearchGeneration;
+  if (window.isContentPackReady && !window.isContentPackReady('KJV_STRONGS')) {
+    container.setAttribute('aria-busy', 'false');
+    container.innerHTML = '<div class="omni-empty-compact"><div class="omni-empty-title">Strong’s Concordance</div><div class="omni-empty-desc">Download Hebrew and Greek word meanings to use concordance search.</div><button type="button" class="omni-action-btn" onclick="downloadOptionalPack(\'KJV_STRONGS\')">Download</button></div>';
+    return;
+  }
+  container.setAttribute('aria-busy', query ? 'true' : 'false');
 
   const filterBarHtml = `
     <div class="omni-concordance-filter-bar">
@@ -7605,9 +7641,17 @@ function renderOmniStrongsResults(query, container) {
     return;
   }
 
-  const matches = (typeof window.searchStrongsConcordance === 'function')
-    ? window.searchStrongsConcordance(query, { lang: omniStrongsLangFilter, limit: 30 })
-    : [];
+  let matches;
+  try {
+    matches = await window.searchStrongsConcordanceAsync(query, { lang: omniStrongsLangFilter, limit: 30 });
+  } catch (error) {
+    if (generation !== omniStrongsSearchGeneration || omniSearchCurrentMode !== 'strongs') return;
+    container.setAttribute('aria-busy', 'false');
+    container.innerHTML = `<div class="omni-empty-state">${escapeHtml(error.message || 'Concordance search is unavailable. Please retry.')}</div>`;
+    return;
+  }
+  if (generation !== omniStrongsSearchGeneration || omniSearchCurrentMode !== 'strongs') return;
+  container.setAttribute('aria-busy', 'false');
 
   if (matches.length === 0) {
     container.innerHTML = `
@@ -7835,184 +7879,53 @@ function closeSystemResetModal() {
   if (modal) modal.classList.remove('open');
 }
 
-function performSystemReset() {
-  // 1. Clear Workspace Storage Keys (Strictly preserving sf_ui_style and sf_ui_mode)
-  try {
-    localStorage.removeItem(WORKSPACE_STORAGE_KEY);
-    localStorage.removeItem('scriptureflow_live_state');
-    localStorage.removeItem('sf_remote_workspace_state');
-    localStorage.removeItem('sf_bento_single_cols');
-    localStorage.removeItem('sf_bento_single_zoom');
-    localStorage.removeItem('sf_bento_medley_zoom');
-    localStorage.removeItem('sf_deck_zoom');
-    localStorage.removeItem('sf_bible_medley_change_target');
-    localStorage.removeItem('sf_custom_songs');
-    localStorage.removeItem('sf_custom_bibles');
-    localStorage.removeItem('sf_custom_songbooks');
-    localStorage.removeItem('sf_bento_sidebar_width');
-    localStorage.removeItem('sf_bento_preview_width');
-    localStorage.removeItem('sf_bento_agenda_height');
-    localStorage.removeItem('sf_bento_preview_height');
-    localStorage.setItem('sf_system_formatted', 'true');
-    if (typeof ThemeResizerEngine !== 'undefined') {
-      ThemeResizerEngine.resetThemeDimensions();
-    }
-  } catch (e) {
-    console.warn('LocalStorage reset error:', e);
+window.prepareDeviceDataReset = function() {
+  clearTimeout(_syncWorkspaceTimer);
+  clearTimeout(liveStorageTimer);
+  clearTimeout(window.sessionManager?.autoSaveTimer);
+  if (window.sermonManager) {
+    clearInterval(window.sermonManager.timerInterval);
+    clearTimeout(window.sermonManager.interimCommitTimer);
+    window.sermonManager.aiListening = false;
+    window.sermonManager.isRecordingSermon = false;
   }
+  speechAi?.stop();
+};
 
-  // 2. Clear IndexedDB Custom Library Data if Importer is Available
-  if (window.libraryImporter && typeof window.libraryImporter.clearAllData === 'function') {
-    try {
-      window.libraryImporter.clearAllData();
-    } catch (e) {
-      console.warn('Library clear error:', e);
-    }
-  }
-
-  // 3. Clear Runtime Database Arrays in Memory
-  if (typeof SONGS_DATABASE !== 'undefined') SONGS_DATABASE.length = 0;
-  if (typeof SONGBOOKS_DATABASE !== 'undefined') SONGBOOKS_DATABASE.length = 0;
-  if (typeof BIBLE_DATABASE !== 'undefined') {
-    for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k];
-  }
-
-  // 3. Reset In-Memory State to Clean Blank Defaults
-  state.agendaItems = [];
-  state.activeLiveSlideId = null;
-  state.activeLiveText = '';
-  state.activeLiveRef = '';
-  state.isClear = true;
-  state.isHoldLive = false;
-  state.activeSongId = null;
-  state.activeBibleBook = '';
-  state.activeBibleChapter = 1;
-  state.expandedBibleBook = null;
-  state.isMedleyMode = false;
-  state.medleySongIds = [];
-  state.medleyBibleSlots = [];
-  state.isCompareMode = false;
-  state.compareData = null;
-
-  // Defaults specified by user:
-  // - Columns: 1 Col
-  // - Zoom: 100% (1.0)
-  // - Split: Full (0 lines)
-  state.bentoSingleCols = 1;
-  state.bentoSingleScale = 1.0;
-  state.bentoMedleyScale = 1.0;
-  state.deckScale = 1.0;
-  state.deckZoom = 1.0;
-  state.maxLinesPerSlide = 0;
-
-  // Clear AI states & histories
-  state.aiDetectedVerses = [];
-  state.aiDetectedSongs = [];
-  state.aiSuggestions = [];
-  state.aiTranscript = '';
-  state.lastAutoDetectedRef = '';
-  state.lastAutoDetectedSongSlide = '';
-  state.scriptureHistory = [];
-  state.paraphraseMatches = [];
-
-  // Reset CSS custom properties for zoom and widths
-  document.documentElement.style.setProperty('--deck-scale-single', '1');
-  document.documentElement.style.setProperty('--deck-scale-medley', '1');
-  document.documentElement.style.setProperty('--deck-scale', '1');
-
-  // Reset UI Controls & Labels
-  const zoomLabel = document.getElementById('bento-zoom-label');
-  if (zoomLabel) zoomLabel.textContent = '100%';
-
-  const colsSeg = document.getElementById('bento-cols-seg');
-  if (colsSeg) {
-    colsSeg.querySelectorAll('span').forEach(sp => {
-      sp.classList.toggle('active', parseInt(sp.dataset.cols, 10) === 1);
-    });
-  }
-
-  const linesSeg = document.getElementById('bento-lines-seg');
-  if (linesSeg) {
-    linesSeg.querySelectorAll('span').forEach(sp => {
-      sp.classList.toggle('active', parseInt(sp.dataset.lines, 10) === 0);
-    });
-  }
-
-  const searchInput = document.getElementById('bento-search-input');
-  if (searchInput) searchInput.value = '';
-
-  // Broadcast blank/clear state to secondary displays
-  clearAllOutputs();
-
-  // Close reset confirmation modal and settings modal
-  closeSystemResetModal();
-  const settingsModal = document.getElementById('settings-modal-backdrop');
-  if (settingsModal) settingsModal.classList.remove('open');
-
-  // Re-render all views
-  renderAgenda();
-  renderLibrary();
-  renderDeck();
-  renderAiHud();
-  if (typeof window.renderBentoAgenda === 'function') window.renderBentoAgenda();
-  if (typeof window.renderBentoLibrary === 'function') window.renderBentoLibrary();
-  if (typeof window.renderBentoDeck === 'function') window.renderBentoDeck();
-  if (typeof window.syncBentoStagePreview === 'function') window.syncBentoStagePreview();
-  if (typeof window.syncBentoAiHud === 'function') window.syncBentoAiHud();
-  if (typeof window.syncBentoTabsUI === 'function') window.syncBentoTabsUI();
-
-  showToast('System reset complete. Workspace, songs, scriptures, and agenda have been reset to defaults.', 'success');
+async function performSystemReset() {
+  if (!await window.runDeviceCleanup('all')) return;
+  window.location.reload();
 }
 
 async function performClearBiblesOnly() {
-  try {
-    const response = await fetch('/api/bibles/catalog');
-    if (!response.ok) throw Error('Could not read downloaded Bibles.');
-    const catalogue = await response.json();
-    for (const bible of catalogue.bibles || []) {
-      if (!bible.installed || bible.bundled) continue;
-      const removal = await fetch(`/api/content-packs/${encodeURIComponent(bible.code)}`, { method: 'DELETE' });
-      if (!removal.ok) throw Error('Could not clear every downloaded Bible. Wait for downloads to finish and retry.');
-      window.forgetContentPack?.(bible.code);
-    }
-    for (const bible of CLOUD_REPOSITORIES.bibles || []) bible.installed = Boolean(bible.bundled);
-  } catch (error) { showToast(error.message, 'error'); return; }
-  if (window.libraryImporter && typeof window.libraryImporter.clearBiblesOnly === 'function') {
-    window.libraryImporter.clearBiblesOnly();
+  if (!await window.runDeviceCleanup('bibles')) return;
+  for (const bible of CLOUD_REPOSITORIES.bibles || []) {
+    bible.installed = Boolean(bible.bundled || bible.code === 'KJV');
+    window.forgetContentPack?.(bible.code);
   }
-  if (typeof BIBLE_DATABASE !== 'undefined') {
-    for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k];
-  }
-  state.bibleVersion = '';
+  state.bibleVersion = 'KJV';
   state.activeBibleBook = '';
   state.activeBibleChapter = 1;
-
+  if (state.strongsMode) toggleStrongsMode();
+  await ensureBibleLoaded('KJV');
   closeSystemResetModal();
+  populateBibleVersionSelects();
   renderLibrary();
   renderDeck();
   renderCloudBibles();
   syncRemoteCatalog();
-  showToast('All downloaded Bible translations have been cleared from storage.', 'info');
+  showToast('Downloaded Bible content cleared. Bundled KJV is available.', 'success');
 }
 
-function performClearSongsOnly() {
-  if (window.libraryImporter && typeof window.libraryImporter.clearSongsOnly === 'function') {
-    window.libraryImporter.clearSongsOnly();
-  }
-  if (typeof SONGS_DATABASE !== 'undefined') {
-    SONGS_DATABASE.length = 0;
-  }
-  if (typeof SONGBOOKS_DATABASE !== 'undefined') {
-    SONGBOOKS_DATABASE.length = 0;
-  }
+async function performClearSongsOnly() {
+  if (!await window.runDeviceCleanup('songs')) return;
   state.activeSongId = null;
   state.medleySongIds = [];
-
   closeSystemResetModal();
   renderLibrary();
   renderDeck();
   syncRemoteCatalog();
-  showToast('All saved songs have been cleared from local database.', 'info');
+  showToast('Saved songs and songbooks cleared.', 'success');
 }
 
 function projectAiSuggestion(sugId) {
@@ -8280,9 +8193,15 @@ function switchImportSubTab(subTab) {
 let currentMigrationScan = null;
 
 function initMigrationTab() {
-  const pathInput = document.getElementById('import-migrate-folder-path');
-  if (pathInput && !pathInput.value) {
-    pathInput.value = '/Users/corpine/Downloads/Blip/VideoPsalm';
+  const canBrowse = typeof window.desktopApi?.selectMigrationFolder === 'function';
+  const browseBtn = document.getElementById('import-migrate-browse-btn');
+  if (browseBtn) {
+    browseBtn.disabled = !canBrowse;
+    browseBtn.title = canBrowse ? 'Select your presentation software folder' : 'Folder browsing is available in the Ginomai desktop app';
+  }
+  const statusEl = document.getElementById('import-migrate-status');
+  if (!canBrowse && !currentMigrationScan && statusEl) {
+    statusEl.textContent = 'Paste the full folder path on the computer running Ginomai, then click "Scan Folder". Use the desktop app to browse folders.';
   }
 }
 
@@ -8411,30 +8330,21 @@ async function handleMigrationExecute() {
   }
 }
 
-function handleMigrationFolderSelected(event) {
-  const files = event.target.files;
-  if (!files || files.length === 0) return;
+async function browseMigrationFolder() {
   const pathInput = document.getElementById('import-migrate-folder-path');
-
-  const firstFile = files[0];
-  if (firstFile.path) {
-    const relParts = (firstFile.webkitRelativePath || '').split('/');
-    let folderPath = firstFile.path;
-    for (let i = 0; i < relParts.length; i++) {
-      const lastSlash = Math.max(folderPath.lastIndexOf('/'), folderPath.lastIndexOf('\\'));
-      if (lastSlash !== -1) {
-        folderPath = folderPath.substring(0, lastSlash);
-      }
-    }
-    if (folderPath && pathInput) {
-      pathInput.value = folderPath;
-      handleMigrationScan();
-      return;
-    }
+  if (typeof window.desktopApi?.selectMigrationFolder !== 'function') {
+    if (typeof showToast === 'function') showToast('Paste the full folder path on the computer running Ginomai, or browse folders in the desktop app.', 'info');
+    pathInput?.focus();
+    return;
   }
-
-  if (pathInput && pathInput.value) {
-    handleMigrationScan();
+  try {
+    const folderPath = await window.desktopApi.selectMigrationFolder();
+    if (!folderPath || !pathInput) return;
+    pathInput.value = folderPath;
+    currentMigrationScan = null;
+    await handleMigrationScan();
+  } catch (err) {
+    if (typeof showToast === 'function') showToast(`Could not select folder: ${err.message}`, 'error');
   }
 }
 
@@ -9328,6 +9238,11 @@ async function downloadCloudBible(code, name) {
     }
 
     const res = await window.libraryImporter.downloadCloudBible(code, name);
+    if (res.cancelled) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Download'; }
+      showToast('Download cancelled. Your Bible selection has not changed.', 'info');
+      return;
+    }
     const repositoryBible = (CLOUD_REPOSITORIES.bibles || []).find(bible => bible.code === code);
     if (repositoryBible) repositoryBible.installed = true;
 
@@ -10544,6 +10459,12 @@ window.openOmniSearchPalette = openOmniSearchPalette;
 window.closeOmniSearchPalette = closeOmniSearchPalette;
 window.toggleOmniSearchPalette = toggleOmniSearchPalette;
 window.switchOmniSearchMode = switchOmniSearchMode;
+window.onContentPackInstalled = code => {
+  if (code === 'KJV_STRONGS' && omniSearchCurrentMode === 'strongs') {
+    window.prepareStrongsSearch?.();
+    handleOmniSearchInput(document.getElementById('omni-search-input')?.value || '');
+  }
+};
 window.handleOmniSearchInput = handleOmniSearchInput;
 window.clearOmniSearchInput = clearOmniSearchInput;
 window.setOmniSearchText = setOmniSearchText;
@@ -10654,7 +10575,7 @@ async function toggleStrongsMode() {
         const resp = await fetch('/bibles/KJV_STRONGS.json');
         if (resp.ok) {
           const data = await resp.json();
-          if (data && typeof data === 'object') {
+          if (data && typeof data === 'object' && state.strongsMode) {
             BIBLE_DATABASE['KJV_STRONGS'] = data;
           }
         }
@@ -10667,7 +10588,7 @@ async function toggleStrongsMode() {
     if (!window.STRONGS_LEXICON_CACHE) {
       fetch('/lexicon/strongs_unified.json')
         .then(r => r.json())
-        .then(data => { window.STRONGS_LEXICON_CACHE = data; })
+        .then(data => { if (state.strongsMode) window.STRONGS_LEXICON_CACHE = data; })
         .catch(() => { });
     }
 

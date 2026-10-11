@@ -78,7 +78,7 @@
   async function init() {
     const info = api ? await api.info() : {
       platform:new URLSearchParams(location.search).get('platform') === 'darwin' ? 'darwin' : 'win32',
-      version:'2.4.0', directory:'Preview only — installation is disabled'
+      version:'2.4.5', directory:'Preview only — installation is disabled'
     };
     preview = !api || Boolean(info.preview);
     document.body.dataset.platform = info.platform;

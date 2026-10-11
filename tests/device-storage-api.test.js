@@ -1,0 +1,56 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { once } = require('node:events');
+
+test('host cleanup removes selected downloads, clears media and persists a blank workspace without deleting original exports', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ginomai-cleanup-api-'));
+  const content = process.env.GINOMAI_CONTENT_DIR = path.join(dir, 'content');
+  const backgrounds = process.env.SF_MEDIA_DIR = path.join(dir, 'backgrounds');
+  const presentations = process.env.SF_PRESENTATION_DIR = path.join(dir, 'presentations');
+  const stateFile = process.env.SF_LIVE_STATE_FILE = path.join(dir, 'live-state.json');
+  const host = require('../server');
+  host.server.listen(0, '127.0.0.1');
+  await once(host.server, 'listening');
+  t.after(async () => { host.server.closeAllConnections(); await new Promise(resolve => host.server.close(resolve)); await fs.rm(dir, { recursive: true, force: true }); });
+  const base = 'http://127.0.0.1:' + host.server.address().port;
+  const root = await fetch(base);
+  const cookie = root.headers.get('set-cookie').split(';')[0];
+  const post = (scope, deleteMedia) => fetch(base + '/api/storage/clear', { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ scope, deleteMedia }) });
+  for (const code of ['NIV', 'KJV_STRONGS', 'AI_SEMANTIC']) {
+    await fs.mkdir(path.join(content, code, '.download-old'), { recursive: true });
+    await fs.writeFile(path.join(content, code, '.download-old', 'bytes'), 'partial');
+  }
+  for (const folder of [backgrounds, presentations]) await fs.mkdir(folder, { recursive: true });
+  await fs.writeFile(path.join(backgrounds, 'upload_abc.png'), 'image');
+  await fs.writeFile(path.join(presentations, 'media_abc-page-1.png'), 'thumbnail');
+  await fs.writeFile(path.join(dir, 'exported-session.sflow'), 'keep');
+  assert.equal((await fetch(base + '/api/storage/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope: 'all' }) })).status, 403);
+  assert.equal((await post('invalid')).status, 400);
+  assert.equal((await post('all', 'true')).status, 400);
+  assert.equal((await post('bibles')).status, 200);
+  assert.deepEqual(await fs.readdir(content), ['AI_SEMANTIC']);
+  assert.deepEqual(await fs.readdir(backgrounds), ['upload_abc.png']);
+  assert.equal((await fetch(base + '/api/workspace', { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ dashboard: { agendaItems: [{ id: 'old', title: 'old agenda' }] } }) })).status, 200);
+  assert.equal((await post('all')).status, 200);
+  assert.deepEqual(await fs.readdir(content), []);
+  assert.deepEqual(await fs.readdir(backgrounds), ['upload_abc.png']);
+  assert.deepEqual(await fs.readdir(presentations), ['media_abc-page-1.png']);
+  const kept = JSON.parse(await fs.readFile(stateFile, 'utf8'));
+  assert.equal(kept.text, '');
+  assert.equal(kept.dashboard, undefined);
+  assert.equal((await post('all', false)).status, 200);
+  assert.deepEqual(await fs.readdir(backgrounds), ['upload_abc.png']);
+  assert.equal((await post('all', true)).status, 200);
+  assert.deepEqual(await fs.readdir(backgrounds), []);
+  assert.deepEqual(await fs.readdir(presentations), []);
+  const saved = JSON.parse(await fs.readFile(stateFile, 'utf8'));
+  assert.equal(saved.text, '');
+  assert.equal(saved.clear, true);
+  assert.equal(saved.dashboard, undefined);
+  assert.equal(await fs.readFile(path.join(dir, 'exported-session.sflow'), 'utf8'), 'keep');
+  assert.equal((await fetch(base + '/bibles/KJV.json')).status, 200);
+});

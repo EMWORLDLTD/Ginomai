@@ -40,6 +40,8 @@
   <script src="js/import-engine.js"></script>
   <script src="js/custom-dialog.js"></script>
   <script src="js/content-packs.js"></script>
+  <script src="js/device-cleanup.js"></script>
+  <link rel="stylesheet" href="css/content-packs.css">
   <script src="js/session-manager.js"></script>
   <script src="js/auto-projection-policy.js"></script>
   <script src="js/detection-cards.js"></script>
@@ -356,20 +358,30 @@
       <section class="ann-section ann-simple-compose">
         <label for="live-alert-input">Message</label>
         <textarea id="live-alert-input" class="live-alert-textarea" placeholder="Type your message…" rows="3"></textarea>
-        <fieldset class="ann-targets"><legend>Send to</legend>
-          <label><input type="checkbox" id="alert-dest-sanctuary"> Audience</label>
+        <fieldset class="ann-targets" aria-labelledby="ann-targets-label"><span id="ann-targets-label" class="ann-targets-label">Send to</span>
+          <label><input type="checkbox" id="alert-dest-sanctuary"> Projector</label>
           <label><input type="checkbox" id="alert-dest-livestream"> Stream</label>
           <label><input type="checkbox" id="alert-dest-stage"> Stage</label>
         </fieldset>
         <div class="ann-simple-options">
-          <label>Position<select id="alert-position"><option value="upperthird">Top</option><option value="lowerthird">Bottom</option></select></label>
-          <label>Stop after<select id="alert-duration"><option value="30">30 seconds</option><option value="60" selected>1 minute</option><option value="120">2 minutes</option><option value="300">5 minutes</option><option value="0">Until I stop it</option></select></label>
+          <label>Position<select id="alert-position" class="settings-select-custom ann-custom-select"><option value="upperthird">Top</option><option value="lowerthird">Bottom</option><option value="fullscreen">Full screen</option></select></label>
+          <label>Stop after<select id="alert-duration" class="settings-select-custom ann-custom-select"><option value="30">30 seconds</option><option value="60" selected>1 minute</option><option value="120">2 minutes</option><option value="300">5 minutes</option><option value="0">Until I stop it</option></select></label>
+        <div id="ann-background-field" class="ann-background-field" hidden>
+          <label id="ann-background-label">Background</label>
+          <button type="button" id="ann-background-trigger" class="ann-background-trigger" aria-labelledby="ann-background-label ann-background-name" aria-describedby="ann-background-help" aria-haspopup="dialog" aria-expanded="false" onclick="openAnnouncementBackgroundPicker(this)">
+            <span id="ann-background-thumb" class="ann-background-thumb" aria-hidden="true"></span><span id="ann-background-name">Midnight</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <small id="ann-background-help">Remembered for your next full-screen message.</small>
         </div>
+        </div>
+        <div class="ann-composer-footer">
         <label class="ann-save-choice"><input type="checkbox" id="alert-save-message"> Save when sending</label>
         <div class="alert-composer-actions">
           <button type="button" class="ann-action-btn" onclick="resetAnnouncementComposer()">New</button>
           <button type="button" id="ann-save-draft" class="ann-action-btn" onclick="saveAnnouncementDraft()">Save</button>
           <button type="button" class="alert-send-btn" onclick="sendQuickLiveAlert()">Send</button>
+        </div>
         </div>
       </section>
 
@@ -1162,9 +1174,8 @@
               Select Software Root Folder or Path
             </label>
             <div class="library-migration-actions" style="display:flex; gap:8px; align-items:center;">
-              <input type="text" id="import-migrate-folder-path" class="import-text-field" placeholder="e.g. /Users/corpine/Downloads/Blip/VideoPsalm" style="flex:1; padding:9px 12px; font-size:12px; font-family:var(--font-mono, monospace);">
-              <input type="file" id="import-migrate-folder-picker" webkitdirectory directory multiple style="display:none;" onchange="handleMigrationFolderSelected(event)">
-              <button type="button" class="mode-toggle-btn" onclick="document.getElementById('import-migrate-folder-picker').click()" style="padding:9px 14px; font-size:12px; white-space:nowrap;">
+              <input type="text" id="import-migrate-folder-path" class="import-text-field" placeholder="Choose a folder or paste its full path" style="flex:1; padding:9px 12px; font-size:12px; font-family:var(--font-mono, monospace);">
+              <button type="button" id="import-migrate-browse-btn" class="mode-toggle-btn" onclick="browseMigrationFolder()" style="padding:9px 14px; font-size:12px; white-space:nowrap;">
                 Browse Folder
               </button>
               <button type="button" class="mode-toggle-btn active" onclick="handleMigrationScan()" style="padding:9px 14px; font-size:12px; white-space:nowrap;">
@@ -1333,13 +1344,14 @@ My chains are gone, I've been set free..."></textarea>
 
       <div style="padding:20px; font-size:12.5px; line-height:1.6; display:flex; flex-direction:column; gap:12px;">
         <p class="reset-prompt-p" style="margin-bottom:2px;">Choose which data you would like to clear from this device:</p>
+        <p id="reset-cleanup-status" role="status" hidden>Clearing selected data…</p>
         
         <div style="display:flex; flex-direction:column; gap:8px;">
           <!-- Option 1: Factory Reset -->
           <div style="background:rgba(242,85,75,0.08); border:1px solid rgba(242,85,75,0.25); border-radius:10px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
             <div>
-              <div style="font-weight:700; font-size:13px; color:#FCA5A5;">Clear Everything (Factory Reset)</div>
-              <div style="font-size:11px; color:#94A3B8; margin-top:2px;">Wipes all downloaded Bibles, saved songs, agendas, and resets workspace.</div>
+              <div class="reset-choice-title" style="font-weight:700; font-size:13px; color:#FCA5A5;">Clear Everything (Factory Reset)</div>
+              <div class="reset-choice-description" style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes downloads, saved songs, sessions and transcripts, then resets workspace settings. You can choose whether to delete uploaded media.</div>
             </div>
             <button type="button" class="mode-toggle-btn active reset-confirm-btn" onclick="performSystemReset()" style="background:#F2554B; border:1px solid #DC2626; color:#FFFFFF; font-size:11px; font-weight:700; padding:6px 14px; border-radius:8px; flex-shrink:0;">Clear All</button>
           </div>
@@ -1347,8 +1359,8 @@ My chains are gone, I've been set free..."></textarea>
           <!-- Option 2: Clear Bibles Only -->
           <div style="background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.2); border-radius:10px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
             <div>
-              <div style="font-weight:700; font-size:13px; color:#93C5FD;">Clear Downloaded Bibles Only</div>
-              <div style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes all offline Bible versions from storage to free up disk space.</div>
+              <div class="reset-choice-title" style="font-weight:700; font-size:13px; color:#93C5FD;">Clear Downloaded Bibles Only</div>
+              <div class="reset-choice-description" style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes imported translations and downloaded Bible content, including Strong’s. Bundled KJV stays available.</div>
             </div>
             <button type="button" class="mode-toggle-btn" onclick="performClearBiblesOnly()" style="background:rgba(59,130,246,0.2); border:1px solid rgba(59,130,246,0.4); color:#93C5FD; font-size:11px; font-weight:700; padding:6px 14px; border-radius:8px; flex-shrink:0;">Clear Bibles</button>
           </div>
@@ -1356,14 +1368,14 @@ My chains are gone, I've been set free..."></textarea>
           <!-- Option 3: Clear Songs Only -->
           <div style="background:rgba(236,72,153,0.06); border:1px solid rgba(236,72,153,0.2); border-radius:10px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
             <div>
-              <div style="font-weight:700; font-size:13px; color:#F472B6;">Clear Saved Songs Only</div>
-              <div style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes all custom & cloud imported songs from the local database.</div>
+              <div class="reset-choice-title" style="font-weight:700; font-size:13px; color:#F472B6;">Clear Saved Songs Only</div>
+              <div class="reset-choice-description" style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes all custom & cloud imported songs from the local database.</div>
             </div>
             <button type="button" class="mode-toggle-btn" onclick="performClearSongsOnly()" style="background:rgba(236,72,153,0.2); border:1px solid rgba(236,72,153,0.4); color:#F472B6; font-size:11px; font-weight:700; padding:6px 14px; border-radius:8px; flex-shrink:0;">Clear Songs</button>
           </div>
         </div>
 
-        <div style="font-size:11px; color:#64748B; margin-top:2px; font-style:italic;">Note: Theme and visual styling settings will always be preserved.</div>
+        <div style="font-size:11px; color:#64748B; margin-top:2px; font-style:italic;">Theme appearance and bundled KJV are preserved. Exported files outside the app are kept.</div>
       </div>
 
       <div class="reset-footer" style="display:flex; justify-content:flex-end; gap:10px; padding:12px 20px;">
@@ -1487,7 +1499,7 @@ My chains are gone, I've been set free..."></textarea>
 
             <div class="settings-nav-item" onclick="switchSettingsTab('speech', this)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-              <span>AI Speech Engine</span>
+              <span>AI &amp; Transcript</span>
             </div>
 
             <div class="settings-nav-item" onclick="switchSettingsTab('imports', this)">
@@ -1519,7 +1531,7 @@ My chains are gone, I've been set free..."></textarea>
           <div class="settings-version-tag">
             <div class="settings-version-title" style="font-weight:600;">GINOMAI</div>
             <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:2px;">
-              <span id="settings-build-version">Build 2.4.4</span>
+              <span id="settings-build-version">Build 2.4.5</span>
               <button id="check-update-btn-sidebar" type="button" onclick="checkForUpdates()" title="Check for software updates" style="background:none; border:none; color:var(--purple, #8a6dff); font-size:10px; font-weight:600; cursor:pointer; padding:0; text-decoration:underline;">Check</button>
             </div>
           </div>
@@ -1704,7 +1716,7 @@ My chains are gone, I've been set free..."></textarea>
                   <div class="settings-field-sub">Sanctuary full display magnification for congregational worship (Default: 2.2x)</div>
                 </div>
                 <div style="display:flex; align-items:center; gap:12px; width:220px;">
-                  <input type="range" id="setting-song-scale-full" min="1.0" max="3.5" step="0.1" value="2.2" style="flex:1; accent-color:var(--purple, #8A6DFF); cursor:pointer;" oninput="updateSongScaleFullSetting(this.value)">
+                  <input type="range" id="setting-song-scale-full" min="1.0" max="6.0" step="0.1" value="2.2" style="flex:1; accent-color:var(--purple, #8A6DFF); cursor:pointer;" oninput="updateSongScaleFullSetting(this.value)">
                   <span id="setting-song-scale-full-readout" style="min-width:42px; font-size:12px; font-weight:700; color:#E2E8F0; text-align:right; font-variant-numeric:tabular-nums;">2.2x</span>
                 </div>
               </div>
@@ -2004,8 +2016,34 @@ My chains are gone, I've been set free..."></textarea>
           <!-- TAB 3: SPEECH AI ENGINE -->
           <div id="tab-speech" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
             <div>
-              <div class="settings-section-title">AI Speech Recognition & Provider Settings</div>
-              <div class="settings-section-desc">Configure Deepgram Cloud live streaming, custom church vocabulary, audio hardware input, and auto-projection.</div>
+              <div class="settings-section-title">AI &amp; Transcript</div>
+              <div class="settings-section-desc">Manage Bible detection, transcription and microphone settings.</div>
+            </div>
+
+            <div class="settings-card-group" id="ai-content-settings">
+              <div class="settings-field-row content-pack-row" data-pack="AI_SEMANTIC">
+                <div class="settings-field-info">
+                  <div class="settings-field-label">Offline AI Bible detection</div>
+                  <div class="settings-field-sub">Find KJV verses from spoken phrases and paraphrases.</div>
+                  <div class="content-pack-status" role="status" data-pack-status>Checking availability…</div>
+                </div>
+                <div class="content-pack-actions">
+                  <button type="button" class="mode-toggle-btn" data-pack-download onclick="downloadOptionalPack('AI_SEMANTIC')">Download</button>
+                  <button type="button" class="mode-toggle-btn" data-pack-remove hidden onclick="removeOptionalPack('AI_SEMANTIC')">Remove</button>
+                </div>
+              </div>
+              <div class="settings-field-row content-pack-row" data-pack="KJV_STRONGS">
+                <div class="settings-field-info">
+                  <div class="settings-field-label">Strong’s Concordance</div>
+                  <div class="settings-field-sub">Hebrew and Greek word meanings for the KJV Bible.</div>
+                  <div class="content-pack-status" role="status" data-pack-status>Checking availability…</div>
+                </div>
+                <div class="content-pack-actions">
+                  <button type="button" class="mode-toggle-btn" data-pack-download onclick="downloadOptionalPack('KJV_STRONGS')">Download</button>
+                  <button type="button" class="mode-toggle-btn" data-pack-remove hidden onclick="removeOptionalPack('KJV_STRONGS')">Remove</button>
+                </div>
+              </div>
+              <div class="content-pack-help">Download once to use offline. Other translations are in Bibles &amp; Songs Repositories.</div>
             </div>
 
             <!-- Remote Mode Audio Notice -->
@@ -2782,7 +2820,7 @@ My chains are gone, I've been set free..."></textarea>
       <div style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:14px; padding-right:4px;">
         <div style="background:var(--card-2, #1a1920); border:1px solid var(--border, rgba(255,255,255,0.07)); border-radius:12px; padding:14px 16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <span style="font-size:13px; font-weight:700; color:var(--text, #f3f2f7);">v2.4.0 (The Word in Motion)</span>
+            <span style="font-size:13px; font-weight:700; color:var(--text, #f3f2f7);">v2.4.5 (The Word in Motion)</span>
             <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px; background:rgba(62,207,126,0.15); color:#3ecf7e; border:1px solid rgba(62,207,126,0.3);">CURRENT</span>
           </div>
           <ul style="margin:0; padding-left:18px; font-size:12px; color:var(--dim, #a3a1ae); line-height:1.7;">
@@ -2822,6 +2860,10 @@ My chains are gone, I've been set free..."></textarea>
           <input type="text" id="sf-dialog-input" class="sf-dialog-input" placeholder="" spellcheck="false" autocomplete="off" />
         </div>
         <div class="sf-dialog-message" id="sf-dialog-message" style="display:none;"></div>
+        <label class="sf-dialog-checkbox-wrap" id="sf-dialog-checkbox-wrap" hidden>
+          <input type="checkbox" id="sf-dialog-checkbox" />
+          <span id="sf-dialog-checkbox-label"></span>
+        </label>
       </div>
       <div class="sf-dialog-foot">
         <button type="button" class="sf-dialog-btn secondary" id="sf-dialog-cancel-btn" onclick="event.stopPropagation(); window.sfCloseCustomDialog(null)">Cancel</button>
@@ -2857,15 +2899,15 @@ My chains are gone, I've been set free..."></textarea>
         <div class="alert-destinations-cluster">
           <label class="alert-dest-checkbox">
             <input type="checkbox" id="ann-modal-dest-sanctuary" checked>
-            <span>In-House (Projector)</span>
+            <span>Projector</span>
           </label>
           <label class="alert-dest-checkbox">
             <input type="checkbox" id="ann-modal-dest-livestream" checked>
-            <span>Livestream (OBS/vMix)</span>
+            <span>Stream</span>
           </label>
           <label class="alert-dest-checkbox">
             <input type="checkbox" id="ann-modal-dest-stage">
-            <span>Stage (Choir/Pastors)</span>
+            <span>Stage</span>
           </label>
         </div>
       </div>
@@ -2873,12 +2915,12 @@ My chains are gone, I've been set free..."></textarea>
       <div style="display:flex; gap:12px;">
         <div class="ann-modal-field" style="flex:1;">
           <label class="ann-modal-label" for="ann-modal-speed">Scroll speed</label>
-          <select id="ann-modal-speed" class="ann-modal-select"><option value="slow">Slow</option><option value="normal" selected>Normal</option><option value="fast">Fast</option></select>
+          <select id="ann-modal-speed" class="ann-modal-select settings-select-custom ann-custom-select"><option value="slow">Slow</option><option value="normal" selected>Normal</option><option value="fast">Fast</option></select>
           <label class="ann-modal-label" for="ann-modal-pos">Default Position</label>
-          <select id="ann-modal-pos" class="ann-modal-select">
+          <select id="ann-modal-pos" class="ann-modal-select settings-select-custom ann-custom-select">
             <option value="lowerthird">Bottom ticker</option>
             <option value="upperthird">Top ticker</option>
-            <option value="fullscreen">Fullscreen</option>
+            <option value="fullscreen">Full screen</option>
           </select>
         </div>
         <div class="ann-modal-field" style="justify-content:center; padding-top:16px;">
@@ -3100,5 +3142,20 @@ My chains are gone, I've been set free..."></textarea>
   <script src="js/countdown-renderer.js"></script>
   <script src="js/media-video-deck.js?v=20261008-02"></script>
   <script src="js/presentation-library.js?v=20261008-01"></script>
+  <div id="content-download-backdrop" class="modal-backdrop content-download-backdrop" aria-labelledby="content-download-title" aria-describedby="content-download-detail" hidden>
+  <section id="content-download-dialog" class="content-download-dialog" tabindex="-1">
+    <div class="content-download-heading">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg>
+      <h2 id="content-download-title">Download</h2>
+    </div>
+    <p id="content-download-detail" role="status" aria-live="polite">Preparing download…</p>
+    <progress id="content-download-progress" max="100" value="0" aria-label="Download progress"></progress>
+    <p class="content-download-note">Available offline after download.</p>
+    <div class="content-download-actions">
+      <button type="button" id="content-download-dismiss" class="mode-toggle-btn">Cancel download</button>
+      <button type="button" id="content-download-retry" class="mode-toggle-btn active" hidden>Retry</button>
+    </div>
+  </section>
+  </div>
 </body>
 </html>

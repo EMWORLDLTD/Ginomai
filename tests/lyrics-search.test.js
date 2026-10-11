@@ -52,8 +52,8 @@ test('Local Lyrics Search: resilient matching across line breaks, punctuation, a
   // Test 1: User searches by title
   assert.strictEqual(matchSongQuery(mockSong, 'Promise Keeper'), true, 'Should match by song title');
 
-  // Test 2: User searches by author
-  assert.strictEqual(matchSongQuery(mockSong, 'Sounds of Salem'), true, 'Should match by author');
+  // Author metadata alone is outside title and lyric phrase searches.
+  assert.strictEqual(matchSongQuery(mockSong, 'Sounds of Salem'), false, 'Should search titles and lyrics only');
 
   // Test 3: User searches by lyrics without comma or punctuation
   assert.strictEqual(
@@ -75,11 +75,11 @@ test('Local Lyrics Search: resilient matching across line breaks, punctuation, a
     'Should match lyric text across line break boundaries'
   );
 
-  // Test 5: Token set overlap (multi-word phrase where user omits a filler word)
+  // Loose overlap must not match when the searched phrase is absent.
   assert.strictEqual(
     matchSongQuery(mockSong, 'said never fail faithful end'),
-    true,
-    'Should match when key words of a stanza are searched'
+    false,
+    'Should require the actual lyric phrase in order'
   );
 
   // Test 6: Non-matching query

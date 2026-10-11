@@ -597,6 +597,8 @@ class ThemeManager {
     if (!SANCTUARY_THEMES[this.activeSanctuaryTheme] && !/^(upload_|media_)/.test(this.activeSanctuaryTheme)) {
       this.activeSanctuaryTheme = 'celestial_motion';
     }
+    this.activeThemeSongId = null;
+    this.activeSongTheme = null;
     this.sanctuaryDimmer = parseInt(localStorage.getItem('sf_sanctuary_dimmer') || '30', 10);
     this.sanctuaryFont = localStorage.getItem('sf_sanctuary_font') || 'Outfit';
     const savedObsModeRule = localStorage.getItem('sf_obs_mode_rule');
@@ -655,6 +657,13 @@ class ThemeManager {
     this.updateSanctuaryUi();
   }
 
+  applySongTheme(songId, broadcast = true) {
+    // Song defaults affect output only; the saved global theme and draft stay intact.
+    this.activeThemeSongId = songId || null;
+    this.activeSongTheme = getSongBoundTheme(songId);
+    if (broadcast) this.broadcastSanctuaryTheme();
+  }
+
   setSanctuaryFit(value) {
     if (!['cover', 'contain', 'fill'].includes(value)) return;
     if (this.sanctuaryDraft) { this.sanctuaryDraft.sanctuaryFits[this.sanctuaryDraft.activeSanctuaryTheme] = value; this.updateSanctuaryUi(); return; }
@@ -693,14 +702,16 @@ class ThemeManager {
   }
 
   getSanctuaryPayload(settings = this) {
-    const theme = SANCTUARY_THEMES[settings.activeSanctuaryTheme] || SANCTUARY_THEMES.celestial_motion || SANCTUARY_THEMES.deep_celestial;
+    const themeId = settings === this && SANCTUARY_THEMES[this.activeSongTheme]
+      ? this.activeSongTheme : settings.activeSanctuaryTheme;
+    const theme = SANCTUARY_THEMES[themeId] || SANCTUARY_THEMES.celestial_motion || SANCTUARY_THEMES.deep_celestial;
     return {
-      id: settings.activeSanctuaryTheme,
+      id: themeId,
       name: theme.name,
       type: theme.type || 'gradient',
       badge: theme.badge || '',
       category: theme.category,
-      fit: ['cover', 'contain', 'fill'].includes(settings.sanctuaryFits[settings.activeSanctuaryTheme]) ? settings.sanctuaryFits[settings.activeSanctuaryTheme] : 'cover',
+      fit: ['cover', 'contain', 'fill'].includes(settings.sanctuaryFits[themeId]) ? settings.sanctuaryFits[themeId] : 'cover',
       width: theme.width || null,
       height: theme.height || null,
       videoUrl: theme.videoUrl || '',
@@ -933,8 +944,8 @@ function setSongBoundTheme(songId, themeId) {
     localStorage.setItem('sf_song_theme_bindings', JSON.stringify(bindings));
   } catch (e) {}
 
-  if (themeId && window.themeManager) {
-    window.themeManager.setSanctuaryTheme(themeId);
+  if (window.themeManager && window.themeManager.activeThemeSongId === songId) {
+    window.themeManager.applySongTheme(songId);
   }
   const themeName = (themeId && SANCTUARY_THEMES[themeId]) ? SANCTUARY_THEMES[themeId].name : 'Default';
   if (typeof window.showToast === 'function') {

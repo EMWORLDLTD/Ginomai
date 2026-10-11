@@ -18,7 +18,7 @@ function options(argv, host = process.platform, hostArch = process.arch) {
   const archIndex = argv.indexOf('--arch');
   const arch = archIndex === -1 ? (platform === 'darwin' ? hostArch : 'x64') : argv[archIndex + 1];
   if (!['x64', 'arm64'].includes(arch) || (platform === 'win32' && arch !== 'x64')) throw new Error('Use x64 for Windows, or x64 / arm64 for macOS.');
-  return { platform, arch, publish:argv.includes('--publish'), nativeOnly:argv.includes('--native-only'), cloudContent:argv.includes('--cloud-content') };
+  return { platform, arch, publish:argv.includes('--publish'), nativeOnly:argv.includes('--native-only'), cloudContent:!argv.includes('--bundled-content') };
 }
 
 function payloadConfig(settings, output) {
@@ -26,7 +26,10 @@ function payloadConfig(settings, output) {
   // Inherit the updater feed from package.json; the build's publish option controls uploads.
   return {
     directories:{ output },
-    files:[...require('../package.json').build.files, '!electron/installer/**', '!output/**', '!docs/installer.md', ...(settings.cloudContent ? ['!bibles/!(KJV|manifest).json', '!lexicon/**'] : [])],
+    files:[...require('../package.json').build.files,
+      `!node_modules/onnxruntime-node/bin/napi-v3/!(${settings.platform})/**`,
+      `!node_modules/onnxruntime-node/bin/napi-v3/${settings.platform}/!(${settings.arch})/**`,
+      ...(settings.cloudContent ? ['!bibles/!(KJV|manifest).json', '!lexicon/**', '!assets/semantic/**'] : [])],
     ...(mac ? {
       mac:{ target:[{ target:'zip', arch:[settings.arch] }], artifactName:'Ginomai-${version}-mac-${arch}.${ext}' }
     } : {
@@ -63,7 +66,7 @@ async function main() {
     const baseUrl = process.env.GINOMAI_CONTENT_BASE_URL || process.env.GINOMIA_CONTENT_BASE_URL || require('../assets/content-packs/manifest.json').baseUrl;
     if (!baseUrl) throw Error('Set GINOMAI_CONTENT_BASE_URL to the published HTTPS content release before building --cloud-content.');
     const manifest = await buildContentPacks({ baseUrl });
-    console.log('Verifying published content packs before excluding bundled translations and Strong’s…');
+    console.log('Verifying published AI, Bible and Strong’s packs before excluding optional content…');
     await verifyPublishedContent(manifest);
   }
   const version = require('../package.json').version;

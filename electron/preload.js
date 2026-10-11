@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('desktopApi', {
   // Canonical packaged application metadata
   getAppInfo: () => ipcRenderer.invoke('desktop:get-app-info'),
 
+  // Library migration folder selection
+  selectMigrationFolder: () => ipcRenderer.invoke('desktop:select-migration-folder'),
+
   // Display & Projector Control
   getDisplays: () => ipcRenderer.invoke('desktop:get-displays'),
   launchProjector: (options) => ipcRenderer.invoke('desktop:launch-projector', options),

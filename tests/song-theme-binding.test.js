@@ -5,6 +5,12 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const themeManagerJs = fs.readFileSync(path.join(__dirname, '../js/theme-manager.js'), 'utf8');
+const appJs = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
+
+function appFunction(name) {
+  const start = appJs.indexOf(`function ${name}(`);
+  return appJs.slice(start, appJs.indexOf('\n}', start) + 2);
+}
 
 function setupThemeBindingEnvironment() {
   const store = new Map();
@@ -83,9 +89,13 @@ function setupThemeBindingEnvironment() {
 
   const context = vm.createContext(sandbox);
   vm.runInContext(themeManagerJs, context);
+  context.state = state;
+  context.window.state = state;
+  vm.runInContext(appFunction('applySongBoundTheme') + '\n' + appFunction('applyProjectedSongTheme'), context);
 
   const themeManager = new context.window.ThemeManager(state, broadcastFn);
   context.window.themeManager = themeManager;
+  context.window.broadcastState = () => broadcasts.push(themeManager.getSanctuaryPayload());
 
   return { context, themeManager, store, toasts, broadcasts, elements, state };
 }
@@ -113,58 +123,108 @@ test('Song Theme Binding: Persistence and detachment in localStorage', () => {
   assert.equal(updatedStorage['song_grace_101'], undefined);
 });
 
-test('Song Theme Binding: Auto-activation on song selection', () => {
-  const { context, themeManager, state } = setupThemeBindingEnvironment();
+test('Song Theme Binding: song defaults never change the global theme or unrelated output', () => {
+  const { context, themeManager, store, broadcasts } = setupThemeBindingEnvironment();
+  themeManager.setSanctuaryTheme('solid_blue');
+  context.applySongBoundTheme('song_unbound');
+  broadcasts.length = 0;
 
-  // Bind custom themes to different songs
-  themeManager.setSongBoundTheme('song_hallelujah', 'emerald_deep');
-  themeManager.setSongBoundTheme('song_glory', 'crimson_majesty');
+  themeManager.setSongBoundTheme('song_hallelujah', 'emerald_motion');
+  themeManager.setSongBoundTheme('song_glory', 'golden_still');
 
-  let appliedThemeId = null;
-  themeManager.setSanctuaryTheme = (themeId, broadcast) => {
-    appliedThemeId = themeId;
-  };
+  assert.equal(themeManager.activeSanctuaryTheme, 'solid_blue');
+  assert.equal(store.get('sf_sanctuary_theme'), 'solid_blue');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'solid_blue');
+  assert.equal(broadcasts.length, 0);
 
-  // Helper matching app.js applySongBoundTheme
-  function applySongBoundTheme(songId) {
-    if (!songId) return;
-    if (context.window.themeManager && typeof context.window.themeManager.getSongBoundTheme === 'function') {
-      const boundTheme = context.window.themeManager.getSongBoundTheme(songId);
-      if (boundTheme) {
-        context.window.themeManager.setSanctuaryTheme(boundTheme, false);
-      }
-    }
+  for (const [songId, expectedTheme] of [
+    ['song_hallelujah', 'emerald_motion'],
+    ['song_glory', 'golden_still'],
+    ['song_unbound', 'solid_blue'],
+    ['song_hallelujah', 'emerald_motion']
+  ]) {
+    context.applySongBoundTheme(songId);
+    assert.equal(themeManager.getSanctuaryPayload().id, expectedTheme);
+    assert.equal(broadcasts.at(-1).id, expectedTheme);
+    assert.equal(store.get('sf_sanctuary_theme'), 'solid_blue');
   }
-
-  // 1. Select song with bound theme
-  applySongBoundTheme('song_hallelujah');
-  assert.equal(appliedThemeId, 'emerald_deep');
-
-  // 2. Select another song with different bound theme
-  applySongBoundTheme('song_glory');
-  assert.equal(appliedThemeId, 'crimson_majesty');
-
-  // 3. Select song WITHOUT bound theme -> applied theme should NOT change
-  appliedThemeId = null;
-  applySongBoundTheme('song_unbound_999');
-  assert.equal(appliedThemeId, null, 'Unbound songs should not alter the active theme');
 });
 
-test('Song Theme Binding: Manual override does NOT overwrite bound default theme', () => {
-  const { themeManager, store } = setupThemeBindingEnvironment();
+test('Song Theme Binding: direct and draft global changes preserve the selected song default', () => {
+  const { context, themeManager, store } = setupThemeBindingEnvironment();
+  themeManager.setSongBoundTheme('song_holy_holy', 'golden_motion');
+  context.applySongBoundTheme('song_holy_holy');
+  themeManager.setSanctuaryTheme('solid_purple');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'golden_motion');
+  assert.equal(store.get('sf_sanctuary_theme'), 'solid_purple');
 
-  // Bind a theme to a song
-  themeManager.setSongBoundTheme('song_holy_holy', 'golden_radiance');
-  assert.equal(themeManager.getSongBoundTheme('song_holy_holy'), 'golden_radiance');
+  themeManager.beginSanctuaryDraft();
+  themeManager.setSanctuaryTheme('obsidian_dark');
+  assert.equal(themeManager.getSanctuaryPayload(themeManager.sanctuaryDraft).id, 'obsidian_dark');
+  themeManager.applySanctuaryDraft();
+  assert.equal(themeManager.getSanctuaryPayload().id, 'golden_motion');
+  assert.equal(themeManager.getSongBoundTheme('song_holy_holy'), 'golden_motion');
+  assert.equal(JSON.parse(store.get('sf_song_theme_bindings')).song_holy_holy, 'golden_motion');
+  assert.equal(store.get('sf_sanctuary_theme'), 'obsidian_dark');
+  context.applySongBoundTheme('song_unbound');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'obsidian_dark');
+  context.applySongBoundTheme('song_holy_holy');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'golden_motion');
+});
 
-  // Operator manually changes sanctuary theme for this moment in service
-  themeManager.setSanctuaryTheme('cyber_slate', true);
+test('Song Theme Binding: editing and detaching the selected song update output immediately', () => {
+  const { context, themeManager, broadcasts } = setupThemeBindingEnvironment();
+  context.window.SONGS_DATABASE = [{ id: 'selected', title: 'Selected' }];
+  themeManager.setSanctuaryTheme('solid_blue');
+  context.applySongBoundTheme('selected');
+  themeManager.beginSanctuaryDraft();
+  themeManager.setSanctuaryTheme('solid_purple');
 
-  // The stored default theme for the song must remain intact
-  assert.equal(themeManager.getSongBoundTheme('song_holy_holy'), 'golden_radiance',
-    'Manual theme change must not overwrite the song stored default binding');
-  const storedBindings = JSON.parse(store.get('sf_song_theme_bindings'));
-  assert.equal(storedBindings['song_holy_holy'], 'golden_radiance');
+  themeManager.setSongBoundTheme('selected', 'emerald_motion');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'emerald_motion');
+  assert.equal(broadcasts.at(-1).id, 'emerald_motion');
+  assert.equal(context.window.SONGS_DATABASE[0].themeId, 'emerald_motion');
+  assert.equal(themeManager.activeSanctuaryTheme, 'solid_blue');
+  assert.equal(themeManager.sanctuaryDraft.activeSanctuaryTheme, 'solid_purple');
+
+  themeManager.detachSongTheme('selected');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'solid_blue');
+  assert.equal(broadcasts.at(-1).id, 'solid_blue');
+  assert.equal(themeManager.getSongBoundTheme('selected'), null);
+  assert.equal(context.window.SONGS_DATABASE[0].themeId, null);
+});
+
+test('Song Theme Binding: medley transitions restore global output and defer broadcasts', () => {
+  const { context, themeManager, broadcasts, state } = setupThemeBindingEnvironment();
+  context.window.SONGS_DATABASE = [{ id: 'song_bound' }, { id: 'song_unbound' }];
+  themeManager.setSanctuaryTheme('solid_blue');
+  themeManager.setSongBoundTheme('song_bound', 'golden_still');
+  broadcasts.length = 0;
+  context.applyProjectedSongTheme('medley_song_bound_0');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'golden_still');
+  assert.equal(state.boundThemeSongId, 'song_bound');
+  context.applyProjectedSongTheme('medley_song_unbound_0');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'solid_blue');
+  context.applyProjectedSongTheme('medley_song_bound_1');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'golden_still');
+  context.applyProjectedSongTheme('medley_bible_Genesis_1_1');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'solid_blue');
+  assert.equal(state.boundThemeSongId, null);
+  assert.equal(broadcasts.length, 0);
+});
+
+test('Song Theme Binding: missing themes fall back to global with the global framing', () => {
+  const { context, themeManager } = setupThemeBindingEnvironment();
+  themeManager.setSanctuaryTheme('solid_blue');
+  themeManager.setSanctuaryFit('contain');
+  themeManager.setSongBoundTheme('song_missing', 'missing_background');
+  context.applySongBoundTheme('song_missing');
+  assert.equal(themeManager.getSanctuaryPayload().id, 'solid_blue');
+  assert.equal(themeManager.getSanctuaryPayload().fit, 'contain');
+  themeManager.setSongBoundTheme('song_framed', 'golden_still');
+  themeManager.sanctuaryFits.golden_still = 'fill';
+  context.applySongBoundTheme('song_framed');
+  assert.equal(themeManager.getSanctuaryPayload().fit, 'fill');
 });
 
 test('Song theme picker displays uploaded images and video previews over fallback colors', () => {

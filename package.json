@@ -1,6 +1,6 @@
 {
   "name": "ginomai",
-  "version": "2.4.4",
+  "version": "2.4.5",
   "description": "Ginomai — The Word in Motion",
   "main": "electron/main.js",
   "scripts": {
@@ -37,15 +37,34 @@
       }
     ],
     "files": [
-      "**/*",
-      "!dist/*",
-      "!release/*",
-      "!installers/*",
-      "!scratch/*",
-      "!archive/**",
-      "!web/**",
-      "!.git/*",
-      "!assets/semantic/models/Xenova/all-MiniLM-L6-v2/**"
+      "index.html",
+      "display.html",
+      "operator.html",
+      "remote.html",
+      "landing.html",
+      "server.js",
+      "package.json",
+      "electron/**",
+      "lib/**",
+      "js/**",
+      "css/**",
+      "assets/**",
+      "bibles/**",
+      "lexicon/**",
+      "images/**",
+      "Themes/**",
+      "Styles/**",
+      "scripts/live-reload.js",
+      "!electron/installer/**",
+      "!assets/semantic/models/Xenova/all-MiniLM-L6-v2/**",
+      "!node_modules/pdfjs-dist/**",
+      "!node_modules/@napi-rs/canvas{,-*}/**",
+      "!node_modules/onnxruntime-web/**",
+      "!node_modules/@huggingface/transformers/src/**",
+      "!node_modules/@huggingface/transformers/dist/*.map",
+      "!node_modules/@huggingface/transformers/dist/ort-*",
+      "!node_modules/@huggingface/transformers/dist/transformers{,.min,.web,.web.min}.js",
+      "!node_modules/@huggingface/transformers/dist/transformers.node.min.*"
     ],
     "win": {
       "target": [

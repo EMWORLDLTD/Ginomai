@@ -119,6 +119,7 @@ test('delayed final transcript replaces provisional text without a timer commit'
   const ctx = vm.createContext({ clearTimeout() {}, setTimeout() { throw Error('Must not finalize provisional speech on a timer'); } });
   const recorder = vm.runInContext(`({ isRecordingSermon: true, cleanSpeechStutter: s => s, ${method.trim()} })`, ctx);
   recorder.commitFinalUtterance = text => commits.push(text);
+  recorder.ensureDailySession = () => true;
   recorder.addUtterance('John three sixteen', false);
   assert.equal(commits.length, 0);
   recorder.addUtterance('John three seventeen', true);

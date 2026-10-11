@@ -95,19 +95,56 @@ test('short titles and repeated substrings cannot produce unrelated matches', ()
   assert.equal(c.matchSongQuery(song('one', 'Other', 'Holy holy holy Lord'), 'holy holy holy'), true);
 });
 
-test('search combines title, artist, and lyrics, retaining partial title typing', () => {
+test('search accepts title prefixes while requiring complete lyric phrases', () => {
   const { context: c } = setup();
   const grace = song('one', 'Amazing Grace', 'How sweet the sound\nThat saved a wretch like me', 'John Newton');
-  for (const query of ['amazing newton', 'newton amazing', 'amazing gra', 'amazing new', 'amaz', 'grace sweet', 'saved wretch me']) {
+  for (const query of ['AMAZING GRACE', 'grace', 'a', 'amaz', 'amazing gra', 'g', 'gr', 'how sweet', 'sound that saved']) {
     assert.equal(c.matchSongQuery(grace, query), true, query);
   }
   assert.equal(c.matchSongQuery(grace, 'how sweet'), true);
   assert.match(grace._matchedSnippet, /How sweet/);
-  assert.equal(c.matchSongQuery(grace, 'how swe'), true, 'lyric phrases work while typing the last word');
-  assert.equal(c.matchSongQuery(grace, 'sweet sound saved forever'), true, 'whole-word overlap tolerates an imperfect remembered lyric');
+  for (const query of ['mazing', 'race', 'amazing grce', 'how swe', 'grace sweet', 'saved wretch me', 'sweet sound saved forever', 'John Newton']) {
+    assert.equal(c.matchSongQuery(grace, query), false, `${query} is not a title prefix or complete lyric phrase`);
+  }
   assert.equal(c.matchSongQuery(grace, 'sweet sweet sweet elsewhere anywhere'), false, 'repetition cannot inflate overlap');
   assert.equal(c.matchSongQuery(grace, 'missing unrelated'), false);
   assert.equal(grace._matchedSnippet, '');
+});
+
+test('user title and lyric examples rank exact titles first without changing the catalog', () => {
+  const { context: c } = setup();
+  const catalog = [
+    song('lyric-one', 'Morning Worship', 'Today I will pray'),
+    song('title-phrase', 'I Will Pray Today'),
+    song('lyric-two', 'Evening Worship', 'I will pray\nAnd give thanks'),
+    song('exact', 'I Will Pray')
+  ];
+  assert.deepEqual(Array.from(c.searchSongs(catalog, 'i WILL pray'), s => s.id), ['exact', 'title-phrase', 'lyric-one', 'lyric-two']);
+  assert.deepEqual(catalog.map(s => s.id), ['lyric-one', 'title-phrase', 'lyric-two', 'exact']);
+  assert.equal(c.searchSongs(catalog, '').length, catalog.length);
+  assert.equal(c.searchSongs(catalog, 'I Will Pry').length, 0);
+  const lordSongs = [
+    song('first', 'You Are the Lord', 'Jesus, You are the same Lord'),
+    song('second', 'Another Song', 'Jesus\nYou are the same Lord'),
+    song('third', 'Other Song', 'You are Lord Jesus, the same yesterday')
+  ];
+  assert.deepEqual(Array.from(c.searchSongs(lordSongs, 'YOU ARE THE LORD'), s => s.id), ['first']);
+  assert.deepEqual(Array.from(c.searchSongs(lordSongs, 'Jesus, You are the same Lord'), s => s.id), ['first', 'second']);
+});
+
+test('harvest phrase excludes overlap-only matches and keeps repeated words significant', () => {
+  const { context: c } = setup();
+  const catalog = [
+    song('other', 'Other Worship', 'For the Lord of heaven'),
+    song('harvest', 'Harvest Song', 'For the Lord of the harvest'),
+    song('overlap', 'Another Worship', 'Love for the children of the Lord')
+  ];
+  assert.deepEqual(Array.from(c.searchSongs(catalog, 'for the lord of the harvest'), s => s.id), ['harvest']);
+  assert.equal(c.searchSongs(catalog, 'for the lord of the harvet').length, 0);
+  assert.equal(c.matchSongQuery(song('one', 'Holy Lord'), 'holy holy'), false);
+  const split = song('split', 'Other');
+  split.stanzas = [{ text: 'You are the same' }, { text: 'Lord' }];
+  assert.equal(c.matchSongQuery(split, 'You are the same Lord'), false);
 });
 
 test('cached search data refreshes after edits and ignores persisted old indexes', () => {
@@ -118,7 +155,7 @@ test('cached search data refreshes after edits and ignores persisted old indexes
   assert.equal(c.getSongSearchData(item), data);
   item.title = 'Changed'; item.author = 'New artist'; item.stanzas[0].text = 'Fresh wording';
   assert.equal(c.matchSongQuery(item, 'old wording'), false);
-  assert.equal(c.matchSongQuery(item, 'fresh artist'), true);
+  assert.equal(c.matchSongQuery(item, 'fresh wording'), true);
   assert.notEqual(c.getSongSearchData(item), data);
   item.stanzas.push({ text: 'Additional verse' });
   assert.equal(c.matchSongQuery(item, 'additional verse'), true);
@@ -157,8 +194,8 @@ function loadRenderer(c) {
     list.onscroll();
     assert.equal(list.children.length, 160);
     assert.equal(list.children[0], rows[0]);
-    render('song 12 lyric');
-    assert.equal(list.children.length, 1);
+    render('song 12');
+    assert.deepEqual(list.children.map(row => row.dataset.songId), ['12', ...Array.from({ length: 10 }, (_, i) => String(120 + i))]);
     assert.equal(list.children[0], rows[12]);
     render('no such song');
     assert.equal(list.children.length, 1);
@@ -196,3 +233,59 @@ function loadRenderer(c) {
     assert.equal(list._songLibraryRows.rows.has('one'), false);
   });
 }
+
+test('sidebar input filters the full library and ranks titles ahead of lyrics using cached rows', () => {
+  const songs = [song('lyrics', 'Other Song', 'I will pray'), song('exact', 'I Will Pray')];
+  const { context: c, elements, window, timers } = setup(songs);
+  const render = loadRenderer(c);
+  render('');
+  const list = elements.get('bento-library-list');
+  const exactRow = list.children[1];
+  const replacements = list.replacements;
+  vm.runInContext(bento.slice(bento.indexOf('  window.clearBentoSearch ='), bento.indexOf('  window.assignBibleBookToSlot =')), c);
+  elements.get('bento-search-input').value = 'I WILL PRAY';
+  window.handleBentoSearch('I WILL PRAY');
+  for (const callback of timers.values()) callback();
+  timers.clear();
+  assert.deepEqual(list.children.map(row => row.dataset.songId), ['exact', 'lyrics']);
+  assert.equal(list.children[0], exactRow);
+  window.handleBentoSearch('I will pry');
+  for (const callback of timers.values()) callback();
+  timers.clear();
+  assert.match(list.children[0].innerHTML, /No matching songs/);
+  window.clearBentoSearch();
+  assert.deepEqual(list.children.map(row => row.dataset.songId), ['lyrics', 'exact']);
+  assert.equal(list.replacements, replacements);
+});
+
+test('sidebar finds Revival from the first letter through the complete word without rebuilding rows', () => {
+  const songs = [
+    song('lyrics', 'Other Song', 'Send revival'),
+    song('embedded', 'We Pray for Revival'),
+    song('longer', 'Revival Fire'),
+    song('exact', 'Revival'),
+    song('unrelated', 'Arrival Song')
+  ];
+  const { context: c, elements, window, timers } = setup(songs);
+  const render = loadRenderer(c);
+  render('');
+  const list = elements.get('bento-library-list');
+  const rows = new Map(list.children.map(row => [row.dataset.songId, row]));
+  const replacements = list.replacements;
+  vm.runInContext(bento.slice(bento.indexOf('  window.clearBentoSearch ='), bento.indexOf('  window.assignBibleBookToSlot =')), c);
+  for (let length = 1; length <= 'Revival'.length; length++) {
+    const query = 'Revival'.slice(0, length);
+    elements.get('bento-search-input').value = query;
+    window.handleBentoSearch(query);
+    for (const callback of timers.values()) callback();
+    timers.clear();
+    const expected = length === 'Revival'.length
+      ? ['exact', 'embedded', 'longer', 'lyrics']
+      : ['embedded', 'longer', 'exact'];
+    assert.deepEqual(list.children.map(row => row.dataset.songId), expected, query);
+    for (const row of list.children) assert.equal(row, rows.get(row.dataset.songId));
+  }
+  window.clearBentoSearch();
+  assert.deepEqual(list.children.map(row => row.dataset.songId), songs.map(item => item.id));
+  assert.equal(list.replacements, replacements);
+});
