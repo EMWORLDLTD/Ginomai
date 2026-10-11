@@ -29,6 +29,8 @@
   Var ginomaiLocal
   Var ginomaiCleanupFailed
 
+  ; Compile plugin calls after electron-builder has registered its NSIS plugins.
+  !macro customHeader
   Function un.GinomaiDataPage
     ${If} ${isUpdated}
       Abort
@@ -54,6 +56,7 @@
   Function un.GinomaiDataPageLeave
     ${NSD_GetState} $ginomaiDataCheckbox $ginomaiRemoveData
   FunctionEnd
+  !macroend
 
   !macro customUnWelcomePage
     !insertmacro MUI_UNPAGE_WELCOME
