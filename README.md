@@ -1,4 +1,4 @@
-﻿# Ginomai
+# Ginomai
 
 > **The Word in Motion**
 
