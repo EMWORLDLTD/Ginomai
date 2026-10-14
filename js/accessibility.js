@@ -91,6 +91,10 @@
     }
     if (modal && event.key === 'Escape') {
       event.preventDefault(); event.stopImmediatePropagation();
+      if (modal.id === 'ginomai-account-backdrop') {
+        const tooltip = modal.querySelector('[role=tooltip]:not([hidden])');
+        if (tooltip) { tooltip.dispatchEvent(new Event('dismiss')); return; }
+      }
       if (modal.id === 'sf-custom-dialog-backdrop') { window.sfCloseCustomDialog(null); return; }
       const close = [...modal.querySelectorAll('button,[role="button"]')].find(element => /close|cancel/i.test(element.getAttribute('aria-label') || element.title || element.textContent) && visible(element));
       if (close) close.click();

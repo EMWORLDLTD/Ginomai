@@ -58,6 +58,10 @@
         box.style.maxHeight = maxHeight + 'px';
         text.style.flexShrink = '0';
         const preferred = Number(text.dataset.preferredSize);
+        if (text.dataset.autoScale === 'false') {
+          text.style.fontSize = preferred + 'px';
+          return;
+        }
         const baseline = Number(text.dataset.fitBaseSize) || preferred;
         // Fit the normal size first, then apply manual reductions proportionally.
         // Otherwise several minus clicks can be swallowed by the same fit ceiling.

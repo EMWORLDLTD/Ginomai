@@ -279,6 +279,7 @@
       };
 
       row.onclick = () => {
+        if (item.type === 'cloud-placeholder') {window.showToast?.('This entry is preserved, but its feature or media is unavailable after cloud restore.', 'info'); return;}
         if (['media','countdown'].includes(item.type)) {window.openPresentationItem?.(item);return;}
         if (item.type === 'song') {
           if (window.state.isMedleyMode) {
@@ -1045,9 +1046,13 @@
     }
 
     // Return to Live tally button
+    const liveSong = !state.liveEngagedDeck && state.activeLiveSlideId
+      ? (window.SONGS_DATABASE || []).filter(song => song?.id).sort((a, b) => b.id.length - a.id.length).find(song =>
+        state.activeLiveSlideId === song.id || [song.id + '_', 'song_' + song.id + '_', 'medley_' + song.id + '_', 'ai_song_' + song.id + '_'].some(prefix => state.activeLiveSlideId.startsWith(prefix)))
+      : null;
     const liveDeck = state.liveEngagedDeck || (state.activeLiveSlideId ? {
       type: (state.activeLiveSlideId.startsWith('bible_') || state.activeLiveSlideId.startsWith('medley_bible_')) ? 'bible' : 'song',
-      songId: state.activeSongId,
+      songId: liveSong?.id || state.activeSongId,
       book: state.activeBibleBook,
       chapter: state.activeBibleChapter
     } : null);
@@ -1072,6 +1077,7 @@
               if (liveDeck.chapter) state.activeBibleChapter = liveDeck.chapter;
             }
             if (typeof window.renderDeck === 'function') window.renderDeck(true);
+            window.updateActiveSlideVisuals?.(state.activeLiveSlideId);
             if (typeof window.syncDashboardWorkspace === 'function') window.syncDashboardWorkspace();
           }
         };

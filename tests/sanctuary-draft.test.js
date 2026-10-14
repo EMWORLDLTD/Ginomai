@@ -107,3 +107,13 @@ test('century gothic typography updates draft and applies to sanctuary payload',
   assert.equal(writes.get('sf_sanctuary_font'), 'Century Gothic');
   assert.equal(broadcasts(), 1);
 });
+
+test('imported song styles use their converted font while a global appearance draft stays independent', () => {
+  const { manager, themes } = fixture();
+  themes.upload_imported = { id: 'upload_imported', name: 'Imported', importedStyle: true, font: 'Verdana', type: 'gradient', bgCss: '#123456' };
+  manager.activeSongTheme = 'upload_imported';
+  assert.equal(manager.getSanctuaryPayload().font, 'Verdana');
+  assert.equal(manager.sanctuaryFont, 'Outfit');
+  manager.beginSanctuaryDraft();
+  assert.equal(manager.getSanctuaryPayload(manager.sanctuaryDraft).font, 'Outfit');
+});

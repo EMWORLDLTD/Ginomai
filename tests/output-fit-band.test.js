@@ -20,6 +20,13 @@ test('lower-third fitting reserves bottom padding inside the configured band hei
   assert.equal(box.style.maxHeight,'216px');
   assert.ok(text.getBoundingClientRect().bottom+20<=217,'text and bottom padding must both fit');
   assert.ok(parseFloat(text.style.fontSize)<45);
+  const fitted = text.style.fontSize;
+  text.dataset.autoScale = 'false';
+  window.scheduleOutputFit();
+  assert.equal(text.style.fontSize, '64px', 'disabling auto-shrink preserves the chosen text size');
+  text.dataset.autoScale = 'true';
+  window.scheduleOutputFit();
+  assert.equal(text.style.fontSize, fitted, 're-enabling auto-shrink fits the same resident text');
 });
 
 test('long full-screen announcement fits the output area and resets its size afterward', () => {

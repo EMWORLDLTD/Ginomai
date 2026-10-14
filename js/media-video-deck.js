@@ -11,7 +11,7 @@
       String(Math.floor(seconds/60)%60).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
   };
   const assets=()=>hooks?.assets() || [];
-  const assetFor=slot=>assets().find(asset=>asset.id===slot?.assetId && asset.kind==='video');
+  const assetFor=slot=>assets().find(asset=>asset.id===slot?.assetId && ['image','video'].includes(asset.kind));
   const slots=()=> {
     if(!Array.isArray(state.mediaVideoSlots)||state.mediaVideoSlots.length!==4)state.mediaVideoSlots=model.videoDeckSlots(state.mediaVideoSlots);
     return state.mediaVideoSlots;
@@ -21,7 +21,7 @@
   const remote=()=>!!window.isRemoteOperator;
   const live=()=>!!state.activeLiveSlideId && !flags.clear && state.activePresentation?.media?.kind==='video';
   function isLive(index) {
-    if(!live())return false;
+    if(!state.activeLiveSlideId || flags.clear || !['image','video'].includes(state.activePresentation?.media?.kind))return false;
     const media=state.activePresentation.media,slot=slots()[index];
     return media.assetId===slot?.assetId && (media.videoSlot===undefined || media.videoSlot===index);
   }
@@ -78,13 +78,13 @@
     card.muteIcons.muted.hidden=!video.muted;card.muteIcons.sound.hidden=video.muted;
     card.mute.title=video.muted?'Unmute preview (local only)':'Mute preview (local only)';card.mute.setAttribute('aria-label',video.muted?'Unmute preview':'Mute preview');
     card.mute.setAttribute('aria-pressed',String(video.muted));
-    card.node.classList.toggle('previewing',!video.paused);
+    card.node.classList.toggle('previewing',card.kind==='video' && !video.paused);
     card.current.textContent=time(video.currentTime);
     if(document.activeElement!==card.seek)card.seek.value=video.currentTime || 0;
     card.status.textContent=card.error?'Error':!slots()[card.index]?'Empty':!card.ready?'Loading':!video.paused?'Previewing':'Ready';
   }
   async function playPreview(card,restart=false) {
-    if(!card.ready)return;
+    if(!card.ready || card.kind!=='video')return;
     if(preview && preview!==card) {preview.video.pause();updatePreview(preview);}
     preview=card;selectCard(card.index);
     if(restart || card.video.ended)card.video.currentTime=0;
@@ -95,17 +95,21 @@
     updatePreview(card);
   }
   function seekPreview(card,value) {
-    if(!card.ready)return;
+    if(!card.ready || card.kind!=='video')return;
     card.video.currentTime=Math.max(0,Math.min(card.video.duration,Number(value)||0));updatePreview(card);
   }
   function send(index,fromCue=false) {
     const card=cards[index],slot=slots()[index],asset=assetFor(slot);
-    if(remote() || state.isHoldLive) {notify(remote()?'Media projection is controlled by the host.':'Release Hold live before sending a video.');return;}
-    if(!card?.ready || card.error || !asset || card.video.error) {notify('This video is not ready to send live.');return;}
+    if(remote() || state.isHoldLive) {notify(remote()?'Media projection is controlled by the host.':'Release Hold live before sending media.');return;}
+    if(!card?.ready || card.error || !asset || (asset.kind==='video'?card.video.error:!card.image.complete || !card.image.naturalWidth)) {notify('This media is not ready to send live.');return;}
+    const destinations=slot.destination==='both'?['sanctuary','livestream']:[slot.destination];
+    if(asset.kind==='image') {
+      const payload={contentType:'media',media:{assetId:asset.id,kind:'image',url:asset.url,page:1,name:asset.name,videoSlot:index},destinations};
+      window.projectSlide(`media_image_slot_${index}_${asset.id}`,asset.name,'Image',{takeLive:true,presentation:payload});sync();return;
+    }
     const position=fromCue?slot.cue:0;
     if(!Number.isFinite(position) || position<0 || position>=card.video.duration) {notify('Set a cue before the end of the video.');return;}
     card.video.pause();card.video.muted=true;updatePreview(card);
-    const destinations=slot.destination==='both'?['sanctuary','livestream']:[slot.destination];
     const payload={contentType:'media',media:{assetId:asset.id,kind:'video',url:asset.url,page:1,name:asset.name,videoSlot:index,duration:card.video.duration},
       destinations,playback:{position,playing:true,loop:slot.loop,soundTarget:slot.destination,muted:slot.liveMuted,updatedAt:Date.now()}};
     window.projectSlide(`media_video_slot_${index}_${asset.id}`,asset.name,'Video',{takeLive:true,presentation:payload});
@@ -113,20 +117,21 @@
   }
   function picker(card) {
     const known=card.picker.value;
-    card.picker.replaceChildren();const empty=create('option','',slots()[card.index]?'Replace video…':'Choose video…');empty.value='';card.picker.append(empty);
-    for(const asset of assets().filter(asset=>asset.kind==='video')) {const option=create('option','',asset.name);option.value=asset.id;card.picker.append(option);}
+    card.picker.replaceChildren();const empty=create('option','',slots()[card.index]?'Replace media…':'Choose image or video…');empty.value='';card.picker.append(empty);
+    for(const asset of assets().filter(asset=>['image','video'].includes(asset.kind))) {const option=create('option','',asset.name);option.value=asset.id;card.picker.append(option);}
     card.picker.value=known;
   }
   function makeCard(index) {
-    const node=create('article','media-video-slot');node.dataset.videoSlot=index;node.tabIndex=0;node.setAttribute('aria-label',`Video card ${index+1}`);
+    const node=create('article','media-video-slot');node.dataset.videoSlot=index;node.tabIndex=0;node.setAttribute('aria-label',`Media card ${index+1}`);
     const card={index,node,ready:false,error:'',version:0,assetId:null};
     const head=create('header','video-slot-heading');
-    const number=create('span','video-slot-number',String(index+1));card.title=create('strong','video-slot-title','Empty video card');
+    const number=create('span','video-slot-number',String(index+1));card.title=create('strong','video-slot-title','Empty media card');
     card.status=create('span','video-slot-status','Empty');card.live=create('span','video-slot-live','LIVE');card.live.hidden=true;head.append(number,card.title,card.status,card.live);
     card.video=create('video','video-slot-preview');card.video.muted=true;card.video.defaultMuted=true;card.video.playsInline=true;card.video.preload='metadata';
     card.video.setAttribute('aria-label',`Local preview ${index+1}`);
-    const canvas=create('div','video-slot-canvas'),frame=create('div','video-slot-frame');frame.append(card.video);canvas.append(frame);
-    card.message=create('p','video-slot-message','Choose a video or drop one here.');card.message.setAttribute('role','status');
+    card.image=create('img','video-slot-preview media-slot-image');card.image.hidden=true;card.image.draggable=false;
+    const canvas=create('div','video-slot-canvas'),frame=create('div','video-slot-frame');frame.append(card.video,card.image);canvas.append(frame);
+    card.message=create('p','video-slot-message','Choose an image or video, or drop one here.');card.message.setAttribute('role','status');
     const timeline=create('div','video-slot-timeline');card.current=create('span','','00:00');card.duration=create('span','','--:--');card.seek=range(`Preview position ${index+1}`,0,.1);timeline.append(card.current,card.seek,card.duration);
     const transport=create('div','video-slot-transport');
     card.play=button('',()=>playPreview(card), 'video-preview-play');card.playIcons={play:icon('play'),pause:icon('pause')};card.play.append(card.playIcons.play,card.playIcons.pause);
@@ -140,15 +145,15 @@
     card.volume.oninput=()=>{card.video.volume=Number(card.volume.value);slots()[index].volume=card.video.volume;save();};sound.append(card.mute,label('Local volume',card.volume));
     card.cueLabel=create('span','','Cue 00:00');
     card.setCue=iconButton('Set Cue',()=>{if(!card.ready)return;slots()[index].cue=card.video.currentTime;syncCard(card);save();},'cue');timeline.append(card.setCue);transport.append(card.mute);
-    const output=create('div','video-slot-output');card.destination=selectDestination();card.destination.setAttribute('aria-label',`Video ${index+1} live destination`);
-    card.destination.onchange=()=>{slots()[index].destination=card.destination.value;save();};
-    card.liveMuted=create('input');card.liveMuted.type='checkbox';card.liveMuted.onchange=()=>{slots()[index].liveMuted=card.liveMuted.checked;save();};output.append(label('Send to',card.destination),label('Start live muted',card.liveMuted));
+    const output=create('div','video-slot-output');card.destination=selectDestination();card.destination.setAttribute('aria-label',`Media ${index+1} live destination`);
+    card.destination.onchange=()=>{slots()[index].destination=card.destination.value;syncCard(card);save();};
+    card.liveMuted=create('input');card.liveMuted.type='checkbox';card.liveMuted.onchange=()=>{slots()[index].liveMuted=card.liveMuted.checked;save();};card.liveMuteLabel=label('Start live muted',card.liveMuted);output.append(label('Send to',card.destination),card.liveMuteLabel);
     const actions=create('div','video-slot-send');card.send=button('Send Live',()=>send(index),'video-send-live');card.sendCue=button('Send Live from Cue',()=>send(index,true));actions.append(card.send,card.sendCue);
-    const manage=create('div','video-slot-manage');card.picker=create('select');card.picker.setAttribute('aria-label',`Choose video for card ${index+1}`);
+    const manage=create('div','video-slot-manage');card.picker=create('select');card.picker.setAttribute('aria-label',`Choose media for card ${index+1}`);
     card.picker.onchange=()=>{const asset=assets().find(asset=>asset.id===card.picker.value);if(asset)assign(index,asset);card.picker.value='';};
     card.remove=button('Remove',()=>{if(isLive(index))return;slots()[index]=null;loadCard(card);save();});
     card.retry=button('Retry',()=>loadCard(card,true));card.retry.hidden=true;manage.append(card.picker,card.retry,card.remove);
-    card.options=create('details','video-slot-options');card.summary=create('summary');card.summaryLabel=create('span','','Settings');card.summary.append(icon('settings'),card.summaryLabel,card.cueLabel);card.cueLabel.className='video-saved-cue';card.summary.setAttribute('aria-label',`Video and audio settings for card ${index+1}`);card.summary.title='Video, volume and live output settings';card.options.append(card.summary,sound,output,manage);
+    card.options=create('details','video-slot-options');card.summary=create('summary');card.summaryLabel=create('span','','Settings');card.summary.append(icon('settings'),card.summaryLabel,card.cueLabel);card.cueLabel.className='video-saved-cue';card.summary.setAttribute('aria-label',`Media settings for card ${index+1}`);card.summary.title='Media and live output settings';card.options.append(card.summary,sound,output,manage);
     card.options.ontoggle=()=>{if(grid?.isConnected && !grid.querySelector('details[open]'))el('bento-medley-container').scrollTop=0;};
     node.append(head,canvas,card.message,timeline,transport,actions,card.options);
     node.onclick=()=>selectCard(index);node.ondblclick=event=>event.stopPropagation();
@@ -161,52 +166,56 @@
     };
     node.ondragover=event=>{if(Array.from(event.dataTransfer.types || []).includes('application/presentation-id')) {event.preventDefault();event.stopPropagation();node.classList.add('drag-over');}};
     node.ondragleave=event=>{if(!node.contains(event.relatedTarget))node.classList.remove('drag-over');};
-    node.ondrop=event=>{event.preventDefault();event.stopPropagation();node.classList.remove('drag-over');const asset=assets().find(asset=>asset.id===event.dataTransfer.getData('application/presentation-id'));if(asset?.kind==='video')assign(index,asset);else notify('Choose a video for this card.');};
+    node.ondrop=event=>{event.preventDefault();event.stopPropagation();node.classList.remove('drag-over');const asset=assets().find(asset=>asset.id===event.dataTransfer.getData('application/presentation-id'));if(['image','video'].includes(asset?.kind))assign(index,asset);else notify('Choose an image or video for this card.');};
     card.seek.oninput=()=>seekPreview(card,card.seek.value);
     for(const name of ['timeupdate','play','pause','ended','volumechange'])card.video.addEventListener(name,()=>updatePreview(card));
-    card.video.addEventListener('error',()=>{if(card.assetId && card.video.error) {card.ready=false;card.error='Video unavailable or unsupported. Relink using Choose video, or Retry.';syncCard(card);}});
+    card.video.addEventListener('error',()=>{if(card.kind==='video' && card.assetId && card.video.error) {card.ready=false;card.error='Video unavailable or unsupported. Choose replacement media, or Retry.';syncCard(card);}});
     return card;
   }
   function pump() {
     while(preparing<2 && queue.length) {
       const job=queue.shift();if(job.generation!==generation || job.version!==job.card.version)continue;
       const {card,asset}=job;preparing++;
+      const image=asset.kind==='image',media=image?card.image:card.video,event=image?'load':'loadedmetadata';
       let completed=false;
-      const finish=()=>{if(completed)return;completed=true;clearTimeout(timeout);card.video.removeEventListener('loadedmetadata',ready);card.video.removeEventListener('error',failed);card.cancelLoad=null;preparing--;pump();};
+      const finish=()=>{if(completed)return;completed=true;clearTimeout(timeout);media.removeEventListener(event,ready);media.removeEventListener('error',failed);card.cancelLoad=null;preparing--;pump();};
       const ready=()=> {
         if(job.version!==card.version)return finish();
-        if(!Number.isFinite(card.video.duration) || card.video.duration<=0)return failed();
-        card.ready=true;card.seek.max=card.video.duration;card.duration.textContent=time(card.video.duration);syncCard(card);finish();
+        if(image?!media.naturalWidth:!Number.isFinite(media.duration) || media.duration<=0)return failed();
+        card.ready=true;if(!image) {card.seek.max=media.duration;card.duration.textContent=time(media.duration);}syncCard(card);finish();
       };
-      const failed=()=>{if(job.version===card.version) {card.ready=false;card.error='Video unavailable or unsupported. Relink using Choose video, or Retry.';syncCard(card);}finish();};
+      const failed=()=>{if(job.version===card.version) {card.ready=false;card.error='Media unavailable or unsupported. Choose replacement media, or Retry.';syncCard(card);}finish();};
       const timeout=setTimeout(failed,15000);
-      card.cancelLoad=finish;card.video.addEventListener('loadedmetadata',ready);card.video.addEventListener('error',failed);
-      card.video.src=asset.url;card.video.load();
+      card.cancelLoad=finish;media.addEventListener(event,ready);media.addEventListener('error',failed);
+      media.src=asset.url;if(!image)media.load();
     }
   }
   function loadCard(card,force=false) {
     const slot=slots()[card.index],asset=assetFor(slot);
-    if(!force && card.assetId===(slot?.assetId || null) && !(card.error && asset && !card.video.getAttribute('src'))) {syncCard(card);return;}
+    const media=asset?.kind==='image'?card.image:card.video;
+    if(!force && card.assetId===(slot?.assetId || null) && !(card.error && asset && !media.getAttribute('src'))) {syncCard(card);return;}
     if(!card.assetId || force)card.options.open=!slot;
-    card.version++;card.cancelLoad?.();card.video.pause();card.video.muted=true;card.video.removeAttribute('src');card.video.load();
+    card.version++;card.cancelLoad?.();card.video.pause();card.video.muted=true;card.video.removeAttribute('src');card.video.load();card.image.removeAttribute('src');
     card.assetId=slot?.assetId || null;card.ready=false;card.error='';card.seek.max=0;card.duration.textContent='--:--';
+    card.kind=asset?.kind || slot?.kind || 'video';card.node.dataset.kind=card.kind;card.video.hidden=card.kind==='image';card.image.hidden=card.kind!=='image';card.image.alt=slot?.name || 'Image preview';
     if(slot) {
       card.video.volume=slot.volume;card.video.loop=slot.loop;
-      if(!asset || !model.safeMediaUrl(asset.url))card.error='Video is missing. Choose a replacement to relink this card.';
+      if(!asset || !model.safeMediaUrl(asset.url))card.error='Media is missing. Choose a replacement to relink this card.';
       else queue.push({card,asset,version:card.version,generation});
     }
     syncCard(card);pump();
   }
   function syncCard(card) {
     const slot=slots()[card.index],active=isLive(card.index);
-    card.title.textContent=slot?.name || 'Empty video card';card.title.title=card.title.textContent;
-    card.message.textContent=card.error || (!slot?'Choose a video or drop one here.':!card.ready?'Loading video…':'');card.message.hidden=!!slot && card.ready && !card.error;
+    card.title.textContent=slot?.name || 'Empty media card';card.title.title=card.title.textContent;
+    card.message.textContent=card.error || (!slot?'Choose an image or video, or drop one here.':!card.ready?'Loading media…':'');card.message.hidden=!!slot && card.ready && !card.error;
     card.options.open=card.options.open || !slot;
     card.node.dataset.empty=String(!slot);
-    card.summaryLabel.textContent=slot?`${slot.destination==='sanctuary'?'Projector':slot.destination==='livestream'?'Livestream':'Both'}${slot.liveMuted?' · Muted':''}`:'Choose video';
+    card.summaryLabel.textContent=slot?`${slot.destination==='sanctuary'?'Projector':slot.destination==='livestream'?'Livestream':'Both'}${card.kind==='video' && slot.liveMuted?' · Muted':''}`:'Choose media';
+    card.sendCue.hidden=card.cueLabel.hidden=card.liveMuteLabel.hidden=card.kind==='image';
     card.node.classList.toggle('has-error',!!card.error);card.node.classList.toggle('live',active);card.live.hidden=!active;
     card.picker.disabled=active || remote();card.remove.disabled=!slot || active || remote();card.retry.hidden=!card.error;
-    for(const control of [card.play,card.restart,card.back,card.forward,card.loop,card.seek,card.mute,card.volume,card.setCue])control.disabled=!card.ready;
+    for(const control of [card.play,card.restart,card.back,card.forward,card.loop,card.seek,card.mute,card.volume,card.setCue])control.disabled=!card.ready || card.kind!=='video';
     card.send.disabled=card.sendCue.disabled=!card.ready || !!card.error || remote() || state.isHoldLive;
     if(slot) {
       card.destination.value=slot.destination;card.liveMuted.checked=slot.liveMuted;card.volume.value=slot.volume;
@@ -216,20 +225,20 @@
     card.destination.disabled=card.liveMuted.disabled=!slot;updatePreview(card);
   }
   function assign(index,asset) {
-    if(remote())return;
+    if(remote() || !['image','video'].includes(asset?.kind))return;
     if(isLive(index)) {notify('Send another item live or clear the output before replacing this card.');return;}
     const existing=slots().findIndex(slot=>slot?.assetId===asset.id);
-    if(existing!==-1 && existing!==index) {selectCard(existing);notify('This video is already in the deck.');return;}
-    slots()[index]={assetId:asset.id,name:asset.name,cue:0,loop:false,volume:1,destination:'both',liveMuted:false};
+    if(existing!==-1 && existing!==index) {selectCard(existing);notify('This media is already in the deck.');return;}
+    slots()[index]={assetId:asset.id,name:asset.name,kind:asset.kind,cue:0,loop:false,volume:1,destination:'both',liveMuted:false};
     loadCard(cards[index]);selectCard(index);save();
   }
   function render(host) {
-    if(!grid) {grid=create('section','media-video-grid');grid.setAttribute('aria-label','Four video preview players');for(let index=0;index<4;index++) {const card=makeCard(index);cards.push(card);grid.append(card.node);}}
+    if(!grid) {grid=create('section','media-video-grid');grid.setAttribute('aria-label','Four image and video preview cards');for(let index=0;index<4;index++) {const card=makeCard(index);cards.push(card);grid.append(card.node);}}
     if(grid.parentElement!==host) {host.replaceChildren(grid);host.className='media-video-deck';host.removeAttribute('data-cols');}
     el('bento-deck-title').textContent='Media deck';el('bento-deck-sub').textContent='· 4 cards · Preview locally, then send live';
     const bar=el('media-controls-bar');bar.hidden=true;
     if(!toolbar) {
-      const help=create('span','video-deck-info');help.tabIndex=0;help.setAttribute('role','img');help.setAttribute('aria-label','Preview is separate from live output. Use Send Live to publish a video.');help.title=help.getAttribute('aria-label');help.append(icon('info'));
+      const help=create('span','video-deck-info');help.tabIndex=0;help.setAttribute('role','img');help.setAttribute('aria-label','Preview is separate from live output. Use Send Live to publish an image or video.');help.title=help.getAttribute('aria-label');help.append(icon('info'));
       toolbar=create('div','video-deck-toolbar');toolbar.append(help,iconButton('Add selected to agenda',()=>{const slot=slots()[selected];if(slot)window.addPresentationAssetToAgenda?.(slot.assetId);},'agenda'));
     }
     const heading=el('bento-deck-title').parentElement;
@@ -242,7 +251,7 @@
     window.renderDeck();
     const index=slots().findIndex(slot=>slot?.assetId===asset.id);
     if(index!==-1)selectCard(index);
-    else {const empty=slots().findIndex(slot=>!slot);if(empty===-1)notify('All four cards are loaded. Choose a replacement on a card or drag a video onto it.');else assign(empty,asset);}
+    else {const empty=slots().findIndex(slot=>!slot);if(empty===-1)notify('All four cards are loaded. Choose a replacement on a card or drag media onto it.');else assign(empty,asset);}
   }
   function ensureLivePanel() {
     const host=el('media-playback-controls');if(!host)return;

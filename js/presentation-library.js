@@ -234,7 +234,7 @@
     if(item.type==='media') {
       await load();const asset=assets.find(asset=>asset.id===item.id);
       if(!asset) {selection=item;selectedPage=Number(item.page)||1;state.activeMediaId=item.id;showMissing(item);save();return;}
-      if(asset.kind==='video' && window.MediaVideoDeck) {selection={...item,title:asset.name};selectedPage=1;window.MediaVideoDeck.open(asset);save();return;}
+      if(['image','video'].includes(asset.kind) && window.MediaVideoDeck) {selection={...item,title:asset.name};selectedPage=1;window.MediaVideoDeck.open(asset);save();return;}
       state.mediaVideoDeckActive=false;window.MediaVideoDeck?.suspend();
       selection={...item,title:asset.name};selectedPage=Math.max(1,Math.min(asset.pageCount,Number(item.page)||state.mediaPageSelections?.[item.id]||1));
       state.activeMediaId=item.id;state.activeDeckType='media';state.isMedleyMode=false;
@@ -290,7 +290,7 @@
     }
     const item=selection || (state.activeMediaId?{type:'media',id:state.activeMediaId,title:'Media'}:null);if(!item)return false;
     const asset=assets.find(asset=>asset.id===item.id);if(item.type==='media'&&!asset) {showMissing(item);return true;}
-    if(asset?.kind==='video' && window.MediaVideoDeck) {state.mediaVideoDeckActive=true;return window.renderPresentationDeck();}
+    if(['image','video'].includes(asset?.kind) && window.MediaVideoDeck) {state.mediaVideoDeckActive=true;return window.renderPresentationDeck();}
     const host=el('bento-medley-container');host.replaceChildren();host.className='bento-single-deck';host.dataset.cols=asset?.kind==='video'?'1':'2';
     for(const id of ['bento-edit-btn','bento-add-song-btn','bento-compare-btn','bento-strongs-btn','bento-lines-seg','bento-cols-seg']) if(el(id)) {if(!toolbarDisplays.has(id)) toolbarDisplays.set(id,el(id).style.display);el(id).style.display='none';}
     el('bento-deck-title').textContent=item.title;el('bento-deck-sub').textContent=asset?.kind==='pdf'?asset.pageCount+' pages':item.type==='countdown'?'Service-start countdown':asset?.kind || 'Media';

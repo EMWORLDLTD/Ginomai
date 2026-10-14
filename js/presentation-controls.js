@@ -95,6 +95,8 @@
   };
   window.updateStyleDraft = patch => {
     if (!draft || REMOTE_MODE) return;
+    const importedStyle = window.SANCTUARY_THEMES?.[patch.activeSanctuaryTheme];
+    if (importedStyle?.importedStyle && importedStyle.font && patch.sanctuaryFont === undefined) patch = { ...patch, sanctuaryFont: importedStyle.font };
     for (const [key,value] of Object.entries(patch)) if (Object.hasOwn(draft,key) && !['streamAppearance','sanctuaryFits'].includes(key)) { draft[key]=value; dirty.add(key); }
     comparison=false; window.syncPresentationControls();
   };

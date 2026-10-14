@@ -10,6 +10,8 @@
     "server": "node server.js",
     "dev": "node scripts/dev-server.js",
     "test": "node --test tests/*.test.js",
+    "test:cloud": "node --test tests/cloud-backup.test.js tests/cloud-client.test.js tests/cloud-backups-service.test.js tests/cloud-analytics.test.js tests/cloud-database.test.js",
+    "test:cloud:browser": "node tests/cloud-account.browser.cjs",
     "dist": "node scripts/build-desktop.js",
     "dist:win": "node scripts/build-desktop.js",
     "dist:mac": "node scripts/build-desktop.js --mac",
@@ -103,6 +105,7 @@
   "author": "Ginomai Team",
   "license": "MIT",
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.9",
     "electron": "^43.4.0",
     "electron-builder": "^26.15.3"
   },

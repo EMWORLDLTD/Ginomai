@@ -173,6 +173,7 @@ class LibraryImportEngine {
     this.dbReady = new Promise((resolve, reject) => {
       request.onerror = () => reject(Error('Could not open the local library database. Please retry.'));
       this.resolveDbReady = resolve;
+      this.rejectDbReady = reject;
     });
     this.dbReady.catch(() => {});
     request.onupgradeneeded = (e) => {
@@ -186,12 +187,15 @@ class LibraryImportEngine {
     };
     request.onsuccess = (e) => {
       this.db = e.target.result;
-      this.loadFromIndexedDB();
-      this.resolveDbReady();
+      const recover = window.GinomaiRestoreJournal?.recoverSongs(this.db) || Promise.resolve();
+      recover.then(() => {
+        this.customSongs = JSON.parse(localStorage.getItem('sf_custom_songs') || '[]');
+        this.loadFromIndexedDB(() => this.resolveDbReady(), error => this.rejectDbReady(error));
+      }).catch(error => { window.ginomaiRestoreError = error; this.rejectDbReady(error); console.error(error); });
     };
   }
 
-  loadFromIndexedDB(onComplete) {
+  loadFromIndexedDB(onComplete, onError) {
     if (!this.db) return;
     if (localStorage.getItem('sf_system_formatted') === 'true') {
       if (typeof SONGS_DATABASE !== 'undefined') SONGS_DATABASE.length = 0;
@@ -202,6 +206,7 @@ class LibraryImportEngine {
     }
     try {
       const tx = this.db.transaction(['bibles', 'songs'], 'readonly');
+      if (onError) tx.onerror = tx.onabort = () => onError(tx.error || Error('Could not read the local library. Restart before using cloud backups.'));
       const biblesStore = tx.objectStore('bibles');
       const songsStore = tx.objectStore('songs');
 
@@ -254,6 +259,7 @@ class LibraryImportEngine {
       };
     } catch (err) {
       console.warn('IndexedDB sync failed, using localStorage fallback', err);
+      if (onError) onError(err);
     }
   }
 
@@ -1220,7 +1226,7 @@ class LibraryImportEngine {
   }
 
   // Import Song JSON or Array of Songs with duplicate detection (supports batch mode)
-  importSongsData(songsData, overwriteDuplicates = false, skipNotify = false) {
+  importSongsData(songsData, overwriteDuplicates = false, skipNotify = false, persist = true) {
     const songsArray = Array.isArray(songsData) ? songsData : [songsData];
     let importedCount = 0;
     let skippedCount = 0;
@@ -1232,12 +1238,15 @@ class LibraryImportEngine {
         const cleanTitle = this.cleanSongTitle(rawTitle);
         const lowerTitle = cleanTitle.toLowerCase();
         const targetId = song.id || '';
+        const matchingSource = existing => song.sourceSoftware && existing.sourceSoftware === song.sourceSoftware && song.sourceId && song.sourceId === existing.sourceId;
+        const matchingTitle = existing => existing.title && existing.title.toLowerCase() === lowerTitle
+          && !(song.sourceSoftware && existing.sourceSoftware === song.sourceSoftware && song.sourceId && existing.sourceId && song.sourceId !== existing.sourceId);
 
         const existingCustomIdx = this.customSongs.findIndex(s =>
-          (targetId && s.id === targetId) || (s.title && s.title.toLowerCase() === lowerTitle)
+          (targetId && s.id === targetId) || matchingSource(s) || matchingTitle(s)
         );
         const existingDbIdx = (typeof SONGS_DATABASE !== 'undefined' && Array.isArray(SONGS_DATABASE))
-          ? SONGS_DATABASE.findIndex(s => (targetId && s.id === targetId) || (s.title && s.title.toLowerCase() === lowerTitle))
+          ? SONGS_DATABASE.findIndex(s => (targetId && s.id === targetId) || matchingSource(s) || matchingTitle(s))
           : -1;
 
         let stanzas = song.stanzas;
@@ -1260,6 +1269,10 @@ class LibraryImportEngine {
           songbook: song.songbook || 'Custom Library',
           stanzas: (Array.isArray(stanzas) && stanzas.length > 0) ? stanzas : [{ type: 'Verse 1', text: cleanTitle }]
         };
+        // Migration metadata must survive IndexedDB and local storage round trips.
+        for (const key of ['copyright', 'administrator', 'ccli', 'description', 'tags', 'sourceSoftware', 'sourceId', 'themeId']) {
+          if (song[key] !== undefined) formattedSong[key] = song[key];
+        }
 
         if (existingCustomIdx !== -1 || existingDbIdx !== -1) {
           if (overwriteDuplicates) {
@@ -1293,7 +1306,7 @@ class LibraryImportEngine {
           importedSongs.push(formattedSong);
         }
 
-        if (this.db) {
+        if (this.db && persist) {
           try {
             const tx = this.db.transaction(['songs'], 'readwrite');
             tx.objectStore('songs').put(formattedSong);
@@ -1331,6 +1344,7 @@ class LibraryImportEngine {
 
     const existingSong = SONGS_DATABASE[songIndex];
     const newSongObj = {
+      ...existingSong,
       id: existingSong.id,
       title: updatedData.title ? this.cleanSongTitle(updatedData.title) : existingSong.title,
       author: updatedData.author ? this.cleanMarkup(updatedData.author) : existingSong.author,
@@ -1959,17 +1973,56 @@ class LibraryImportEngine {
       throw new Error(err.error || `Server responded with ${res.status}`);
     }
     const result = await res.json();
+    if (!this.db && this.dbReady) await this.dbReady;
 
     // 1. Ingest imported songs into client memory & IndexedDB
     if (result.songs && result.songs.length > 0) {
-      this.importSongsData(result.songs, true, true);
+      const policy = options.duplicatePolicy || 'skip';
+      const existing = [...this.customSongs, ...(typeof SONGS_DATABASE !== 'undefined' ? SONGS_DATABASE : [])];
+      let skipped = 0;
+      const songs = result.songs.filter(song => {
+        const title = this.cleanSongTitle(song.title || '').toLowerCase();
+        const duplicate = existing.some(saved => saved.id === song.id ||
+          (song.sourceSoftware && saved.sourceSoftware === song.sourceSoftware && song.sourceId && saved.sourceId === song.sourceId) ||
+          (this.cleanSongTitle(saved.title || '').toLowerCase() === title &&
+           !(song.sourceSoftware && saved.sourceSoftware === song.sourceSoftware && song.sourceId && saved.sourceId && song.sourceId !== saved.sourceId)));
+        if (policy === 'skip' && duplicate) { skipped++; return false; }
+        existing.push(song);
+        return true;
+      });
+      const previousCustom = this.customSongs.slice();
+      const previousRuntime = typeof SONGS_DATABASE !== 'undefined' ? SONGS_DATABASE.slice() : null;
+      const imported = this.importSongsData(songs, policy === 'replace', true, false);
+      result.importedCounts.songs = imported.importedCount;
+      result.skippedCounts = { ...result.skippedCounts, songs: skipped };
+      result.songs = imported.songs;
+      // Confirm the batch is durable before reporting a successful migration.
+      try {
+        if (this.db && imported.songs.length) {
+          await new Promise((resolve, reject) => {
+            const tx = this.db.transaction(['songs'], 'readwrite');
+            tx.oncomplete = resolve;
+            tx.onerror = tx.onabort = () => reject(new Error('Could not save the imported songs. Retry the import.'));
+            for (const song of imported.songs) tx.objectStore('songs').put(song);
+          });
+        } else if (!this.db && imported.songs.length) localStorage.setItem('sf_custom_songs', JSON.stringify(this.customSongs));
+      } catch (error) {
+        this.customSongs = previousCustom;
+        if (previousRuntime) SONGS_DATABASE.splice(0, SONGS_DATABASE.length, ...previousRuntime);
+        throw error;
+      }
+    }
+
+    for (const theme of result.themes || []) {
+      if (window.SANCTUARY_THEMES) window.SANCTUARY_THEMES[theme.id] = theme;
     }
 
     // 2. Refresh custom backgrounds / sanctuary media
-    if (result.mediaItems && result.mediaItems.length > 0) {
+    if (result.mediaItems?.length || result.themes?.length) {
       if (typeof window.loadSanctuaryUploads === 'function') {
-        window.loadSanctuaryUploads();
+        await window.loadSanctuaryUploads(false, true);
       }
+      window.refreshStyleGallery?.();
     }
 
     // 3. Activate/install detected Bibles into memory and storage

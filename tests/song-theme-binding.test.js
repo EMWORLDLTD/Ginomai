@@ -31,6 +31,9 @@ function setupThemeBindingEnvironment() {
       className: '',
       style: {},
       attributes: {},
+      dataset: {},
+      children: [],
+      focus() {},
       classList: {
         add(c) { el.className = `${el.className} ${c}`.trim(); },
         remove(c) { el.className = el.className.replace(new RegExp(`\\b${c}\\b`, 'g'), '').trim(); },
@@ -231,14 +234,39 @@ test('Song theme picker displays uploaded images and video previews over fallbac
   const { context, elements } = setupThemeBindingEnvironment();
   context.window.SONGS_DATABASE = [{ id: 'preview-song', title: 'Preview Song' }];
   context.window.SANCTUARY_THEMES.preview_still = {
-    name: 'Uploaded still', previewGradient: '#171722', imageUrl: '/media/uploads/still.jpg'
+    name: 'Uploaded still', type: 'image', custom: true, previewGradient: '#171722', imageUrl: '/media/uploads/still.jpg'
   };
   context.window.SANCTUARY_THEMES.preview_motion = {
-    name: 'Uploaded motion', previewGradient: '#171722', videoUrl: '/media/uploads/motion.mp4'
+    name: 'Uploaded motion', type: 'video', custom: true, previewGradient: '#171722', videoUrl: '/media/uploads/motion.mp4'
   };
   context.window.openSongThemeBindingModal('preview-song');
   const html = elements.get('song-theme-picker-grid').innerHTML;
   assert.match(html, /<img[^>]+src="\/media\/uploads\/still.jpg"/);
   assert.match(html, /<video[^>]+src="\/media\/uploads\/motion.mp4"/);
-  assert.match(html, /song-theme-thumb-badge/);
+  assert.match(html, /ann-background-motion/);
+  assert.match(html, /data-custom="true"/);
+});
+
+test('Song background search combines category filters without replacing cards', () => {
+  const { context, elements } = setupThemeBindingEnvironment();
+  context.window.SONGS_DATABASE = [{ id: 'filter-song', title: 'Filter Song' }];
+  context.window.openSongThemeBindingModal('filter-song');
+  const grid = elements.get('song-theme-picker-grid');
+  const cards = [
+    { dataset: { name: 'golden rays', type: 'video', custom: 'false' } },
+    { dataset: { name: 'golden photo', type: 'image', custom: 'true' } },
+    { dataset: { name: 'blue sky', type: 'image', custom: 'false' } }
+  ];
+  grid.children = cards;
+  elements.get('song-theme-picker-search').value = ' GOLDEN ';
+  context.window.filterSongThemeBackgrounds('motion');
+  assert.deepEqual(cards.map(card => card.hidden), [false, true, true]);
+  context.window.filterSongThemeBackgrounds('uploads');
+  assert.deepEqual(cards.map(card => card.hidden), [true, false, true]);
+  context.window.filterSongThemeBackgrounds('still');
+  assert.deepEqual(cards.map(card => card.hidden), [true, false, true]);
+  elements.get('song-theme-picker-search').value = 'missing';
+  context.window.filterSongThemeBackgrounds();
+  assert.equal(elements.get('song-theme-picker-empty').hidden, false);
+  assert.equal(grid.children, cards);
 });

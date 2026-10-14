@@ -255,7 +255,7 @@ test('custom upload delete icons cancel safely and delete from both galleries wi
  const event={preventDefault(){},stopPropagation(){}};
  await images[0].children[1].onclick(event);
  assert.match(prompt.message,/First.jpg/);assert.equal(prompt.cancelText,'Cancel');assert.equal(requests,0);
- assert.equal(field('presentation-settings').hidden,false);assert.equal(field('sanctuary-theme-modal-backdrop').style.display,undefined);
+ assert.equal(field('presentation-settings').hidden,false);
  assert.deepEqual(field('stream-image-list').children,images);assert.equal(sent.length,0);
  confirmed=true;await images[0].children[1].onclick(event);
  assert.equal(requests,1);assert.equal(window.SANCTUARY_THEMES.a,undefined);

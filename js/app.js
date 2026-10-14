@@ -39,7 +39,7 @@ const state = {
   textSize: 1.0,
   songScaleFull: (typeof localStorage !== 'undefined' && parseFloat(localStorage.getItem('sf_song_scale_full'))) || 2.2,
   songScaleLt: (typeof localStorage !== 'undefined' && parseFloat(localStorage.getItem('sf_song_scale_lt'))) || 1.4,
-  textAutoScale: true,
+  textAutoScale: (typeof localStorage === 'undefined' || localStorage.getItem('sf_text_auto_scale') !== 'false'),
   bibleVersion: 'KJV',
   compareBibleVersion: 'NIV',
   compareData: null,
@@ -143,8 +143,6 @@ window.omniSearchCurrentMode = omniSearchCurrentMode;
 var omniSearchDebounceTimer = null;
 window.omniSearchDebounceTimer = omniSearchDebounceTimer;
 
-var testTransitionToggle = false;
-window.testTransitionToggle = testTransitionToggle;
 
 var _syncWorkspaceTimer = null;
 
@@ -439,6 +437,7 @@ function restoreSavedWorkspaceState() {
       }
       if (dash.maxLinesPerSlide !== undefined) state.maxLinesPerSlide = dash.maxLinesPerSlide;
       if (dash.textSize !== undefined) state.textSize = dash.textSize;
+      if (dash.textAutoScale !== undefined) state.textAutoScale = dash.textAutoScale;
       if (dash.bibleVersion) state.bibleVersion = dash.bibleVersion;
       if (dash.transparentBg !== undefined) state.transparentBg = dash.transparentBg;
       if (dash.transitionType) state.transitionType = dash.transitionType;
@@ -465,6 +464,7 @@ function restoreSavedWorkspaceState() {
   syncTypographySettingsUI();
   syncTransitionSettingsUI();
   syncSongSettingsUI();
+  syncDisplaySettingsUI();
   if (typeof syncActiveTabUI === 'function') syncActiveTabUI();
   else if (typeof window.syncBentoTabsUI === 'function') window.syncBentoTabsUI();
   ensureActiveSong();
@@ -566,8 +566,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   const previewTransToggle = document.getElementById('preview-transparent-bg-toggle');
   if (previewTransToggle) previewTransToggle.checked = !!state.transparentBg;
-  const settingTransToggle = document.getElementById('setting-transparent-bg-toggle');
-  if (settingTransToggle) settingTransToggle.checked = !!state.transparentBg;
   syncTransparentBtnUI();
   const settingBibleMedleyToggle = document.getElementById('setting-bible-medley-toggle');
   if (settingBibleMedleyToggle) settingBibleMedleyToggle.checked = !!state.showBibleMedleyButtons;
@@ -1098,7 +1096,7 @@ function selectSingleViewSong(songId) {
     state.isDeckEditingSong = null;
     if (typeof window.cancelPreparedSlide === 'function') window.cancelPreparedSlide();
   }
-  applySongBoundTheme(songId);
+  if (!state.activeLiveSlideId) applySongBoundTheme(songId);
   renderLibrary();
   scrollActiveLibraryItemIntoView(songId);
   renderDeck(true);
@@ -2702,13 +2700,12 @@ function applyDashboardPatch(patch = {}) {
   }
   const sizeSlider = document.getElementById('preview-size-slider');
   const transparent = document.getElementById('preview-transparent-bg-toggle');
-  const settingsTransparent = document.getElementById('setting-transparent-bg-toggle');
   const previewAutoToggle = document.getElementById('preview-auto-project-toggle');
   if (sizeSlider) sizeSlider.value = state.textSize;
   if (transparent) transparent.checked = state.transparentBg;
-  if (settingsTransparent) settingsTransparent.checked = state.transparentBg;
   syncTransparentBtnUI();
   syncMedleySettingsUI();
+  syncDisplaySettingsUI();
   if (previewAutoToggle) previewAutoToggle.checked = !!state.autoProject;
   document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === state.currentTab));
   if (agendaChanged) renderAgenda();
@@ -2779,15 +2776,29 @@ function toggleTransparentBg(isTransparent) {
   state.transparentBg = isTransparent;
 
   const previewToggle = document.getElementById('preview-transparent-bg-toggle');
-  const settingsToggle = document.getElementById('setting-transparent-bg-toggle');
   if (previewToggle) previewToggle.checked = isTransparent;
-  if (settingsToggle) settingsToggle.checked = isTransparent;
   syncTransparentBtnUI();
 
   broadcastState();
 
   if (typeof window.syncBentoStagePreview === 'function') {
     window.syncBentoStagePreview();
+  }
+}
+
+function syncDisplaySettingsUI() {
+  const automatic = document.getElementById('setting-auto-shrink-toggle');
+  if (automatic) automatic.checked = state.textAutoScale !== false;
+  for (const [id, value] of [
+    ['setting-max-lines-select', state.maxLinesPerSlide ?? 0],
+    ['setting-concordance-style', state.concordanceStyle || 'hero'],
+    ['setting-concordance-mode', state.concordanceDisplayMode || 'full'],
+    ['setting-concordance-position', state.concordancePosition || 'right']
+  ]) {
+    const select = document.getElementById(id);
+    if (!select) continue;
+    select.value = String(value);
+    window.syncCustomSelect?.(select);
   }
 }
 
@@ -3037,19 +3048,36 @@ function syncTransitionSettingsUI() {
 }
 
 /* hoisted */
+let transitionPreviewTimestamp = 0;
 function testLiveTransitionEffect() {
-  testTransitionToggle = !testTransitionToggle;
-  const sample1 = "Great is Your faithfulness, O God my Father\nThere is no shadow of turning with Thee";
-  const sample2 = "Summer and winter, and springtime and harvest\nSun, moon and stars in their courses above";
-  const text = testTransitionToggle ? sample2 : sample1;
-  const ref = testTransitionToggle ? "Great Is Thy Faithfulness · Verse 2" : "Great Is Thy Faithfulness · Verse 1";
-
-  broadcastState({
-    text: text,
-    reference: ref,
-    slideId: 'test_sample_transition_' + Date.now(),
-    contentType: 'song'
+  openSettingsToTab('display');
+  document.getElementById('display-advanced-settings').open = true;
+  document.getElementById('transition-preview').hidden = false;
+  const frame = document.getElementById('transition-preview-frame');
+  const sample = (second, type) => ({
+    slideId: second ? 'transition-preview-2' : 'transition-preview-1',
+    text: second ? 'Summer and winter, and springtime and harvest\nSun, moon and stars in their courses above'
+      : 'Great is Your faithfulness, O God my Father\nThere is no shadow of turning with Thee',
+    reference: 'Great Is Thy Faithfulness', contentType: 'song', isBible: false,
+    mode: 'full', projectorActive: true, livestreamActive: true, clear: false, blackout: false,
+    destinations: ['sanctuary'], sanctuaryTheme: window.themeManager?.getSanctuaryPayload(),
+    typography: state.typography, textAutoScale: state.textAutoScale,
+    songScaleFull: state.songScaleFull, showSongTitleInDisplay: state.showSongTitleInDisplay,
+    transitionType: type, transitionDuration: state.transitionDuration,
+    _timestamp: transitionPreviewTimestamp = Math.max(Date.now(), transitionPreviewTimestamp + 1)
   });
+  const send = payload => frame.contentWindow?.postMessage({type:'APPEARANCE_PREVIEW', payload}, location.origin);
+  const preview = () => {
+    send(sample(false, 'cut'));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (document.getElementById('settings-modal-backdrop').classList.contains('open')) send(sample(true, state.transitionType));
+    }));
+  };
+  if (frame.dataset.ready === 'true') preview();
+  else {
+    frame.onload = () => { frame.dataset.ready = 'true'; preview(); };
+    if (!frame.getAttribute('src')) frame.src = 'display.html?target=sanctuary&embedded=1&draft=1';
+  }
 }
 
 function updateMaxLinesSetting(val) {
@@ -3059,7 +3087,9 @@ function updateMaxLinesSetting(val) {
     btn.classList.toggle('active', parseInt(btn.dataset.lines, 10) === state.maxLinesPerSlide);
   });
 
+  syncDisplaySettingsUI();
   renderDeck();
+  syncDashboardWorkspace(true);
 }
 
 function setDashboardLinesSetting(linesCount) {
@@ -3302,7 +3332,7 @@ function initModalBackdropDismiss() {
   document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
     backdrop.addEventListener('mousedown', (e) => {
       if (e.target === backdrop) {
-        if (backdrop.id === 'sanctuary-theme-modal-backdrop' || backdrop.id === 'sf-custom-dialog-backdrop') return;
+        if (backdrop.id === 'sf-custom-dialog-backdrop') return;
         if (backdrop.id === 'operator-join-modal-backdrop') {
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -3443,189 +3473,10 @@ function togglePreviewTargetMode() {
 }
 window.togglePreviewTargetMode = togglePreviewTargetMode;
 
-// Sanctuary Theme Modal Controller
-let activeSanctuaryCategory = 'all';
-let sanctuaryReturnFocus = null;
-document.addEventListener('keydown', event => {
-  const customDialog = document.getElementById('sf-custom-dialog-backdrop');
-  if (customDialog && (customDialog.style.display === 'flex' || customDialog.classList.contains('open'))) return;
-
-  const modal = document.getElementById('sanctuary-theme-modal-backdrop');
-  if (!modal || modal.style.display !== 'flex') return;
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    closeSanctuaryThemeModal();
-  } else if (event.key === 'Tab') {
-    const controls = [...modal.querySelectorAll('button, select, input')].filter(el => el.getClientRects().length);
-    const first = controls[0], last = controls[controls.length - 1];
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-  }
-}, true);
-
-function openSanctuaryThemeModal() {
-  window.loadSanctuaryUploads();
-  const modal = document.getElementById('sanctuary-theme-modal-backdrop');
-  if (!modal || modal.style.display === 'flex') return;
-  window.themeManager?.beginSanctuaryDraft();
-  renderSanctuaryThemesGrid();
-  if (window.themeManager && typeof window.themeManager.updateSanctuaryUi === 'function') {
-    window.themeManager.updateSanctuaryUi();
-  }
-  modal.style.display = 'flex';
-  modal.classList.add('open');
-  window.updateSanctuaryFramingPreview();
-  window.updateSanctuaryTabIndicator(false);
-  const outputPanel = modal.querySelector('.sanctuary-output-panel');
-  if (outputPanel) outputPanel.scrollTop = 0;
-  const controlsScroll = modal.querySelector('.sanctuary-output-controls-scroll');
-  if (controlsScroll) controlsScroll.scrollTop = 0;
-  sanctuaryReturnFocus = document.activeElement;
-  modal.querySelector('.sanctuary-modal-close').focus({ preventScroll: true });
-
-  // Play motion videos inside visible theme cards and framing preview
-  modal.querySelectorAll('video').forEach(v => {
-    if (!v.closest('[hidden]')) {
-      v.play().catch(() => {});
-    }
-  });
-}
-window.openSanctuaryThemeModal = openSanctuaryThemeModal;
-
-function closeSanctuaryThemeModal(force = false) {
-  if (window._sfSuppressSanctuaryClose && !force) return;
-  const customDialog = document.getElementById('sf-custom-dialog-backdrop');
-  if (customDialog && (customDialog.style.display === 'flex' || customDialog.classList.contains('open')) && !force) return;
-
-  const modal = document.getElementById('sanctuary-theme-modal-backdrop');
-  if (modal) {
-    modal.classList.remove('open');
-    modal.style.display = 'none';
-    window.themeManager?.cancelSanctuaryDraft();
-    modal.querySelectorAll('video').forEach(v => v.pause());
-    if (sanctuaryReturnFocus && sanctuaryReturnFocus.isConnected) sanctuaryReturnFocus.focus({ preventScroll: true });
-  }
-}
-window.closeSanctuaryThemeModal = closeSanctuaryThemeModal;
-
-function toggleSanctuaryThemeModal() {
-  const modal = document.getElementById('sanctuary-theme-modal-backdrop');
-  if (!modal) return;
-  if (modal.classList.contains('open') || modal.style.display === 'flex') {
-    closeSanctuaryThemeModal();
-  } else {
-    openSanctuaryThemeModal();
-  }
-}
-window.toggleSanctuaryThemeModal = toggleSanctuaryThemeModal;
-
-// Compatibility aliases
-window.toggleSanctuaryThemePopover = toggleSanctuaryThemeModal;
-window.closeSanctuaryThemePopover = closeSanctuaryThemeModal;
-
-function filterSanctuaryThemes(cat) {
-  activeSanctuaryCategory = cat || 'all';
-  document.querySelectorAll('.sanctuary-cat-tab').forEach(tab => {
-    const selected = tab.getAttribute('data-cat') === activeSanctuaryCategory;
-    tab.classList.toggle('active', selected);
-    tab.setAttribute('aria-pressed', String(selected));
-  });
-  renderSanctuaryThemesGrid();
-  window.updateSanctuaryTabIndicator(true);
-}
-window.filterSanctuaryThemes = filterSanctuaryThemes;
-
-function renderSanctuaryThemesGrid() {
-  const grid = document.getElementById('sanctuary-themes-grid');
-  if (!grid) return;
-  const themes = window.SANCTUARY_THEMES || {};
-  const curThemeId = (window.themeManager?.sanctuaryDraft || window.themeManager)?.activeSanctuaryTheme || 'celestial_motion';
-
-  let html = '';
-  const existingIds = new Set([...grid.querySelectorAll('[data-theme-id]')].map(card => card.dataset.themeId));
-  const seenIds = new Set();
-  Object.keys(themes).forEach(tid => {
-    if (tid === 'deep_celestial') return; // skip legacy alias from grid
-    const t = themes[tid];
-    if (seenIds.has(t.id)) return;
-    seenIds.add(t.id);
-
-    if (existingIds.has(tid)) return;
-    const isActive = (tid === curThemeId || (curThemeId === 'deep_celestial' && tid === 'celestial_motion'));
-    const bgStyle = t.imageUrl ? `background-image: url('${t.imageUrl}'); background-size: cover; background-position: center;` : `background: ${t.previewGradient || t.bgCss};`;
-    const badgeLabel = t.category === 'colors' ? (t.badge === 'SOLID' ? 'Solid' : 'Gradient') : t.imageUrl && /\.gif$/i.test(t.imageUrl) ? 'GIF' : t.type === 'video' ? 'Motion' : (t.type === 'image' ? 'Still' : 'Minimal');
-    const badgeType = t.type || 'gradient';
-    const videoTag = t.videoUrl
-      ? `<video class="sanctuary-theme-card-video" src="${t.videoUrl}" preload="auto" muted loop playsinline autoplay aria-hidden="true"></video>`
-      : '';
-    const deleteBtn = t.custom
-      ? `<span role="button" tabindex="0" class="sanctuary-theme-card-delete" onclick="event.stopPropagation(); window.deleteSanctuaryBackground('${tid}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.stopPropagation(); window.deleteSanctuaryBackground('${tid}');}" title="Delete this background" aria-label="Delete ${escapeHtml(t.name)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>`
-      : '';
-
-    html += `
-      <button type="button" aria-pressed="${isActive}" class="sanctuary-theme-card ${isActive ? 'active' : ''}" data-theme-id="${tid}" style="${bgStyle}" onclick="onSanctuaryThemeSelect('${tid}')" title="${escapeHtml(t.description || t.name)}">
-        ${videoTag}
-        <div class="sanctuary-theme-card-badge ${badgeType}">${badgeLabel}${t.custom ? ' · Uploaded' : ''}</div>
-        ${deleteBtn}
-        <span class="sanctuary-applied-badge">Applied</span>
-        <div class="sanctuary-theme-card-name">${escapeHtml(t.name)}</div>
-      </button>
-    `;
-  });
-  if (html) grid.insertAdjacentHTML('beforeend', html);
-  let visible = 0;
-  const isModalOpen = document.getElementById('sanctuary-theme-modal-backdrop')?.style.display === 'flex';
-  grid.querySelectorAll('[data-theme-id]').forEach(card => {
-    const theme = themes[card.dataset.themeId];
-    card.hidden = activeSanctuaryCategory === 'uploads' ? !theme.custom : activeSanctuaryCategory !== 'all' && theme.category !== activeSanctuaryCategory;
-    const cardVideo = card.querySelector('video');
-    if (cardVideo) {
-      if (card.hidden || !isModalOpen) {
-        cardVideo.pause();
-      } else {
-        cardVideo.play().catch(() => {});
-      }
-    }
-    if (!card.hidden) visible++;
-  });
-  let empty = grid.querySelector('.sanctuary-empty-uploads');
-  if (!empty) { empty = document.createElement('p'); empty.className = 'sanctuary-empty-uploads'; empty.textContent = 'Upload a background to make it your own.'; grid.appendChild(empty); }
-  empty.hidden = visible > 0;
-  window.themeManager?.updateSanctuaryUi();
-}
-window.renderSanctuaryThemesGrid = renderSanctuaryThemesGrid;
-
-function onObsModeRuleChange(rule) {
-  if (window.themeManager && typeof window.themeManager.setObsModeRule === 'function') {
-    window.themeManager.setObsModeRule(rule);
-  }
-}
-window.onObsModeRuleChange = onObsModeRuleChange;
-
-function onSanctuaryThemeSelect(themeId) {
-  if (window.themeManager && typeof window.themeManager.setSanctuaryTheme === 'function') {
-    window.themeManager.setSanctuaryTheme(themeId);
-  }
-}
-window.onSanctuaryThemeSelect = onSanctuaryThemeSelect;
-
-function onSanctuaryDimmerChange(val) {
-  if (window.themeManager && typeof window.themeManager.setSanctuaryDimmer === 'function') {
-    window.themeManager.setSanctuaryDimmer(val);
-  }
-}
-window.onSanctuaryDimmerChange = onSanctuaryDimmerChange;
-
-function onSanctuaryFontChange(font) {
-  if (window.themeManager && typeof window.themeManager.setSanctuaryFont === 'function') {
-    window.themeManager.setSanctuaryFont(font);
-  }
-}
-window.onSanctuaryFontChange = onSanctuaryFontChange;
-
 function toggleTextAutoScale(isAuto) {
-  state.textAutoScale = isAuto;
+  state.textAutoScale = !!isAuto;
+  try { localStorage.setItem('sf_text_auto_scale', String(state.textAutoScale)); } catch (_) {}
+  syncDisplaySettingsUI();
   const slider = document.getElementById('preview-size-slider');
   if (slider) slider.disabled = isAuto;
   broadcastState();
@@ -4450,8 +4301,10 @@ function swapMedleyVersion(slotIndex, versionCode) {
 function updateActiveSlideVisuals(slideId) {
   // 4. Instant In-Place Bento Live State Update (0ms, no DOM teardown)
   const allBentoCards = document.querySelectorAll('.bento-slide-card, .bento-single-card');
+  let liveSlideVisible = false;
   allBentoCards.forEach(c => {
     const isTarget = (c.dataset.slideId === slideId || c.id === `bento_card_${slideId}`);
+    if (isTarget) liveSlideVisible = true;
     if (c.classList.contains('media-card')) {
       c.classList.toggle('live',isTarget);
       const badge=c.querySelector('.live-pill');if(badge) badge.hidden=!isTarget;
@@ -4525,6 +4378,9 @@ function updateActiveSlideVisuals(slideId) {
   document.querySelectorAll('.bento-song-row').forEach(row => {
     row.classList.toggle('active', row.dataset.songId === state.activeSongId);
   });
+
+  const returnLiveBtn = document.getElementById('bento-deck-return-live-btn');
+  if (returnLiveBtn && (liveSlideVisible || !slideId)) returnLiveBtn.style.display = 'none';
 
   // 5. Auto-scroll active card + 2-3 upcoming verses into view
   scrollToActiveSlide();
@@ -6580,6 +6436,10 @@ function switchSettingsTab(tabId, tabEl) {
   if (pane) pane.scrollTop = 0;
   initCustomSelects();
 
+  if (tabId === 'display' || tabId === 'control') {
+    syncSongSettingsUI();
+    syncDisplaySettingsUI();
+  }
   if (tabId === 'speech') {
     window.refreshAiContentSettings?.();
     syncAiSettingsUI();
@@ -6600,6 +6460,7 @@ function openSettingsModal() {
   refreshAudioInputDevices();
   syncTransitionSettingsUI();
   syncSongSettingsUI();
+  syncDisplaySettingsUI();
 }
 
 function closeSettingsModal() {
@@ -8218,13 +8079,15 @@ async function handleMigrationScan() {
   }
 
   if (statusEl) statusEl.textContent = 'Scanning directory for presentation data...';
+  currentMigrationScan = null;
+  if (actionBtn) actionBtn.disabled = true;
   if (breakdownEl) breakdownEl.style.display = 'none';
 
   try {
     const res = await window.libraryImporter.scanMigrationFolder(folderPath);
     currentMigrationScan = res;
 
-    if (statusEl) statusEl.textContent = `Found ${res.softwareType.toUpperCase()} content: ${res.counts.songs} songs, ${res.counts.bibles} Bibles, ${res.counts.videos} videos, ${res.counts.images} images, ${res.counts.agendas} agendas.`;
+    if (statusEl) statusEl.textContent = `Found ${res.softwareType.toUpperCase()} content: ${res.counts.songs} songs, ${res.counts.bibles} Bibles, ${res.counts.videos} videos, ${res.counts.images} images, ${res.counts.agendas} agendas, ${res.counts.themes || 0} styles.`;
 
     const countsEl = document.getElementById('import-migrate-counts-row');
     if (countsEl) {
@@ -8234,6 +8097,7 @@ async function handleMigrationScan() {
         <div class="migrate-count-badge"><strong>${res.counts.videos}</strong> Videos</div>
         <div class="migrate-count-badge"><strong>${res.counts.images}</strong> Images</div>
         <div class="migrate-count-badge"><strong>${res.counts.agendas}</strong> Agendas</div>
+        <div class="migrate-count-badge"><strong>${res.counts.themes || 0}</strong> Styles</div>
       `;
     }
 
@@ -8241,14 +8105,15 @@ async function handleMigrationScan() {
     if (detailsEl) {
       const parts = [];
       if (res.detected.songbooks.length > 0) {
-        parts.push(`<div><strong>Songbooks:</strong> ${res.detected.songbooks.map(s => `${s.name} (${s.songCount} songs)`).join(', ')}</div>`);
+        parts.push(`<div><strong>Songbooks:</strong> ${res.detected.songbooks.map(s => `${escapeHtml(s.name)} (${s.songCount} songs)`).join(', ')}</div>`);
       }
       if (res.detected.bibles.length > 0) {
-        parts.push(`<div><strong>Bibles:</strong> ${res.detected.bibles.map(b => `${b.code} - ${b.name}`).join(', ')}</div>`);
+        parts.push(`<div><strong>Bibles:</strong> ${res.detected.bibles.map(b => `${escapeHtml(b.code)} - ${escapeHtml(b.name)}`).join(', ')}</div>`);
       }
       if (res.detected.agendas.length > 0) {
-        parts.push(`<div><strong>Agendas:</strong> ${res.detected.agendas.map(a => a.name).join(', ')}</div>`);
+        parts.push(`<div><strong>Agendas:</strong> ${res.detected.agendas.map(a => escapeHtml(a.name) + (a.supported === false ? ' (unsupported)' : '')).join(', ')}</div>`);
       }
+      for (const warning of res.detected.warnings || []) parts.push(`<div>${escapeHtml(warning)}</div>`);
       detailsEl.innerHTML = parts.join('');
     }
 
@@ -8272,14 +8137,20 @@ async function handleMigrationExecute() {
   const progressContainer = document.getElementById('import-migrate-progress-container');
 
   if (!folderPath) return;
+  if (!currentMigrationScan || currentMigrationScan.folderPath !== folderPath) {
+    await handleMigrationScan();
+    return;
+  }
 
   const importSongs = document.getElementById('import-migrate-opt-songs')?.checked ?? true;
   const importBibles = document.getElementById('import-migrate-opt-bibles')?.checked ?? true;
   const importMedia = document.getElementById('import-migrate-opt-media')?.checked ?? true;
   const importAgendas = document.getElementById('import-migrate-opt-agendas')?.checked ?? true;
+  const importThemes = document.getElementById('import-migrate-opt-themes')?.checked ?? true;
+  const duplicatePolicy = document.getElementById('import-migrate-duplicates')?.value || 'skip';
 
   if (actionBtn) actionBtn.disabled = true;
-  if (statusEl) statusEl.textContent = 'Migrating data into GNOMY... Please wait.';
+  if (statusEl) statusEl.textContent = 'Importing into Ginomai... Please wait.';
   if (progressContainer) progressContainer.style.display = 'block';
   if (progressEl) progressEl.style.width = '35%';
 
@@ -8289,13 +8160,17 @@ async function handleMigrationExecute() {
       importSongs,
       importBibles,
       importMedia,
-      importAgendas
+      importAgendas,
+      importThemes,
+      duplicatePolicy
     });
 
     if (progressEl) progressEl.style.width = '100%';
-    const msg = `Successfully migrated: ${res.importedCounts.songs} Songs, ${res.importedCounts.bibles} Bibles, ${res.importedCounts.videos} Videos, ${res.importedCounts.images} Images, ${res.importedCounts.agendas} Agendas!`;
+    const msg = `Imported ${res.importedCounts.songs} songs, ${res.importedCounts.bibles} Bibles, ${res.importedCounts.videos} videos, ${res.importedCounts.images} images, ${res.importedCounts.agendas} agendas and ${res.importedCounts.themes || 0} styles.${res.skippedCounts?.songs ? ` Kept ${res.skippedCounts.songs} existing songs.` : ''}`;
 
-    if (statusEl) statusEl.textContent = msg;
+    if (statusEl) statusEl.textContent = msg + (res.warnings?.length ? ` ${res.warnings.length} ${res.warnings.length === 1 ? 'notice' : 'notices'}. Review the details below.` : '');
+    const detailsEl = document.getElementById('import-migrate-details');
+    if (detailsEl) detailsEl.innerHTML = (res.warnings || []).map(warning => `<div>${escapeHtml(warning)}</div>`).join('');
     if (typeof showToast === 'function') showToast(msg, 'success');
 
     setTimeout(() => {
@@ -10662,6 +10537,7 @@ function updateConcordanceStyleSetting(style) {
   if (!style) return;
   state.concordanceStyle = style;
   localStorage.setItem('sf_concordance_style', style);
+  syncDisplaySettingsUI();
 
   const sel1 = document.getElementById('setting-concordance-style');
   if (sel1) sel1.value = style;
@@ -10678,6 +10554,7 @@ function updateConcordanceModeSetting(mode) {
   if (!mode) return;
   state.concordanceDisplayMode = mode;
   localStorage.setItem('sf_concordance_display_mode', mode);
+  syncDisplaySettingsUI();
 
   const sel = document.getElementById('setting-concordance-mode');
   if (sel) sel.value = mode;
@@ -10692,6 +10569,7 @@ function updateConcordancePositionSetting(pos) {
   if (!pos) return;
   state.concordancePosition = pos;
   localStorage.setItem('sf_concordance_position', pos);
+  syncDisplaySettingsUI();
 
   const sel1 = document.getElementById('setting-concordance-position');
   if (sel1) sel1.value = pos;
@@ -11164,14 +11042,7 @@ window.resetTypographyDefaults = typeof resetTypographyDefaults === 'function' ?
   showToast('Typography reset to defaults', 'info');
 };
 
-window.testLiveTransitionEffect = typeof testLiveTransitionEffect === 'function' ? testLiveTransitionEffect : function () {
-  testTransitionToggle = !testTransitionToggle;
-  const sampleRef = testTransitionToggle ? 'John 3:16 (KJV)' : 'Psalm 23:1 (KJV)';
-  const sampleText = testTransitionToggle
-    ? 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'
-    : 'The LORD is my shepherd; I shall not want.';
-  projectSlide('test_trans_slide', sampleText, sampleRef);
-};
+window.testLiveTransitionEffect = testLiveTransitionEffect;
 
 window.setTransitionTypeSetting = typeof setTransitionTypeSetting === 'function' ? setTransitionTypeSetting : function (type) {
   state.transitionType = type;

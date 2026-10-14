@@ -47,7 +47,7 @@
   const videoDeckSlots=slots=>Array.from({length:4},(_,index)=> {
     const slot=Array.isArray(slots)?slots[index]:null;
     if(!slot || typeof slot.assetId!=='string')return null;
-    return {assetId:slot.assetId,name:String(slot.name || 'Video'),cue:Number.isFinite(Number(slot.cue))?Math.max(0,Number(slot.cue)):0,
+    return {assetId:slot.assetId,name:String(slot.name || (slot.kind==='image'?'Image':'Video')),kind:slot.kind==='image'?'image':'video',cue:Number.isFinite(Number(slot.cue))?Math.max(0,Number(slot.cue)):0,
       loop:!!slot.loop,volume:Number.isFinite(Number(slot.volume))?Math.max(0,Math.min(1,Number(slot.volume))):1,
       destination:['sanctuary','livestream'].includes(slot.destination)?slot.destination:'both',liveMuted:!!slot.liveMuted};
   });

@@ -735,7 +735,9 @@ class SpeechAiEngine {
   // Helper: Normalize speech text converting word numbers into digit integers
   normalizeSpokenNumbers(text) {
     if (!text) return '';
-    let lower = text.toLowerCase().replace(/([a-z])[-_]([a-z])/g, '$1 $2').replace(/([a-z])([,.;!?])/g, '$1 $2');
+    let lower = text.toLowerCase().replace(/([a-z])[-_]([a-z])/g, '$1 $2')
+      .replace(/([a-z])([,:.;!?])/g, '$1 $2').replace(/([,:])(?=[a-z])/g, '$1 ')
+      .replace(/\b([123])(?=(?:corinthians|timothy|thessalonians|peter|john)\b)/g, '$1 ');
 
     // Normalize ordinal prefixes e.g. "1 st" -> "1st", "2 nd" -> "2nd"
     lower = lower.replace(/\b(1|2|3)\s*(st|nd|rd|th)\b/g, '$1$2');
@@ -813,12 +815,21 @@ class SpeechAiEngine {
   parseScriptureReferences(text, metadata = {}) {
     const now = Date.now();
     let normalized = this.normalizeSpokenNumbers(text).replace(/[–—]/g, '-');
-    const explicitChapterRecall = /\b(?:that|this|the) same chapter\b/.test(normalized);
+    const explicitChapterRecall = /\b(?:that|this|the) same chapter\b|\bback to (?:verses?|chapter)\b/.test(normalized);
     if (this.scriptureContext && now - this.scriptureContext.at > 10 * 60 * 1000) this.scriptureContext = null;
     const followupContext = this.scriptureContext && (explicitChapterRecall || now - this.scriptureContext.at <= 60000) ? this.scriptureContext : null;
+    const validConfidence = value => Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+    const combineConfidence = (...values) => {
+      const known = values.map(validConfidence).filter(value => value !== null);
+      return known.length ? Math.min(...known) : null;
+    };
+    let evidenceConfidence = validConfidence(metadata.recognitionConfidence);
     if (this.pendingReference && now - this.pendingReference.at <= 8000 &&
-        /^(?:\d|chapter\b|verses?\b|to\b|through\b)/.test(normalized)) {
+        /^(?:\d|chapter\b|verses?\b|to\b|through\b)/.test(normalized) &&
+        !(this.scriptureContext && /^\d+\s+(?:now\s+)?(?:says?|said|reads?)\b/.test(normalized) &&
+          !/(?:\bverses?|\bto|\bthrough|\buntil|\band|:|-)\s*$/.test(this.pendingReference.text))) {
       normalized = `${this.pendingReference.text} ${normalized}`;
+      evidenceConfidence = combineConfidence(evidenceConfidence, this.pendingReference.recognitionConfidence);
       this.cancelChapterSuggestion();
     }
     this.pendingReference = null;
@@ -826,16 +837,34 @@ class SpeechAiEngine {
       .sort((a,b) => b.alias.length - a.alias.length);
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const byAlias = new Map(aliases.map(a => [a.alias, a.book]));
-    const bookPattern = new RegExp(`\\b(?:${[...byAlias.keys()].map(escape).join('|')})\\b`, 'g');
+    const bookNames = [...byAlias.keys()].map(escape).join('|');
+    // Bind only explicit inverse references, retaining their spoken verse numbers.
+    normalized = normalized.replace(new RegExp(`\\bverses?\\s+(\\d+)(?:\\s*(?:to|through|until|-)\\s*(\\d+))?\\s+(?:of|in)\\s+(${bookNames})\\s+(?:chapter\\s+(?:number\\s*[, :]?\\s*)?)?(\\d+)\\b`, 'g'),
+      (_, verse, end, book, chapter) => `${book} chapter ${chapter} verse ${verse}${end ? ` through ${end}` : ''}`);
+    normalized = normalized.replace(new RegExp(`\\bchapter\\s+(?:number\\s*[, :]?\\s*)?(\\d+)\\s+(?:of|in)\\s+(${bookNames})(?=\\b|\\d)`, 'g'),
+      (_, chapter, book) => `${book} chapter ${chapter}`);
+    const bookPattern = new RegExp(`\\b(?:${bookNames})(?=\\b|\\d)`, 'g');
+    const scriptureCue = /\b(?:book of|turn (?:with me )?to|open (?:your bibles? )?to|read from)\s*$/;
+    const quantity = tail => /^[,\s]*(?:years?|people|percent|dollars|minutes|hours|children|men|women|times|days|months|weeks|students|arrived)\b/.test(tail);
+    const rememberReference = text => { this.pendingReference = { text, at: now, recognitionConfidence: evidenceConfidence }; };
     const version = normalized.match(/\b(kjv|niv|nkjv|nlt|esv|nasb|amp|msg|asv)\b/i)?.[1]?.toUpperCase() || null;
     const mentions = [...normalized.matchAll(bookPattern)].filter(m => {
       const book = byAlias.get(m[0]);
-      return /^\d/.test(book.name) || !/\b[123]\s+$/.test(normalized.slice(0,m.index));
+      const before = normalized.slice(0, m.index), after = normalized.slice(m.index + m[0].length);
+      if (!/^\d/.test(book.name) && /\b[123]\s+$/.test(before)) return false;
+      const cue = scriptureCue.test(before);
+      const numeric = /^\s*(?:\d|(?:chapter|chap|ch)\b)/.test(after);
+      const explicit = /^\s*(?:(?:chapter|chap|ch)\b|\d+\s*(?::|(?:and\s+)?verses?\b))/.test(after);
+      if (['is', 'he', 'am'].includes(m[0]) && !cue) return false;
+      if (m[0].length <= 2 && !cue && !explicit) return false;
+      if (numeric) return true;
+      // Ordinary words such as "he", "is" and "revelation" are not book changes.
+      return m[0].length > 2 && (cue || (!before.trim() && /^[.,\s]*$/.test(after)));
     });
     const outputs = [];
     // A new book (including an invalid replacement) supersedes a waiting chapter.
     if (mentions.length) this.cancelChapterSuggestion();
-    const emit = (book, chapter, verse, endVerse, query, explicit, correction = false) => {
+    const emit = (book, chapter, verse, endVerse, query, explicit, correction = false, contextConfidence = null) => {
       if (!Number.isInteger(chapter) || chapter < 1 || chapter > book.maxChapters ||
           (verse !== null && (!Number.isInteger(verse) || verse < 1 || verse > 176)) ||
           (endVerse !== null && (verse === null || endVerse < verse || endVerse > 176))) return false;
@@ -845,34 +874,57 @@ class SpeechAiEngine {
           Array.from({length:(endVerse || verse)-verse+1}, (_,i) => verse+i).some(n => !rows.some(v => v.verse === n))))) return false;
       const rawReference = `${book.name} ${chapter}${verse === null ? '' : `:${verse}${endVerse !== null ? `-${endVerse}` : ''}`}`;
       const detectionScore = verse === null ? 90 : explicit ? 98 : 94;
-      const recognitionConfidence = Number.isFinite(metadata.recognitionConfidence) && metadata.recognitionConfidence >= 0 && metadata.recognitionConfidence <= 1 ? metadata.recognitionConfidence : null;
+      const recognitionConfidence = combineConfidence(evidenceConfidence, contextConfidence);
       const result = { book: book.name, chapter, verse, endVerse, kind: verse === null ? 'chapter' : 'verse', rawReference,
         detectionScore, confidence: detectionScore, recognitionConfidence, validation: validated ? 'verified' : 'unavailable',
         version, autoProjectEligible: validated && verse !== null && explicit && !correction && (recognitionConfidence === null || recognitionConfidence >= .8),
         matchedQuery: query, timestamp: now, correction };
       if (correction && outputs.length) outputs.pop();
       outputs.push(result);
-      this.scriptureContext = { book, chapter, verse, at: now };
+      this.scriptureContext = { book, chapter, verse, at: now, recognitionConfidence };
       return true;
+    };
+    const verseList = (tail, context, correction = false) => {
+      for (;;) {
+        const m = tail.match(/^\s*(?:,\s*(?:and\s+)?|and\s+)(?:verses?\s+)?(\d+)(?:\s*(?:to|through|until|-)\s*(\d+))?/);
+        if (!m || quantity(tail.slice(m[0].length))) return;
+        if (!emit(context.book, context.chapter, +m[1], m[2] ? +m[2] : null, m[0], false, correction, context.recognitionConfidence)) return;
+        context = this.scriptureContext;
+        tail = tail.slice(m[0].length);
+      }
     };
     const followups = (tail, context, correction = false) => {
       if (!context) return;
-      const re = /\b(?:(chapter)\s+(\d+)(?:\s*[, :]?\s*verses?\s+(\d+))?|verses?\s+(\d+))(?:\s*(?:to|through|until|-)\s*(\d+))?/g;
+      const re = /\b(?:(chapter)\s+(?:number\s*[, :]?\s*)?(\d+)(?:\s*[, :]?\s*(?:and\s+)?verses?\s+(\d+))?|verses?\s+(\d+))(?:\s*(?:to|through|until|-)\s*(\d+))?/g;
       for (const m of tail.matchAll(re)) {
         const before = tail.slice(0,m.index);
         const corrected = correction || /(?:\bno|\bsorry|\bi mean|\brather|\bcorrection)[,\s]*$/.test(before);
         const chapter = m[1] ? +m[2] : context.chapter;
         const verse = m[1] ? (m[3] ? +m[3] : null) : +m[4];
-        if (/^\s*(?:year|people|percent|dollars|minutes|hours)\b/.test(tail.slice(m.index+m[0].length))) continue;
-        if (emit(context.book, chapter, verse, m[5] ? +m[5] : null, m[0], false, corrected)) context = this.scriptureContext;
+        const rest = tail.slice(m.index + m[0].length);
+        if (quantity(rest)) continue;
+        if (emit(context.book, chapter, verse, m[5] ? +m[5] : null, m[0], false, corrected, context.recognitionConfidence)) {
+          context = this.scriptureContext;
+          if (verse !== null) { verseList(rest, context, corrected); context = this.scriptureContext; }
+        }
       }
     };
     if (!mentions.length) {
       const correction = normalized.match(/^(?:no|sorry|i mean|rather|correction)[,\s]+(\d+)(?:\s*(?:to|through|-)\s*(\d+))?[.!]?$/);
       if (correction && followupContext) {
         const c = followupContext;
-        emit(c.book, c.chapter, +correction[1], correction[2] ? +correction[2] : null, normalized, false, true);
-      } else followups(normalized, followupContext);
+        emit(c.book, c.chapter, +correction[1], correction[2] ? +correction[2] : null, normalized, false, true, c.recognitionConfidence);
+      } else {
+        followups(normalized, followupContext);
+        // Bare numbers need a reading cue, or the immediately following verse.
+        if (followupContext && !outputs.length) {
+          for (const m of normalized.matchAll(/(?:^|[.!?]\s*)(?:(and)\s+)?(\d+)(?:\s+(?:now\s+)?(says?|said|reads?)\b|\s*[,.:])/g)) {
+            const nextVerse = m[1] && followupContext.verse !== null && +m[2] === followupContext.verse + 1;
+            if ((!m[3] && !nextVerse) || quantity(normalized.slice(m.index + m[0].length))) continue;
+            emit(followupContext.book, followupContext.chapter, +m[2], null, m[0], false, false, followupContext.recognitionConfidence);
+          }
+        }
+      }
     } else {
       for (let i=0; i<mentions.length; i++) {
         const mention = mentions[i], book = byAlias.get(mention[0]);
@@ -882,23 +934,31 @@ class SpeechAiEngine {
         const before = normalized.slice(0,mention.index);
         const correction = /(?:\bno|\bsorry|\bi mean|\brather|\bcorrection)[,\s]*$/.test(before);
         // Explicit separators or two bare numbers; lexical suffixes reject prose lookalikes.
-        const m = after.match(/^\s*(?:(chapter|chap|ch)\s*)?(\d+)(?:(\s*:\s*|\s*,?\s*(?:verses?|vs?)\s*|\s+)(\d+))?(?:\s*(?:to|through|until|-)\s*(\d+))?/);
+        const m = after.match(/^\s*(?:(chapter|chap|ch)\s*(?:number\s*[, :]?\s*)?)?(\d+)(?:(\s*:\s*|\s*,?\s*(?:and\s+)?(?:verses?|vs?)\s*|\s+and\s+|\s+)(\d+))?(?:\s*(?:to|through|until|-)\s*(\d+))?/);
         if (!m) {
-          if (i === mentions.length-1 && /^\s*(?:chapter|verses?)?\s*[.,]?\s*$/.test(after) && mention[0].length > 2) this.pendingReference = { text: `${mention[0]}${after.replace(/[.,]/g,'')}`, at:now };
+          if (i === mentions.length-1 && /^\s*(?:chapter|verses?)?\s*[.,]?\s*$/.test(after) && mention[0].length > 2) rememberReference(`${mention[0]}${after.replace(/[.,]/g,'')}`);
           continue;
         }
         const rest = after.slice(m[0].length);
-        if (/^\s*(?:years?|people|percent|dollars|minutes|hours|children|men|women|times|days|months|weeks|students|arrived)\b/.test(rest)) continue;
-        const cue = /\b(?:book of|turn (?:with me )?to|open (?:your bibles? )?to|read from)\s*$/.test(before);
+        if (quantity(rest)) continue;
+        const cue = scriptureCue.test(before);
         const explicitSyntax = Boolean(m[1] || (m[3] && /[:a-z]/.test(m[3])));
         if (mention[0].length <= 2 && !explicitSyntax && !cue) continue;
         // An unfinished range must not project its start verse.
-        if (/^\s*(?:to|through|until|-|:|verses?)\s*[.,]?\s*$/.test(rest)) {
-          this.pendingReference={text:`${mention[0]}${after.replace(/[.,]/g,'')}`,at:now};continue;
+        if (i === mentions.length - 1 && /^\s*(?:(?:and\s+)?(?:to|through|until|-|:|verses?)|and)\s*[.,]?\s*$/.test(rest)) {
+          rememberReference(`${mention[0]}${after.replace(/[.,]/g,'')}`);continue;
         }
-        if (/^\s*(?:to\b|through\b|until\b|-|:|verses?\b)/.test(rest) || /^\.\d/.test(rest)) continue;
+        if (/^\s*(?:to\b|through\b|until\b|-|:|(?:and\s+)?verses?\b(?!\s+\d))/.test(rest) || /^\.\d/.test(rest)) continue;
         // Joined STT digits are suggestions, never permission to guess a live verse.
         if (!m[1] && !m[4] && !m[5] && m[2].length >= 2 && book.maxChapters > 1 && this.getScriptureVerses) {
+          const chapterRows = this.getScriptureVerses(book.name, +m[2], version);
+          const validChapter = +m[2] <= book.maxChapters && Array.isArray(chapterRows) && chapterRows.length > 0;
+          if (validChapter) {
+            emit(book, +m[2], null, null, mention[0]+m[0], false, correction);
+            if (/^[.,\s]*$/.test(rest)) rememberReference(mention[0]+m[0]);
+            followups(rest, this.scriptureContext);
+            continue;
+          }
           let candidates = [];
           for (let split = 1; split < m[2].length; split++) {
             const chapter = +m[2].slice(0, split), verse = +m[2].slice(split);
@@ -906,37 +966,29 @@ class SpeechAiEngine {
             const rows = this.getScriptureVerses(book.name, chapter, version);
             if (rows?.some(row => row.verse === verse)) candidates.push({ chapter, verse });
           }
-          const chapterRows = this.getScriptureVerses(book.name, +m[2], version);
-          const validChapter = +m[2] <= book.maxChapters && Array.isArray(chapterRows) && chapterRows.length > 0;
           const contextual = candidates.filter(c => previousContext?.book.name === book.name && previousContext.chapter === c.chapter);
-          if (!validChapter && contextual.length === 1) candidates = contextual;
+          if (contextual.length === 1) candidates = contextual;
           for (const candidate of candidates) {
             if (emit(book, candidate.chapter, candidate.verse, null, mention[0]+m[0], false, correction)) {
               outputs[outputs.length - 1].inferredReference = true;
             }
           }
           if (candidates.length) {
-            if (validChapter) {
-              // Keep the literal chapter available, and let a later "verse N" complete it.
-              emit(book, +m[2], null, null, mention[0]+m[0], false, correction);
-              this.pendingReference = { text: mention[0]+m[0], at: now };
-            } else if (candidates.length > 1) this.scriptureContext = null;
+            if (candidates.length > 1) this.scriptureContext = null;
             continue;
           }
         }
         if (!m[4] && !m[1] && !cue && book.maxChapters !== 1 && ['job','mark','john','james','ruth','numbers','song'].includes(mention[0])) {
-          if (/^[.,\s]*$/.test(rest)) this.pendingReference = { text: mention[0]+m[0], at: now };
+          if (/^[.,\s]*$/.test(rest)) rememberReference(mention[0]+m[0]);
           continue;
         }
         let chapter=+m[2], verse=m[4] ? +m[4] : null, end=m[5] ? +m[5] : null;
         if (book.maxChapters===1 && !m[1] && verse===null) { verse=chapter;chapter=1; }
         if (emit(book,chapter,verse,end,mention[0]+m[0],true,correction)) {
-          if (verse === null && /^[.,\s]*$/.test(rest)) this.pendingReference = { text: mention[0]+m[0], at: now };
+          if (verse === null && /^[.,\s]*$/.test(rest)) rememberReference(mention[0]+m[0]);
           const correctedRest = rest.replace(/\b(no|sorry|i mean|rather|correction)[,\s]+(?=\d)/g, '$1 verse ');
+          if (verse !== null) verseList(correctedRest, this.scriptureContext);
           followups(correctedRest,this.scriptureContext);
-          for (const extra of correctedRest.matchAll(/\band\s+(\d+)(?:\s*(?:to|through|-)\s*(\d+))?/g)) {
-            if (/^[.,\s]*$/.test(correctedRest.slice(extra.index+extra[0].length))) emit(book,chapter,+extra[1],extra[2] ? +extra[2] : null,extra[0],false);
-          }
         } else this.scriptureContext = null;
       }
     }

@@ -114,7 +114,7 @@ test('host applies operator projections through the same selection function', ()
 test('unchanged remote workspace patches keep cards mounted; changed chapters build once', () => {
   let decks = 0, libraries = 0;
   const context = vm.createContext({state:{activeDeckType:'bible',activeBibleBook:'Genesis',activeBibleChapter:1,currentTab:'bible',activeLiveSlideId:'bible_Genesis_1_29'},window:{},
-    document:{getElementById:()=>null,querySelectorAll:()=>[]},syncTransparentBtnUI(){},syncMedleySettingsUI(){},
+    document:{getElementById:()=>null,querySelectorAll:()=>[]},syncTransparentBtnUI(){},syncMedleySettingsUI(){},syncDisplaySettingsUI(){},
     renderAgenda(){},renderLibrary(){libraries++;},renderDeck(){decks++;},updateActiveSlideVisuals(){}});
   vm.runInContext(section(app,'function applyDashboardPatch(','function syncDashboardWorkspace('),context);
   context.applyDashboardPatch({...context.state,activeLiveSlideId:'bible_Genesis_1_30'});

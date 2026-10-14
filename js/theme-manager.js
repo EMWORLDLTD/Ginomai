@@ -720,7 +720,7 @@ class ThemeManager {
       textColor: theme.textColor,
       textShadow: theme.textShadow,
       headerColor: theme.headerColor,
-      font: settings.sanctuaryFont || theme.font,
+      font: settings === this && this.activeSongTheme && theme.importedStyle ? theme.font : settings.sanctuaryFont || theme.font,
       dimmer: settings.sanctuaryDimmer,
       obsModeRule: settings.obsModeRule || 'always_lt'
     };
@@ -745,42 +745,10 @@ class ThemeManager {
   }
 
   updateSanctuaryUi() {
-    const settings = this.sanctuaryDraft || this;
-    if (typeof window.updateSanctuaryFramingPreview === 'function') window.updateSanctuaryFramingPreview();
     const curTheme = SANCTUARY_THEMES[this.activeSanctuaryTheme] || SANCTUARY_THEMES.deep_celestial;
     const btnLabel = document.getElementById('bento-sanctuary-theme-name');
     if (btnLabel) {
       btnLabel.textContent = curTheme.name;
-    }
-    const dimmerLabel = document.getElementById('sanctuary-dimmer-val');
-    if (dimmerLabel) {
-      dimmerLabel.textContent = `${settings.sanctuaryDimmer}%`;
-    }
-    const dimmerSlider = document.getElementById('sanctuary-dimmer-slider');
-    if (dimmerSlider) {
-      dimmerSlider.value = settings.sanctuaryDimmer;
-    }
-
-    // Update active highlight in theme popover cards
-    document.querySelectorAll('.sanctuary-theme-card').forEach(card => {
-      const tid = card.getAttribute('data-theme-id');
-      const selected = tid === settings.activeSanctuaryTheme || (settings.activeSanctuaryTheme === 'deep_celestial' && tid === 'celestial_motion');
-      card.classList.toggle('active', selected);
-      card.classList.toggle('is-applied', tid === this.activeSanctuaryTheme || (this.activeSanctuaryTheme === 'deep_celestial' && tid === 'celestial_motion'));
-      card.setAttribute('aria-pressed', String(selected));
-    });
-
-    // Update font buttons in popover
-    document.querySelectorAll('.sanctuary-font-btn').forEach(btn => {
-      const font = btn.getAttribute('data-font');
-      btn.classList.toggle('active', font === settings.sanctuaryFont);
-      btn.setAttribute('aria-pressed', String(font === settings.sanctuaryFont));
-    });
-
-    // Update OBS mode rule select
-    const obsRuleSelect = document.getElementById('obs-mode-rule-select');
-    if (obsRuleSelect) {
-      obsRuleSelect.value = settings.obsModeRule || 'always_lt';
     }
   }
 
@@ -954,6 +922,27 @@ function setSongBoundTheme(songId, themeId) {
 }
 window.setSongBoundTheme = setSongBoundTheme;
 
+let songThemePickerFilter = 'all';
+let songThemePickerReturnFocus = null;
+
+function filterSongThemeBackgrounds(filter = songThemePickerFilter) {
+  songThemePickerFilter = filter;
+  const query = (document.getElementById('song-theme-picker-search')?.value || '').trim().toLowerCase();
+  const grid = document.getElementById('song-theme-picker-grid');
+  if (!grid) return;
+  let count = 0;
+  for (const card of grid.children) {
+    card.hidden = !card.dataset.name.includes(query) || (filter === 'motion' ? card.dataset.type !== 'video' : filter === 'still' ? card.dataset.type === 'video' : filter === 'uploads' ? card.dataset.custom !== 'true' : false);
+    if (!card.hidden) count++;
+  }
+  document.getElementById('song-theme-picker-filters')?.querySelectorAll('button').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.filter === filter));
+  });
+  const empty = document.getElementById('song-theme-picker-empty');
+  if (empty) empty.hidden = count > 0;
+}
+window.filterSongThemeBackgrounds = filterSongThemeBackgrounds;
+
 function openSongThemeBindingModal(songId) {
   const song = (window.SONGS_DATABASE || []).find(s => s.id === songId);
   if (!song) return;
@@ -964,42 +953,78 @@ function openSongThemeBindingModal(songId) {
   if (!modal || !grid) return;
 
   if (targetIdInput) targetIdInput.value = songId;
-  if (heading) heading.textContent = `Attach Theme to "${song.title}"`;
+  if (heading) heading.textContent = 'Choose a background';
+  songThemePickerReturnFocus = document.activeElement;
 
   const boundTheme = getSongBoundTheme(songId);
 
   const themeKeys = Object.keys(SANCTUARY_THEMES);
   const escapeStr = (s) => (s ? String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '');
 
-  grid.innerHTML = themeKeys.map(k => {
+  const signature = JSON.stringify(themeKeys.map(k => {
     const t = SANCTUARY_THEMES[k];
-    const isSelected = (boundTheme === k);
-    const bgStyle = t.previewGradient || '#1e293b';
+    return [k, t.name, t.type, t.custom, t.imageUrl, t.videoUrl, t.previewGradient, t.bgCss];
+  }));
+  if (grid.dataset.catalog !== signature) {
+    grid.dataset.catalog = signature;
+    grid.innerHTML = themeKeys.map(k => {
+    const t = SANCTUARY_THEMES[k];
+    const bgStyle = t.previewGradient || t.bgCss || '#1e293b';
     const preview = t.imageUrl
       ? `<img class="song-theme-preview-media" src="${escapeStr(t.imageUrl)}" alt="" loading="lazy" decoding="async">`
       : t.videoUrl
         ? `<video class="song-theme-preview-media" src="${escapeStr(t.videoUrl)}" muted playsinline preload="metadata" aria-hidden="true"></video>`
         : '';
     return `
-      <div class="song-theme-option-card ${isSelected ? 'active' : ''}" onclick="window.selectSongThemeFromModal('${k}')">
-        <div class="song-theme-option-thumb" style="background: ${escapeStr(bgStyle)}; background-size: cover;">
+      <button type="button" class="ann-background-option" data-theme-id="${escapeStr(k)}" data-name="${escapeStr(t.name.toLowerCase())}" data-type="${escapeStr(t.type)}" data-custom="${Boolean(t.custom)}" aria-label="${escapeStr(t.name)}">
+        <span class="ann-background-swatch" style="background: ${escapeStr(bgStyle)};">
           ${preview}
-          <span class="song-theme-thumb-badge">${escapeStr(t.badge || t.category || 'THEME')}</span>
-        </div>
-        <div class="song-theme-option-title">${escapeStr(t.name)}</div>
-      </div>
+          <svg class="ann-background-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 4 4 10-10"/></svg>
+          ${t.type === 'video' ? '<span class="ann-background-motion">Motion</span>' : ''}
+        </span>
+        <span class="ann-background-option-name">${escapeStr(t.name)}</span>
+      </button>
     `;
-  }).join('');
+    }).join('');
+    grid.onclick = event => {
+      const card = event.target.closest('button[data-theme-id]');
+      if (card && grid.contains(card)) selectSongThemeFromModal(card.dataset.themeId);
+    };
+  }
+  for (const card of grid.children) card.setAttribute('aria-pressed', String(card.dataset.themeId === boundTheme));
+  const search = document.getElementById('song-theme-picker-search');
+  if (search) search.value = '';
+  filterSongThemeBackgrounds('all');
+  grid.scrollTop = 0;
 
   modal.style.display = 'flex';
+  search?.focus();
 }
 window.openSongThemeBindingModal = openSongThemeBindingModal;
 
 function closeSongThemeBindingModal() {
   const modal = document.getElementById('song-theme-picker-modal-backdrop');
   if (modal) modal.style.display = 'none';
+  songThemePickerReturnFocus?.focus?.();
+  songThemePickerReturnFocus = null;
 }
 window.closeSongThemeBindingModal = closeSongThemeBindingModal;
+
+document.addEventListener?.('keydown', event => {
+  const modal = document.getElementById('song-theme-picker-modal-backdrop');
+  if (!modal || modal.style.display !== 'flex') return;
+  // Keep picker shortcuts from navigating or clearing the live output.
+  event.stopImmediatePropagation();
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeSongThemeBindingModal();
+  } else if (event.key === 'Tab') {
+    const controls = Array.from(modal.querySelectorAll('button, input:not([type="hidden"])')).filter(el => !el.hidden);
+    const first = controls[0], last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }
+}, true);
 
 function selectSongThemeFromModal(themeId) {
   const targetIdInput = document.getElementById('song-theme-target-song-id');

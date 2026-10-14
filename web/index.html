@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d13">
+  <meta name="description" content="Prepare and present scripture and songs in your browser. Free, with local saving and prepared offline use.">
+  <title>Ginomai Web — The Word in Motion</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="css/cloud-account.css">
+  <script src="js/cloud-config.js"></script>
+  <script type="module" src="app.mjs"></script>
+</head>
+<body>
+  <div id="app" data-panel="library">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Ginomai Web home"><img src="icon.svg" alt="" width="32" height="32"><span>Ginomai <small>WEB</small></span></a>
+      <div class="session-switch"><label class="sr-only" for="service">Active service</label><select id="service" aria-label="Active service"></select><button id="new-service" class="icon-button" aria-label="Create a service">+</button></div>
+      <span id="save-status" role="status">Opening local storage…</span>
+      <button id="retry-save" hidden>Retry save</button>
+      <button id="prepare" class="secondary">Prepare offline</button>
+      <button id="open-output" class="primary">Open projector</button>
+      <button id="more" class="icon-button" aria-label="Backup and display options">⋯</button>
+    </header>
+    <div id="save-error" class="error-banner" role="alert" hidden></div>
+    <div class="workspace">
+      <section class="panel library-panel" aria-labelledby="library-heading">
+        <div class="panel-heading"><div><span class="eyebrow">YOUR CONTENT</span><h1 id="library-heading">Library</h1></div><button id="new-song" class="secondary">New song</button></div>
+        <div class="tabs" role="tablist" aria-label="Library type"><button id="songs-tab" role="tab" aria-selected="true">Songs</button><button id="bible-tab" role="tab" aria-selected="false">Bible</button></div>
+        <label class="sr-only" for="search">Search songs or scripture</label><input id="search" type="search" autocomplete="off" placeholder="Find a song…">
+        <div id="bible-controls" hidden>
+          <label for="version">Translation</label><select id="version"></select>
+          <div class="bible-browse"><div><label for="book">Book</label><select id="book"></select></div><div><label for="chapter">Chapter</label><select id="chapter"></select></div></div>
+          <div class="button-row"><button id="load-chapter" class="secondary">Load chapter</button><button id="import-bible">Import Bible</button></div>
+          <p id="bible-status" class="muted" role="status"></p>
+        </div>
+        <div id="library-list" class="list" aria-label="Library results"></div>
+      </section>
+      <section class="panel slides-panel" aria-labelledby="deck-heading">
+        <div class="panel-heading"><div><span class="eyebrow">PREPARE → PRESENT</span><h2 id="deck-heading">Your slides</h2></div><div class="button-row"><button id="edit-song" hidden>Edit</button><button id="add-agenda" class="secondary" disabled>Add to agenda</button></div></div>
+        <p id="deck-hint" class="muted">Choose scripture or a song. Selecting a slide previews it; Take live presents it.</p>
+        <div id="slide-list" class="slide-list"></div>
+        <div class="live-controls">
+          <button id="previous" class="icon-button" aria-label="Previous slide" disabled>←</button>
+          <button id="take-live" class="primary" disabled>Take live</button>
+          <button id="next" class="icon-button" aria-label="Next slide" disabled>→</button>
+          <button id="hold" aria-pressed="false">Hold live</button>
+          <button id="clear">Clear text</button>
+          <button id="blackout">Blackout</button>
+        </div>
+      </section>
+      <section class="panel agenda-panel" aria-labelledby="agenda-heading">
+        <div class="panel-heading"><div><span class="eyebrow">SERVICE ORDER</span><h2 id="agenda-heading">Agenda</h2></div><span id="agenda-count" class="count">0 items</span></div>
+        <div id="agenda-list" class="list"></div>
+      </section>
+      <section class="panel output-panel" aria-labelledby="output-heading">
+        <div class="panel-heading"><div><span class="eyebrow">ON THE SCREEN</span><h2 id="output-heading">Live output</h2></div><span id="live-status" class="live-status">Clear</span></div>
+        <div class="output-frame"><iframe id="preview" src="display.html?target=sanctuary&preview=1" title="Current live projector output" tabindex="-1"></iframe></div>
+        <p id="output-status" class="muted" role="status">No projector window connected</p>
+        <div class="output-settings"><label for="background">Background</label><input id="background" type="color" value="#10121e"><label for="text-scale">Text size</label><input id="text-scale" type="range" min="0.6" max="1.8" step="0.1" value="1"></div>
+        <div id="cue-summary" class="cue-summary"><span class="eyebrow">SELECTED SLIDE</span><p id="cue-reference">Nothing selected</p><p id="cue-text" class="muted"></p></div>
+        <p id="offline-status" class="muted" role="status">Prepare this browser before using it offline.</p>
+      </section>
+    </div>
+    <nav class="mobile-nav" aria-label="Workspace"><button data-panel="library" aria-current="page">Library</button><button data-panel="slides">Slides</button><button data-panel="agenda">Agenda</button><button data-panel="output">Output</button></nav>
+  </div>
+  <div id="dialog-shield" class="dialog-shield" hidden>
+    <section id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" tabindex="-1">
+      <div class="panel-heading"><h2 id="dialog-title"></h2><button id="close-dialog" class="icon-button" aria-label="Close dialog">×</button></div>
+      <div id="dialog-body"></div>
+    </section>
+  </div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <input id="backup-file" type="file" accept=".ginomai,.ginomia,.json" hidden>
+  <input id="bible-file" type="file" accept=".json,application/json" hidden>
+  <input id="songs-file" type="file" accept=".json,application/json" hidden>
+</body>
+</html>

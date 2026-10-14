@@ -1764,6 +1764,154 @@ select option {
   padding-bottom: 14px;
 }
 
+/* Help keeps the existing settings shell and organizes only its content. */
+#tab-help .settings-section-desc {
+  margin-bottom: 0;
+}
+
+#tab-help .settings-help-section {
+  container-type: inline-size;
+}
+
+#tab-help .settings-help-section-title {
+  margin: 0 0 10px;
+  color: var(--text, var(--text-starlight));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#tab-help .settings-help-learn-grid,
+#tab-help .settings-help-support-grid {
+  display: grid;
+  gap: 10px;
+}
+
+#tab-help .settings-help-learn-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+#tab-help .settings-help-support-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#tab-help .settings-help-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border, var(--border-slate));
+  border-radius: 12px;
+  background: var(--card-2, var(--card-surface));
+}
+
+#tab-help .settings-help-card-feature {
+  background: var(--purple-dim, rgba(236, 72, 153, 0.12));
+  border-color: transparent;
+}
+
+#tab-help .settings-help-card-icon {
+  flex-shrink: 0;
+  color: var(--purple, var(--accent-pink-light));
+}
+
+#tab-help .settings-help-card .settings-field-info {
+  width: 100%;
+  gap: 6px;
+}
+
+#tab-help .settings-field-sub {
+  color: var(--dim, var(--text-dim)) !important;
+  line-height: 1.5;
+}
+
+#tab-help .settings-help-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#tab-help .settings-help-btn {
+  max-width: 100%;
+  white-space: normal;
+  justify-content: center;
+}
+
+#tab-help .settings-help-btn svg {
+  flex-shrink: 0;
+}
+
+#tab-help .settings-help-card-feature .settings-help-btn {
+  background: var(--purple, var(--accent-pink)) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+}
+
+#tab-help .settings-help-update,
+#tab-help .settings-help-community,
+#tab-help .settings-help-maintenance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+#tab-help .settings-help-update {
+  padding: 14px 0;
+  border-top: 1px solid var(--border, var(--border-slate));
+  border-bottom: 1px solid var(--border, var(--border-slate));
+}
+
+#tab-help .settings-help-update .settings-field-info,
+#tab-help .settings-help-community .settings-field-info {
+  flex: 1 1 200px;
+  gap: 4px;
+}
+
+#tab-help .settings-social-grid {
+  grid-template-columns: repeat(4, 34px);
+  gap: 8px;
+}
+
+#tab-help .settings-social-card {
+  height: 34px;
+  border-radius: 8px;
+}
+
+#tab-help .settings-help-maintenance {
+  padding-top: 14px;
+  border-top: 1px solid var(--border, var(--border-slate));
+  color: var(--dim, var(--text-dim));
+  font-size: 11px;
+}
+
+#tab-help .settings-help-maintenance button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.04s;
+}
+
+#tab-help .settings-help-maintenance button:hover {
+  color: var(--text, var(--text-starlight));
+}
+
+@container (max-width: 480px) {
+  #tab-help .settings-help-learn-grid,
+  #tab-help .settings-help-support-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .settings-field-info {
   display: flex;
   flex-direction: column;

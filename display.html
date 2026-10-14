@@ -1875,6 +1875,7 @@
 
       slot.content.style.fontSize = `${effectiveBasePx * scale}px`;
       slot.content.dataset.preferredSize = String(effectiveBasePx * scale);
+      slot.content.dataset.autoScale = String(data.textAutoScale !== false);
       slot.content.dataset.fitBaseSize = String(effectiveBasePx * (isBibleRef ? 1 : isLt ? 1.4 : 2.2));
       if (typeof window !== 'undefined') window.scheduleOutputFit?.();
     }
@@ -2094,6 +2095,17 @@
       const songScaleFull = data.songScaleFull !== undefined ? data.songScaleFull : 2.2;
       const songScaleLt = data.songScaleLt !== undefined ? data.songScaleLt : 1.4;
       const isLt = isLowerThirdLayout(data);
+
+      // Scaling changes fit resident text without rebuilding or replaying the slide.
+      let scalingChanged = false;
+      slots.forEach(slot => {
+        const enabled = String(data.textAutoScale !== false);
+        if (slot.content.dataset.autoScale !== enabled) {
+          slot.content.dataset.autoScale = enabled;
+          scalingChanged = true;
+        }
+      });
+      if (scalingChanged) window.scheduleOutputFit?.();
 
       // Appearance changes update the existing cards even when slide content is unchanged.
       window.LATEST_STATE = data;

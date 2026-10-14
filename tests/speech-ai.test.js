@@ -217,15 +217,15 @@ test('same chapter recall survives a sermon pause and joined digits remain sugge
  assert(other.verses.every(v=>!v.autoProjectEligible));
 });
 
-test('two-digit merged references recover as manual suggestions without losing literal chapters',()=>{
+test('merged references recover only when the number is not a valid literal chapter',()=>{
  const h=harness();h.engine.simulateTranscript('Revelation 52');
  assert.equal(h.verses.at(-1).rawReference,'Revelation 5:2');
  assert.equal(h.verses.at(-1).inferredReference,true);
  assert.equal(h.verses.at(-1).autoProjectEligible,false);
  h.engine.simulateTranscript('Mark 14');
- assert.equal(h.verses.at(-1).rawReference,'Mark 1:4');
- assert.equal(h.verses.at(-1).autoProjectEligible,false);
+ assert.equal(h.verses.length,1);
  h.tick(2600);assert.equal(h.verses.at(-1).rawReference,'Mark 14');
+ assert.equal(h.verses.at(-1).autoProjectEligible,false);
  h.engine.simulateTranscript('verse three');assert.equal(h.verses.at(-1).rawReference,'Mark 14:3');
 });
 test('explicit chapters are not split, separated numbers stay explicit, and prose is rejected',()=>{
@@ -236,4 +236,95 @@ test('explicit chapters are not split, separated numbers stay explicit, and pros
  h.engine.simulateTranscript('Revelation five two');assert.equal(h.verses.at(-1).rawReference,'Revelation 5:2');
  const count=h.verses.length;h.engine.simulateTranscript('Mark 14 people arrived');h.engine.simulateTranscript('Revelation 50');h.tick(2600);
  assert.equal(h.verses.length,count);
+});
+
+test('OSOM complete references accept natural fillers, conjunctions and spoken colons',()=>{
+ for(const [text,expected] of [
+  ['With Romans chapter number six and verse seven he that is dead is freed from sin','Romans 6:7'],
+  ['To some Jewish folks in John chapter number five and thirty nine he said to them yes such the scriptures','John 5:39'],
+  ['Daniel chapter number 12 and verse three, saying the same thing.','Daniel 12:3'],
+  ['Because in Ephesians five and eighteen Paul gave that as an instruction','Ephesians 5:18'],
+  ['Like in Romans one:one it says called','Romans 1:1'],
+  ['The word spodazo. 2Timothy four:nine, Ruth.','2 Timothy 4:9'],
+  ['From first Peter five and two yesterday','1 Peter 5:2']
+ ]){const h=harness();h.engine.simulateTranscript(text);assert.deepEqual(h.verses.filter(v=>v.kind==='verse').map(v=>v.rawReference),[expected],text);}
+});
+
+test('verse-first and chapter-first inverse references retain their numbers',()=>{
+ for(const [text,expected] of [
+  ['They prayed in verse 31 of Acts chapter four. When they had prayed','Acts 4:31'],
+  ['Read from verse one of Romans chapter six','Romans 6:1'],
+  ['Verses two through four of Romans chapter six','Romans 6:2-4']
+ ]){const h=harness();h.engine.simulateTranscript(text);assert.equal(h.verses[0]?.rawReference,expected,text);}
+ const h=harness();h.engine.simulateTranscript('The local church. In chapter three of second Timothy,');h.tick(14000);
+ h.engine.simulateTranscript('Verse 14 the same Paul to Timothy is, but continue thou in the things which thou has learned');
+ assert.equal(h.verses.at(-1).rawReference,'2 Timothy 3:14');assert.equal(h.verses.at(-1).autoProjectEligible,false);
+});
+
+test('unfinished OSOM references wait without emitting guessed verses',()=>{
+ for(const [first,last,expected] of [
+  ['Genesis 18 and verse','19 God vowed for him. God said I know him','Genesis 18:19'],
+  ['Solomon in Proverbs chapter number 11 and verse','30 says, the fruit of the righteous is a tree of life','Proverbs 11:30'],
+  ['John chapter number five and','thirty nine','John 5:39']
+ ]){const h=harness();h.engine.simulateTranscript(first);h.tick(5000);assert.equal(h.verses.length,0,first);h.engine.simulateTranscript(last);assert.equal(h.verses[0]?.rawReference,expected,first);}
+});
+
+test('valid chapter mentions do not invent chapter and verse splits',()=>{
+ for(const [text,expected] of [
+  ['Matthew 19 Again I will start from verse one.','Matthew 19:1'],
+  ['So they quoted Deuteronomy 24 from verse one.','Deuteronomy 24:1'],
+  ['In Matthew 21 and verse 16. This happened in the temple','Matthew 21:16']
+ ]){const h=harness();h.engine.simulateTranscript(text);assert.deepEqual(h.verses.filter(v=>v.kind==='verse').map(v=>v.rawReference),[expected],text);}
+ for(const text of ['Genesis 18','Matthew 19','First Corinthians 15','John 16','From John 21 we just jump to Romans one.']){
+  const h=harness();h.engine.simulateTranscript(text);h.tick(3000);assert(h.verses.length>0,text);assert(h.verses.every(v=>v.kind==='chapter'&&!v.autoProjectEligible),text);
+ }
+ const h=harness();h.engine.simulateTranscript('John111');assert.deepEqual(h.verses.map(v=>v.rawReference),['John 1:11','John 11:1']);assert(h.verses.every(v=>!v.autoProjectEligible));
+});
+
+test('ordinary sermon words preserve active and pending scripture context',()=>{
+ const h=harness();h.engine.simulateTranscript('John 3:16');
+ h.engine.simulateTranscript('The word of God is life and he who seeks life receives revelation');
+ h.engine.simulateTranscript('Verse seventeen is clear');assert.equal(h.verses.at(-1).rawReference,'John 3:17');
+ h.engine.simulateTranscript('The vision is the same and the mission is the same.');
+ h.engine.simulateTranscript('In verse eighteen');assert.equal(h.verses.at(-1).rawReference,'John 3:18');
+ const p=harness();p.engine.simulateTranscript('Romans chapter eight');p.tick(1000);p.engine.simulateTranscript('He is speaking about revelation');p.tick(1600);
+ assert.equal(p.verses[0]?.rawReference,'Romans 8');
+});
+
+test('consecutive verse calls and adjacent verse lists follow spoken order',()=>{
+ for(const [text,expected] of [
+  ['Ephesians three verse one verse two if ye have heard. The dispensation of the grace of God. Which is given me to you what',['Ephesians 3:1','Ephesians 3:2']],
+  ['John 3:16 verse seventeen',['John 3:16','John 3:17']],
+  ['John 3:16 and seventeen verse eighteen',['John 3:16','John 3:17','John 3:18']],
+  ['Second Corinthians three five and six. So',['2 Corinthians 3:5','2 Corinthians 3:6']],
+  ['Matthew chapter nineteen verses four, five, and six',['Matthew 19:4','Matthew 19:5','Matthew 19:6']]
+ ]){const h=harness();h.engine.simulateTranscript(text);assert.deepEqual(h.verses.filter(v=>v.kind==='verse').map(v=>v.rawReference),expected,text);}
+});
+
+test('reading cues recover contextual numbers but ordinary counts do not',()=>{
+ const h=harness();h.engine.simulateTranscript('John seven verse 38');h.tick(4000);h.engine.simulateTranscript('Scripture has said out of his belly shall flow rivers');h.tick(4000);
+ h.engine.simulateTranscript('Of living water. And 39, John now explained that this spake he');assert.equal(h.verses.at(-1).rawReference,'John 7:39');assert.equal(h.verses.at(-1).autoProjectEligible,false);
+ h.engine.simulateTranscript('And 40 people came');h.engine.simulateTranscript('15 people now came');h.engine.simulateTranscript('There are 41 days remaining');assert.equal(h.verses.length,2);
+ const p=harness();p.engine.simulateTranscript('John chapter three');p.engine.simulateTranscript('15 now says that whosoever believeth');assert.equal(p.verses.at(-1).rawReference,'John 3:15');assert.equal(p.verses.at(-1).autoProjectEligible,false);
+});
+
+test('explicit returns retain bounded chapter recall without reviving expired context',()=>{
+ const h=harness();h.engine.simulateTranscript('2 Timothy 4:9');h.tick(90000);h.engine.simulateTranscript('Look at verse twenty one');assert.equal(h.verses.at(-1).rawReference,'2 Timothy 4:9');
+ h.engine.simulateTranscript('Go back to verse twenty one');assert.equal(h.verses.at(-1).rawReference,'2 Timothy 4:21');assert.equal(h.verses.at(-1).autoProjectEligible,false);
+ h.tick(10*60*1000+1);h.engine.simulateTranscript('Go back to verse nine');assert.equal(h.verses.at(-1).rawReference,'2 Timothy 4:21');
+});
+
+test('assembled references preserve confidence from all finalized evidence',()=>{
+ const h=harness();h.engine.processSpokenText('John three',true,{recognitionConfidence:.4});h.tick(1000);h.engine.processSpokenText('sixteen',true,{recognitionConfidence:.99});
+ assert.equal(h.verses[0].recognitionConfidence,.4);assert.equal(h.verses[0].autoProjectEligible,false);
+ h.engine.processSpokenText('John 3:17',true,{recognitionConfidence:.99});assert.equal(h.verses.at(-1).recognitionConfidence,.99);assert.equal(h.verses.at(-1).autoProjectEligible,true);
+ const p=harness();p.engine.processSpokenText('Proverbs chapter number eleven and verse',true,{recognitionConfidence:.55});p.tick(5000);p.engine.processSpokenText('thirty',true,{recognitionConfidence:.97});assert.equal(p.verses[0].recognitionConfidence,.55);assert.equal(p.verses[0].autoProjectEligible,false);
+});
+
+test('new grammar still rejects invalid references, malformed tails and numerical prose',()=>{
+ for(const text of ['Romans chapter number 99 and verse one','Daniel chapter number twelve and verse 99','John three and sixteen year olds arrived','Ephesians five and eighteen people','John chapter three verses eighteen through sixteen','Verse 99 of Acts chapter four','John 3:16 verse bananas']){
+  const h=harness();h.engine.simulateTranscript(text);h.tick(3000);assert.equal(h.verses.length,0,text);
+ }
+ const h=harness();h.engine.simulateTranscript('John 3:16');h.engine.simulateTranscript('Acts chapter number 99');h.engine.simulateTranscript('verse seventeen');assert.equal(h.verses.length,1);
+ const p=harness();p.engine.simulateTranscript('Genesis 18 and verse');p.tick(9000);p.engine.simulateTranscript('nineteen');assert.equal(p.verses.length,0);
 });
