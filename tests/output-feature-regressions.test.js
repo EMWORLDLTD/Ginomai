@@ -59,7 +59,7 @@ test('full-screen announcement backgrounds render on cleared output and stop vid
     window: {}, document: { getElementById: id => elements[id], body: { classList: { add() {}, remove() {} } } },
     isLowerThirdLayout: () => false, applySanctuaryTheme() {}, ensureAlphaTransparent() {}, lastProcessedTimestamp: 0, lastRenderedKey: '',
     container: { classList: { contains: () => false, remove() {} } }, standbyEl: null, activeSlotIndex: 0,
-    slots: [0, 1].map(() => ({ el: { getAttribute: () => null, removeAttribute() {} }, box: {} })) };
+    slots: [0, 1].map(() => ({ el: { getAttribute: () => null, removeAttribute() {} }, box: {}, content: { dataset: {} } })) };
   vm.createContext(c); vm.runInContext(functionSource(display, 'applyLiveAlert') + '\n' + functionSource(display, 'applyState'), c);
   const alert = { active: true, text: 'Welcome', position: 'fullscreen', destinations: { sanctuary: true },
     background: { id: 'image', type: 'image', imageUrl: 'Themes/gold.webp', dimmer: 30, textColor: '#fff8e0', font: 'Outfit' } };
@@ -105,7 +105,7 @@ test('microphone status preserves projected songs and Bible verses until an expl
   for (const contentType of ['song', 'bible']) {
     const visible = new Set();
     const classes = { contains:key=>visible.has(key), add:key=>visible.add(key), remove:key=>visible.delete(key) };
-    const slot = () => ({ el:{className:'slide-slot',getAttribute:()=>null,removeAttribute(){}},box:{} });
+    const slot = () => ({ el:{className:'slide-slot',getAttribute:()=>null,removeAttribute(){}},box:{},content:{dataset:{}} });
     const alerts = [];
     const c = { isStage:false,isSanctuary:true,isExplicitLt:false,targetType:'sanctuary',stageServiceTimer:{},
       applyLiveAlert:alert=>alerts.push(alert),applySanctuaryTheme(){},isLowerThirdLayout:()=>false,

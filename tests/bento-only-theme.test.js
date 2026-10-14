@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const path = require('node:path');
 
 test('legacy UI preferences migrate to Bento and unsupported styles cannot be reactivated', () => {
   const saved = new Map([['sf_ui_style', 'classic'], ['sf_ui_mode', 'light']]);
@@ -26,5 +27,12 @@ test('legacy UI preferences migrate to Bento and unsupported styles cannot be re
 test('EXE packaging recursively excludes the archived console', () => {
   const { payloadConfig } = require('../scripts/build-desktop');
   const config = payloadConfig({ platform: 'win32', arch: 'x64' }, 'unused');
-  assert(config.files.includes('!archive/**'));
+  const { FileMatcher } = require('app-builder-lib/out/fileMatcher');
+  const root = path.resolve(__dirname, '..');
+  const filter = new FileMatcher(root, root, value => value, config.files).createFilter();
+  const fileStat = fs.statSync(path.join(root, 'index.html'));
+  for (const file of ['archive/index.html', 'archive/js/app.js', 'archive/themes/classic.css']) {
+    assert.equal(filter(path.join(root, file), fileStat), false, file);
+  }
+  assert.equal(filter(path.join(root, 'js/app.js'), fileStat), true);
 });

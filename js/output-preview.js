@@ -16,28 +16,31 @@
   }
   window.getOutputPreviewDimensions = target => dimensions.get(target) || {width:1920,height:1080};
   window.syncOutputPreviews = () => entries.forEach(layout);
+  function applyPreview(frame, payload) {
+    const output = frame.contentWindow;
+    if (output && payload._operatorRequestId && !payload._timestamp) {
+      output.pendingOperatorPreview = {id:payload._operatorRequestId,startedAt:Date.now()};
+    }
+    // Local selection must not wait for a host echo or advance the server timestamp.
+    const next = {...output?.LATEST_STATE, ...payload};
+    if (!payload._timestamp) delete next._timestamp;
+    if (payload.contentType && payload.contentType !== 'lexicon') {
+      next.isLexicon = false;
+      next.lexiconData = null;
+    }
+    output?.applyState?.(next);
+  }
   window.updateOutputPreviews = payload => {
     latestPayload = { ...latestPayload, ...payload };
-    for (const {frame} of entries) {
-      const output = frame.contentWindow;
-      if (output && payload._operatorRequestId && !payload._timestamp) {
-        output.pendingOperatorPreview = {id:payload._operatorRequestId,startedAt:Date.now()};
-      }
-      // Local selection must not wait for a host echo or advance the server timestamp.
-      const next = {...output?.LATEST_STATE, ...payload};
-      if (payload.contentType && payload.contentType !== 'lexicon') {
-        next.isLexicon = false;
-        next.lexiconData = null;
-      }
-      output?.applyState?.(next);
-    }
+    if (!payload._timestamp) delete latestPayload._timestamp;
+    for (const {frame} of entries) applyPreview(frame, payload);
   };
   for (const [id, target, single] of [['bento-single-prev-wrap','sanctuary',true],['bento-single-prev-wrap','livestream',true],['bento-dual-sanctuary','sanctuary',false],['bento-dual-livestream','livestream',false]]) {
     const host = document.getElementById(id);
     if (!host) continue;
     const frame = document.createElement('iframe');
     frame.addEventListener('load', () => {
-      if (latestPayload) frame.contentWindow?.applyState?.(latestPayload);
+      if (latestPayload) applyPreview(frame, latestPayload);
     });
     frame.className = 'actual-output-preview';
     frame.style.background = '#0A0E18';

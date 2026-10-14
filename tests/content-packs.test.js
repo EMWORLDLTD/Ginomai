@@ -125,7 +125,7 @@ test('a valid gzip hash cannot bypass the expected decompressed checksum', async
   assert.equal((await store.status('NIV')).installed, false);
 });
 
-async function browserFixture(confirm) {
+async function browserFixture(confirm, code = 'NIV') {
   const window = { showCustomConfirm: confirm };
   const dialogs = new Map();
   for (const id of ['content-download-backdrop', 'content-download-dialog', 'content-download-title', 'content-download-detail', 'content-download-progress', 'content-download-dismiss', 'content-download-retry']) {
@@ -134,31 +134,35 @@ async function browserFixture(confirm) {
   let installs = 0;
   const context = vm.createContext({ window, document: { addEventListener() {}, getElementById(id) { return dialogs.get(id); } }, setInterval, clearInterval, fetch: async (url, options) => {
     if (options?.method === 'POST') installs++;
-    return { ok: true, json: async () => ({ code: 'NIV', name: 'NIV', installed: false, cloudAvailable: true, downloadBytes: 1024 }) };
+    return { ok: true, json: async () => ({ code, name: code, installed: false, cloudAvailable: true, downloadBytes: 1024 }) };
   } });
   vm.runInContext(await fs.readFile(path.join(__dirname, '../js/content-packs.js'), 'utf8'), context);
   return { window, dialogs, installs: () => installs };
 }
 
 test('cancelling the first-use prompt performs no download', async () => {
-  const browser = await browserFixture(async () => false);
-  assert.equal(await browser.window.ensureContentPack('NIV'), false);
-  assert.equal(browser.installs(), 0);
-  assert.equal(browser.dialogs.get('content-download-backdrop').hidden, true);
+  for (const code of ['NIV', 'YOR']) {
+    const browser = await browserFixture(async () => false, code);
+    assert.equal(await browser.window.ensureContentPack(code), false);
+    assert.equal(browser.installs(), 0);
+    assert.equal(browser.dialogs.get('content-download-backdrop').hidden, true);
+  }
 });
 
 test('accepting first-use downloads once and updates progress in place', async () => {
-  let prompts = 0;
-  const browser = await browserFixture(async () => { prompts++; return true; });
-  const first = browser.window.ensureContentPack('NIV');
-  assert.equal(first, browser.window.ensureContentPack('NIV'));
-  assert.equal(await first, true);
-  assert.equal(await browser.window.ensureContentPack('NIV'), true);
-  assert.equal(prompts, 1);
-  assert.equal(browser.installs(), 1);
-  assert.equal(browser.dialogs.get('content-download-backdrop').hidden, false);
-  assert.equal(browser.dialogs.get('content-download-progress').value, 100);
-  assert.equal(browser.dialogs.get('content-download-detail').textContent, 'Installed and ready to use offline.');
+  for (const code of ['NIV', 'YOR']) {
+    let prompts = 0;
+    const browser = await browserFixture(async () => { prompts++; return true; }, code);
+    const first = browser.window.ensureContentPack(code);
+    assert.equal(first, browser.window.ensureContentPack(code));
+    assert.equal(await first, true);
+    assert.equal(await browser.window.ensureContentPack(code), true);
+    assert.equal(prompts, 1);
+    assert.equal(browser.installs(), 1);
+    assert.equal(browser.dialogs.get('content-download-backdrop').hidden, false);
+    assert.equal(browser.dialogs.get('content-download-progress').value, 100);
+    assert.equal(browser.dialogs.get('content-download-detail').textContent, 'Installed and ready to use offline.');
+  }
 });
 
 test('cancelling a translation download restores selection without projecting or rebuilding', async () => {

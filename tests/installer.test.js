@@ -83,18 +83,26 @@ test('installation paths reject roots, relative paths and command-line injection
 
 test('byte progress measures copied files without following source symlinks', async t => {
   const f = await fixture(t);
+  const outside = path.join(f.root, 'external-data');
+  await fs.mkdir(outside);
+  await fs.writeFile(path.join(outside, 'not-app-content.txt'), 'outside the app');
+  const link = path.join(f.source, 'external-link');
+  await fs.symlink(outside, link, process.platform === 'win32' ? 'junction' : 'dir');
   try {
-    await fs.symlink('/not-a-real-file', path.join(f.source, 'external-link'));
-  } catch (error) {
-    if (process.platform !== 'win32' || error.code !== 'EPERM') throw error;
-    t.skip('Windows requires developer mode or elevation to create file symlinks');
-    return;
+    const files = await inventory(f.source);
+    assert.ok(!files.some(file => file.path.split(/[\\/]/).includes('external-link')));
+    assert.equal(files.reduce((sum, file) => sum + file.size, 0),
+      (await fs.stat(path.join(f.source, 'Contents', 'Resources', 'app.asar'))).size +
+      (await fs.stat(path.join(f.source, 'Contents', 'MacOS', 'Ginomai'))).size +
+      (await fs.stat(path.join(f.source, 'Contents', 'Info.plist'))).size);
+    assert.equal(await copiedBytes(f.directory, files), 0);
+    await fs.cp(f.source, f.directory, { recursive:true, filter: async source => !(await fs.lstat(source)).isSymbolicLink() });
+    assert.equal(await copiedBytes(f.directory, files), files.reduce((sum, file) => sum + file.size, 0));
+  } finally {
+    // Remove only the link before the fixture cleanup traverses its parent.
+    if (process.platform === 'win32') await fs.rmdir(link);
+    else await fs.unlink(link);
   }
-  const files = await inventory(f.source);
-  assert.ok(!files.some(file => file.path === 'external-link'));
-  assert.equal(await copiedBytes(f.directory, files), 0);
-  await fs.cp(f.source, f.directory, { recursive:true });
-  assert.equal(await copiedBytes(f.directory, files), files.reduce((sum, file) => sum + file.size, 0));
 });
 
 test('Mac install verifies staged data before replacing the existing app', async t => {
@@ -189,7 +197,7 @@ test('Windows verifies its native payload, passes literal path arguments, and ho
   assert.equal(invocation, null);
 });
 
-test('native ditto copies a test bundle and preserves its executable mode and symlink', { skip:process.platform !== 'darwin' }, async t => {
+test('native ditto copies a test bundle and preserves its executable mode and symlink', { skip:process.platform !== 'darwin' ? 'Requires native macOS ditto and executable permissions' : false }, async t => {
   const f = await fixture(t);
   await fs.symlink('Resources', path.join(f.source, 'Contents', 'Resources-link'));
   const engine = new InstallEngine({ ...f, platform:'darwin', runner:async (command, args) => command.endsWith('/ps') ? '' : run(command, args) });

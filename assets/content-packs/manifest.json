@@ -523,6 +523,22 @@
           "compressedSha256": "ce720d44eba4b8be8fb80ba248232ac59af296fe8f1e2013150d9f4642733684"
         }
       ]
+    },
+    {
+      "code": "YOR",
+      "name": "Yoruba Contemporary Bible",
+      "version": "aeb64525fee27ee4992b1207211f8e02521b5e53ba6f5c579cbf195db49646d4",
+      "copyright": "Bíbélì Mímọ́ ní Èdè Yorùbá Òde-Òní Ẹ̀tọ́ àdàkọ © 2009, 2017 by Biblica, Inc. A lò ó nípa ìgbàyọ̀ǹda láti ọwọ́ Bíbílíkà Inc. Ààbò lórí ẹ̀tọ́ àdàkọ yìí múlẹ̀ jákèjádò àgbáyé. Yoruba Contemporary Bible Copyright © 2009, 2017 by Biblica, Inc.® Used by permission of Biblica, Inc.® All rights reserved worldwide.",
+      "files": [
+        {
+          "path": "bibles/YOR.json",
+          "asset": "YOR--YOR--fd5002f611546c60.json.gz",
+          "bytes": 6112394,
+          "downloadBytes": 1492353,
+          "sha256": "fd5002f611546c60f5f9f2296a8e9f654ada9b3c0f46651f3dea460c224d8ec2",
+          "compressedSha256": "81ed1e0f33c5b17d1fd790a2f4cc7e895df8cc5ded5a32c5e202f6b6f5fab907"
+        }
+      ]
     }
   ]
 }

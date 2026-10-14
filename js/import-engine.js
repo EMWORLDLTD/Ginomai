@@ -2092,7 +2092,7 @@ const CLOUD_REPOSITORIES = {
     { code: "TYNDALE", name: "Tyndale 1537", lang: "English", size: "4.7 MB", booksCount: 66 },
     { code: "YLT", name: "Young's Literal Translation", lang: "English", size: "4.6 MB", booksCount: 66 },
     { code: "RVR1960", name: "Reina-Valera 1960", lang: "Spanish", size: "1.8 MB", booksCount: 66 },
-    { code: "YOR", name: "Bibeli Mimo", lang: "Yoruba", size: "1.6 MB", booksCount: 66 },
+    { code: "YOR", name: "Yoruba Contemporary Bible", lang: "Yoruba", size: "1.5 MB", booksCount: 66 },
     { code: "IGBO", name: "Baibul Nso", lang: "Igbo", size: "1.6 MB", booksCount: 66 },
     { code: "HAUSA", name: "Littafi Mai Tsarki", lang: "Hausa", size: "1.6 MB", booksCount: 66 }
   ]

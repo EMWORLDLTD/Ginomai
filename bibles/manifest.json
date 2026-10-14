@@ -230,5 +230,15 @@
     "size": "4.6 MB",
     "booksCount": 66,
     "url": "bibles/YLT.json"
+  },
+  {
+    "code": "YOR",
+    "name": "Yoruba Contemporary Bible",
+    "lang": "Yoruba",
+    "size": "5.8 MB",
+    "booksCount": 66,
+    "url": "bibles/YOR.json",
+    "cloudOnly": true,
+    "copyright": "Bíbélì Mímọ́ ní Èdè Yorùbá Òde-Òní Ẹ̀tọ́ àdàkọ © 2009, 2017 by Biblica, Inc. A lò ó nípa ìgbàyọ̀ǹda láti ọwọ́ Bíbílíkà Inc. Ààbò lórí ẹ̀tọ́ àdàkọ yìí múlẹ̀ jákèjádò àgbáyé. Yoruba Contemporary Bible Copyright © 2009, 2017 by Biblica, Inc.® Used by permission of Biblica, Inc.® All rights reserved worldwide."
   }
 ]

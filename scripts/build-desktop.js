@@ -27,6 +27,7 @@ function payloadConfig(settings, output) {
   return {
     directories:{ output },
     files:[...require('../package.json').build.files,
+      ...require('../bibles/manifest.json').filter(bible => bible.cloudOnly).map(bible => `!bibles/${bible.code}.json`),
       `!node_modules/onnxruntime-node/bin/napi-v3/!(${settings.platform})/**`,
       `!node_modules/onnxruntime-node/bin/napi-v3/${settings.platform}/!(${settings.arch})/**`,
       ...(settings.cloudContent ? ['!bibles/!(KJV|manifest).json', '!lexicon/**', '!assets/semantic/**'] : [])],

@@ -9,9 +9,11 @@ const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const root = path.resolve(__dirname, '..');
 
 async function buildContentPacks({ baseUrl, output = path.join(root, 'output', 'content-packs') } = {}) {
+  let published = { packs: [] };
+  try { published = JSON.parse(await fs.readFile(path.join(root, 'assets', 'content-packs', 'manifest.json'), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
   if (baseUrl === undefined) {
-    try { baseUrl = JSON.parse(await fs.readFile(path.join(root, 'assets', 'content-packs', 'manifest.json'), 'utf8')).baseUrl || ''; }
-    catch (error) { if (error.code !== 'ENOENT') throw error; baseUrl = ''; }
+    baseUrl = published.baseUrl || '';
   }
   if (baseUrl && new URL(baseUrl).protocol !== 'https:') throw Error('Content downloads require an HTTPS URL.');
   const bibles = JSON.parse(await fs.readFile(path.join(root, 'bibles', 'manifest.json'), 'utf8'));
@@ -25,6 +27,14 @@ async function buildContentPacks({ baseUrl, output = path.join(root, 'output', '
     ]
   }];
   for (const bible of packs) {
+    // Download-only translations retain their published immutable pack metadata.
+    // Their source data is never added to the application's bundled Bible files.
+    if (bible.cloudOnly) {
+      const existing = published.packs.find(pack => pack.code === bible.code);
+      if (!existing || !manifest.baseUrl) throw Error(`Prepare and publish the ${bible.code} download pack before building.`);
+      manifest.packs.push(existing);
+      continue;
+    }
     const paths = bible.paths;
     if (bible.code === 'KJV_STRONGS') paths.push('lexicon/strongs_unified.json', 'lexicon/strongs_lexicon.json');
     const files = [];

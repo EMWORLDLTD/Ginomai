@@ -14,12 +14,13 @@ test('release metadata stays aligned across package, UI, server, and Electron', 
   const serverSource = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   const electronSource = fs.readFileSync(path.join(root, 'electron/main.js'), 'utf8');
 
-  assert.equal(pkg.version, '2.4.4');
+  assert.match(pkg.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
   assert.equal(pkg.build.productName, 'Ginomai');
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
   assert.match(index, /Ginomai/);
-  assert.match(index, /Build 2\.4\.4/);
+  const displayedVersion = index.match(/id="settings-build-version">Build ([^<]+)</)?.[1];
+  assert.equal(displayedVersion, pkg.version);
   assert.doesNotMatch(index, /2\.4\.0-PRO|Ginomai Pro|\bGinomai Pro\b/);
   assert.match(serverSource, /version: packageMetadata\.version/);
   assert.match(electronSource, /app\.getVersion\(\)/);

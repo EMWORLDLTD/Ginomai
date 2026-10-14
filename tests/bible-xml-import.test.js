@@ -77,7 +77,7 @@ test('OpenSong, Zefania and OSIS XML still import', () => {
 });
 
 test('supplied Yoruba Bible imports all books, chapters and verse text intact',
-  { skip:!process.env.GINOMAI_BIBLE_XML_FIXTURE }, () => {
+  { skip:!process.env.GINOMAI_BIBLE_XML_FIXTURE ? 'Optional source verification requires GINOMAI_BIBLE_XML_FIXTURE; Yoruba is distributed as a download pack' : false }, () => {
     const xml = fs.readFileSync(process.env.GINOMAI_BIBLE_XML_FIXTURE, 'utf8');
     const parsed = importer().parseBibleContent(xml, 'Yoruba2014Bible.xml');
     const doc = new DOMParser().parseFromString(xml, 'text/xml');

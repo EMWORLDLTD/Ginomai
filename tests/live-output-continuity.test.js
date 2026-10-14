@@ -50,7 +50,7 @@ test('workspace restoration takes committed live content over an older workspace
   const context = { REMOTE_MODE: false, WORKSPACE_STORAGE_KEY: 'workspace', LIVE_STATE_STORAGE_KEY: 'live',
     window: {}, state: { typography: {} }, localStorage: { getItem: key => saved[key] || null },
     pendingLiveStorage: null, syncMedleySettingsUI() {}, syncTypographySettingsUI() {},
-    syncTransitionSettingsUI() {}, syncSongSettingsUI() {}, ensureActiveSong() {}, console };
+    syncTransitionSettingsUI() {}, syncSongSettingsUI() {}, syncDisplaySettingsUI() {}, ensureActiveSong() {}, console };
   vm.runInNewContext(functionSource('restoreCommittedLiveState') + functionSource('restoreSavedWorkspaceState') + ';restoreSavedWorkspaceState();', context);
   assert.equal(context.state.activeLiveSlideId, 'new');
   assert.equal(context.state.activeLiveText, 'Live lyric');
