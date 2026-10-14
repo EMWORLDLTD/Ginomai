@@ -1,0 +1,11 @@
+import {CloudClient} from './cloud-client.mjs';
+import {mountAccountPanel} from './cloud-account-panel.mjs';
+import {desktopAdapter} from './cloud-desktop-adapter.mjs';
+import {mountBackupControls} from './cloud-backups-service.mjs';
+import {mountAnalytics} from './cloud-analytics.mjs';
+const client = new CloudClient(window.GINOMAI_CLOUD_CONFIG);
+const adapter = desktopAdapter();
+const panel = mountAccountPanel(client, adapter);
+const backups = mountBackupControls(panel, client, adapter), analytics = mountAnalytics(panel, client, 'desktop');
+panel.setExtension({update() {backups.update(); analytics.update();}, opened() {backups.opened();}});
+window.openGinomaiAccount = panel.show;

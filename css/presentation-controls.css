@@ -24,10 +24,20 @@
 #presentation-settings .stream-image-actions { display:flex; align-items:center; gap:8px; margin-top:8px; }
 #presentation-settings [hidden], .actual-output-preview[hidden] { display:none !important; }
 #presentation-settings input[type=range] { width:150px; padding:0; accent-color:#795bea; }
+#presentation-settings input[type=checkbox] { width:18px; height:18px; padding:0; accent-color:#795bea; cursor:pointer; }
+.stream-fade-strength-control { display:flex; align-items:center; gap:8px; min-width:0; }
+#stream-fade-strength-value { width:36px; flex-shrink:0; text-align:right; font-variant-numeric:tabular-nums; }
 #presentation-settings input[type=file][hidden] { display:none; }
 #presentation-settings .presentation-scope { font-size:11px; line-height:1.5; color:var(--mute,#a5a5b2); margin:8px 0 0; }
 :is(:root[data-theme-mode=light],body[data-theme-mode=light]) #presentation-settings { background:#fff; color:#302c3c; border-color:#dedbe6; }
 #presentation-settings-trigger {width:auto; padding:4px 9px; font-size:11px;}
+#bento-prev-card #stage-appearance-panel {display:grid;grid-template-columns:minmax(0,1fr);gap:10px;}
+#bento-prev-card .stage-appearance-row {width:100%;justify-content:space-between;}
+#bento-prev-card .stage-output-tools {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;gap:6px;margin-left:0;min-width:0;width:100%;}
+#bento-prev-card .stage-output-tools #bento-trans-trigger {width:100%;justify-content:space-between;min-width:0;}
+#bento-prev-card .stage-output-tools #bento-stage-trans-label {overflow:hidden;text-overflow:ellipsis;}
+#bento-prev-card .stage-output-tools .stage-transition-picker {margin-left:0;}
+#bento-prev-card .stage-output-tools #presentation-settings-trigger {height:30px;}
 #bento-prev-card .bento-stage-actions {grid-template-columns:repeat(2,minmax(0,1fr));}
 #presentation-settings {z-index:90002;}
 #presentation-settings-shield {z-index:90001; background:#08080c44;}
@@ -105,8 +115,8 @@
 #style-status {font-size:11px;}
 #presentation-settings details {margin-top:14px;}
 /* Crisp deck surfaces preserve the cutout and focus ring without glow. */
-:is(.bento-single-card,.bento-slide-card,.bento-slot-col,.slide-card,.song-stanza-list-card,.deck-slide,.medley-slide):is(:hover,.live,.staged,.active),
-:is(.bento-single-card,.bento-slide-card,.bento-slot-col,.slide-card,.song-stanza-list-card,.deck-slide,.medley-slide),
+:is(.bento-single-card,.bento-slide-card,.bento-slot-col,.deck-slide,.medley-slide):is(:hover,.live,.staged,.active),
+:is(.bento-single-card,.bento-slide-card,.bento-slot-col,.deck-slide,.medley-slide),
 .bento-corner-dock .play-circle-btn,.bento-corner-dock .play-circle-btn:hover,
 .bento-single-card:is(.live,.staged):hover .play-circle-btn {box-shadow:none !important; filter:none !important; transition:background-color .04s,color .04s,border-color .04s !important;}
 .bento-live-shape-svg,.bento-live-shape-svg path {filter:none !important;}

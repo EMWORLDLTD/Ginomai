@@ -1,6 +1,6 @@
-'use strict';
+﻿'use strict';
 const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('ginomiaInstaller', {
+contextBridge.exposeInMainWorld('ginomaiInstaller', {
   info: () => ipcRenderer.invoke('setup:info'),
   chooseLocation: () => ipcRenderer.invoke('setup:choose-location'),
   install: options => ipcRenderer.invoke('setup:install', options),

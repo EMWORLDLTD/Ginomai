@@ -16,6 +16,19 @@ function render({ embedded, lowerThird, transparent }) {
   vm.runInNewContext(source + ';ensureAlphaTransparent();', c);
   return { root, body };
 }
+
+test('livestream defaults to bottom overlay independently of the projector layout', () => {
+  const start = html.indexOf('function isLowerThirdLayout(data)');
+  const source = html.slice(start, html.indexOf('\n    const viewportChannel', start));
+  const c = {window:{},isStage:false,isExplicitLt:false,isExplicitFull:false,isSanctuary:false,targetType:'obs',localStorage:{getItem:()=>null}};
+  vm.createContext(c);vm.runInContext(source,c);
+  assert.equal(c.isLowerThirdLayout({mode:'full'}),true);
+  assert.equal(c.isLowerThirdLayout({mode:'full',sanctuaryTheme:{obsModeRule:'always_full'}}),false);
+  assert.equal(c.isLowerThirdLayout({contentType:'media'}),false);
+  assert.equal(c.isLowerThirdLayout({contentType:'countdown'}),false);
+  c.isSanctuary=true;assert.equal(c.isLowerThirdLayout({mode:'full'}),false);
+  c.isSanctuary=false;c.isStage=true;assert.equal(c.isLowerThirdLayout({mode:'lt'}),false);
+});
 test('embedded transparent lower thirds show an alpha checkerboard', () => {
   const result = render({ embedded: true, lowerThird: true, transparent: true });
   assert.match(result.root.background, /repeating-conic-gradient/);
@@ -66,7 +79,7 @@ test('output tab switching uses resident frames without navigating or recreating
     {clientWidth:320,clientHeight:180,classList:{add(){}},append(frame){frames.push(frame);}}]));
   const window = {previewTargetMode:'sanctuary'};
   const c = {window, document:{hidden:true,getElementById:id=>hosts.get(id),createElement() {
-    const frame = {style:{}};
+    const frame = {style:{},listeners:{},addEventListener(name,listener){this.listeners[name]=listener;},contentWindow:{LATEST_STATE:{_timestamp:123,streamAppearance:{bottomFade:true},isLexicon:true,lexiconData:{id:'G1'}},applyState(payload){this.LATEST_STATE=payload;}}};
     Object.defineProperty(frame,'src',{get(){return this.url;},set(value){this.url=value;navigations.push(value);}});
     return frame;
   }}, BroadcastChannel:class {postMessage(){}}, ResizeObserver:class {observe(){}},setInterval(){}};
@@ -80,5 +93,68 @@ test('output tab switching uses resident frames without navigating or recreating
     assert.equal(frames[1].hidden,target==='sanctuary');
     assert.equal(navigations.length,4);
     assert.equal(frames.length,4);
+  }
+  window.updateOutputPreviews({slideId:'bible_Genesis_1_29',text:'Verse 29',contentType:'bible',_operatorRequestId:'request29'});
+  for (const frame of frames) {
+    assert.equal(frame.contentWindow.LATEST_STATE.text,'Verse 29');
+    assert.equal(frame.contentWindow.LATEST_STATE.streamAppearance.bottomFade,true);
+    assert.equal(frame.contentWindow.LATEST_STATE._timestamp,undefined);
+    assert.equal(frame.contentWindow.LATEST_STATE.isLexicon,false);
+    assert.equal(frame.contentWindow.LATEST_STATE.lexiconData,null);
+    assert.equal(frame.contentWindow.pendingOperatorPreview.id,'request29');
+  }
+  window.updateOutputPreviews({clear:true});
+  assert(frames.every(frame=>frame.contentWindow.LATEST_STATE.clear));
+  assert.equal(navigations.length,4,'Local slide updates never reload preview frames');
+  for (const frame of frames) {
+    frame.contentWindow.LATEST_STATE = { _timestamp: 124 };
+    frame.contentWindow.pendingOperatorPreview = null;
+    frame.listeners.load();
+    assert.equal(frame.contentWindow.LATEST_STATE._timestamp, undefined);
+    assert.equal(frame.contentWindow.LATEST_STATE.clear, true);
+  }
+});
+
+test('late server preview snapshots cannot replace a pending operator selection', () => {
+  const start=html.indexOf('function applyState(raw)');
+  const source=html.slice(start,html.indexOf("if (raw.type === 'sanctuary_theme_sync')",start))+'return true; }';
+  const c={window:{pendingOperatorPreview:{id:'request30',startedAt:Date.now()}},lastProcessedTimestamp:0};
+  vm.createContext(c);vm.runInContext(source,c);
+  assert.equal(c.applyState({_timestamp:10,_operatorRequestId:'request29'}),undefined);
+  assert.equal(c.window.pendingOperatorPreview.id,'request30');
+  assert.equal(c.applyState({_timestamp:11,_operatorRequestId:'request30'}),true);
+  assert.equal(c.window.pendingOperatorPreview,null);
+});
+
+test('local preview stays protected until its matching host acknowledgement, including after iframe load', () => {
+  const start = html.indexOf('function applyState(raw)');
+  const guard = html.slice(start, html.indexOf("if (raw.type === 'sanctuary_theme_sync')", start)) + 'return true; }';
+  const frames = [];
+  const host = { clientWidth: 320, clientHeight: 180, classList: { add() {} }, append(frame) { frames.push(frame); } };
+  const window = {};
+  const document = { hidden: true, getElementById: id => id === 'bento-single-prev-wrap' ? host : null, createElement() {
+    const output = { LATEST_STATE: { _timestamp: 100, text: 'Previous' } };
+    const renderer = vm.createContext({ window: output, lastProcessedTimestamp: 100, Date });
+    vm.runInContext(guard, renderer);
+    output.applyState = state => { if (renderer.applyState(state)) output.LATEST_STATE = state; };
+    return { style: {}, contentWindow: output, addEventListener(name, listener) { this[name] = listener; } };
+  } };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../js/output-preview.js'), 'utf8'), {
+    window, document, BroadcastChannel: class { postMessage() {} }, ResizeObserver: class { observe() {} }, setInterval() {}, Date
+  });
+  window.updateOutputPreviews({ _timestamp: 100, text: 'Previous' });
+  window.updateOutputPreviews({ _operatorRequestId: 'take-new', text: 'New selection', contentType: 'song' });
+  for (const frame of frames) {
+    const output = frame.contentWindow;
+    assert.equal(output.LATEST_STATE.text, 'New selection');
+    assert.equal(output.pendingOperatorPreview.id, 'take-new');
+    output.applyState({ _timestamp: 101, text: 'Old host snapshot' });
+    assert.equal(output.LATEST_STATE.text, 'New selection');
+    output.pendingOperatorPreview = null;
+    frame.load();
+    assert.equal(output.pendingOperatorPreview.id, 'take-new');
+    output.applyState({ _timestamp: 102, _operatorRequestId: 'take-new', text: 'Acknowledged selection' });
+    assert.equal(output.pendingOperatorPreview, null);
+    assert.equal(output.LATEST_STATE.text, 'Acknowledged selection');
   }
 });

@@ -1,8 +1,9 @@
-// Ginomia - High-Performance Custom Dialog System (Prompt & Confirm)
+﻿// Ginomai - High-Performance Custom Dialog System (Prompt & Confirm)
 'use strict';
 
 (function() {
   let activeResolve = null;
+  let activeCheckbox = null;
 
   const ICONS = {
     save: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
@@ -21,6 +22,9 @@
       inputWrap: document.getElementById('sf-dialog-input-wrap'),
       input: document.getElementById('sf-dialog-input'),
       message: document.getElementById('sf-dialog-message'),
+      checkboxWrap: document.getElementById('sf-dialog-checkbox-wrap'),
+      checkbox: document.getElementById('sf-dialog-checkbox'),
+      checkboxLabel: document.getElementById('sf-dialog-checkbox-label'),
       confirmBtn: document.getElementById('sf-dialog-confirm-btn'),
       cancelBtn: document.getElementById('sf-dialog-cancel-btn')
     };
@@ -31,6 +35,8 @@
       activeResolve = resolve;
       const els = getDialogElements();
       if (!els.backdrop) return resolve(null);
+      activeCheckbox = null;
+      if (els.checkboxWrap) els.checkboxWrap.hidden = true;
 
       const title = options.title || 'Input Required';
       const subtitle = options.message || options.subtitle || '';
@@ -75,6 +81,12 @@
       activeResolve = resolve;
       const els = getDialogElements();
       if (!els.backdrop) return resolve(false);
+      activeCheckbox = options.checkbox && els.checkbox ? els.checkbox : null;
+      if (els.checkboxWrap) els.checkboxWrap.hidden = !activeCheckbox;
+      if (activeCheckbox) {
+        activeCheckbox.checked = !!options.checkbox.checked;
+        els.checkboxLabel.textContent = options.checkbox.label;
+      }
 
       const title = options.title || 'Confirmation';
       const message = options.message || '';
@@ -112,6 +124,8 @@
 
   window.sfCloseCustomDialog = function(result) {
     const els = getDialogElements();
+    if (result === true && activeCheckbox) result = { confirmed: true, checked: activeCheckbox.checked };
+    activeCheckbox = null;
     if (els.backdrop) {
       els.backdrop.classList.remove('open');
       els.backdrop.style.display = 'none';

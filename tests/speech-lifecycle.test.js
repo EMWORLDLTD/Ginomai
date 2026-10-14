@@ -254,11 +254,11 @@ test('switching service sessions saves the old pending words into the old record
   assert.equal(manager.session,target);assert.equal(target.recordings.length,0);assert.equal(moment.isRecording,false);
 });
 
-test('UI status reflects real readiness in both themes and does not stop a recording during recovery', () => {
+test('Bento UI status reflects real readiness and does not stop a recording during recovery', () => {
   const source=fs.readFileSync(path.join(root,'js/app.js'),'utf8');
   const controls=new Map(),broadcasts=[],toasts=[];let stopped=0,flushed=0;
   function element() { const classes=new Set();return {textContent:'',style:{},attributes:{},classList:{toggle(k,on){if(on)classes.add(k);else classes.delete(k);},contains:k=>classes.has(k)},setAttribute(k,v){this.attributes[k]=v;},querySelector(){return null;}}; }
-  for(const id of ['ai-mic-btn','bento-mic-btn','bento-mic-btn-text','mic-signal-indicator','bento-ai-live-dot','ai-transcript-text','bento-ai-transcript-text'])controls.set(id,element());
+  for(const id of ['bento-mic-btn','bento-mic-btn-text','bento-ai-live-dot','bento-ai-transcript-text'])controls.set(id,element());
   const ctx=vm.createContext({state:{},REMOTE_MODE:false,document:{getElementById:id=>controls.get(id),querySelector:()=>null},
     window:{sermonManager:{setRecordingState(){stopped++;},flushPendingUtterance(){flushed++;}}},
     recordDetectionDiagnostic(){},stopAudioVuMeter(){},broadcastSpeechAiUpdate:u=>broadcasts.push(u),showToast:(...args)=>toasts.push(args)});
@@ -266,7 +266,7 @@ test('UI status reflects real readiness in both themes and does not stop a recor
   const change=(status,isRequested,isListening)=>ctx.handleSpeechAiStatus({status,isRequested,isListening,message:status});
   change('connecting',true,false);assert.equal(controls.get('bento-mic-btn').classList.contains('active'),false);
   assert.match(controls.get('bento-mic-btn-text').textContent,/connecting/);
-  change('listening',true,true);assert.equal(controls.get('ai-mic-btn').classList.contains('active'),true);
+  change('listening',true,true);assert.equal(controls.get('bento-mic-btn').classList.contains('active'),true);
   change('reconnecting',true,false);assert.equal(stopped,0);assert.equal(flushed,2);
   assert.equal(controls.get('bento-ai-transcript-text').textContent,'reconnecting');
   change('error',false,false);assert.equal(stopped,1);assert.equal(toasts.length,1);
@@ -275,7 +275,7 @@ test('UI status reflects real readiness in both themes and does not stop a recor
 
 test('Stop from the UI works during recovery even with no saved provider or key', () => {
   const source=fs.readFileSync(path.join(root,'js/app.js'),'utf8');let stopped=0;
-  const ctx=vm.createContext({speechAi:{isListening:true,stop(){stopped++;}}});
+  const ctx=vm.createContext({REMOTE_MODE:false,speechAi:{isListening:true,stop(){stopped++;}}});
   vm.runInContext(source.slice(source.indexOf('function toggleSpeechAi()'),source.indexOf('function handleDetectedVerse(')),ctx);
   ctx.toggleSpeechAi();assert.equal(stopped,1);
 });

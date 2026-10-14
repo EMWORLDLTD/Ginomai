@@ -1,10 +1,12 @@
-// Ginomia - Electron Main Process
+// Ginomai - Electron Main Process
 'use strict';
 
 const { app, BrowserWindow, screen, ipcMain, Menu, shell, dialog, session } = require('electron');
 const path = require('path');
 const http = require('http');
-const { autoUpdater } = require('electron-updater');
+const { autoUpdater, CancellationToken } = require('electron-updater');
+const createUpdateController = require('./update-controller');
+const resolveDisplayRouting = require('./display-routing')();
 const serverModule = require('../server.js');
 
 // Optimize memory and enforce proactive V8 Garbage Collection
@@ -12,15 +14,17 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512');
 
 // Global exception protection
 process.on('uncaughtException', (err) => {
-  console.error('[Ginomia Desktop] Uncaught exception:', err);
+  console.error('[Ginomai Desktop] Uncaught exception:', err);
 });
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('[Ginomia Desktop] Unhandled rejection:', reason);
+  console.error('[Ginomai Desktop] Unhandled rejection:', reason);
 });
 
 let mainWindow = null;
 let projectorWindow = null;
+let projectorDisplayId = null;
 let stageWindow = null;
+let stageDisplayId = null;
 let currentStageMode = 'stage';
 let serverPort = Number(process.env.PORT) || 8500;
 
@@ -42,14 +46,14 @@ function startBackgroundServer(onReady) {
   try {
     serverModule.startServer(serverPort, (err, srv, boundPort) => {
       if (err) {
-        console.error('[Ginomia Desktop] Server start warning/error:', err);
+        console.error('[Ginomai Desktop] Server start warning/error:', err);
       }
       const activePort = boundPort || serverPort;
       serverPort = activePort;
       if (onReady) onReady(activePort);
     });
   } catch (err) {
-    console.error('[Ginomia Desktop] Failed to start embedded server:', err);
+    console.error('[Ginomai Desktop] Failed to start embedded server:', err);
     if (onReady) onReady(serverPort);
   }
 }
@@ -81,7 +85,8 @@ function createMainWindow(port) {
     minHeight: 650,
     show: false, // Don't show until page is loaded so there is never an empty/blank window
     backgroundColor: '#0a0f1d',
-    title: 'Ginomia — The Word in Motion',
+    title: '',
+    ...(process.platform !== 'darwin' ? { titleBarStyle: 'hidden' } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -89,6 +94,20 @@ function createMainWindow(port) {
       sandbox: false
     }
   });
+
+  // Keep the native title blank; the app header already displays the brand.
+  mainWindow.on('page-title-updated', (event) => event.preventDefault());
+
+  const notifyWindowState = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('desktop:window-state-changed', {
+        maximized: mainWindow.isMaximized(), fullscreen: mainWindow.isFullScreen()
+      });
+    }
+  };
+  for (const name of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) {
+    mainWindow.on(name, notifyWindowState);
+  }
 
   const appUrl = `http://localhost:${activePort}/index.html`;
 
@@ -99,7 +118,7 @@ function createMainWindow(port) {
         mainWindow.focus();
       }
     }).catch((err) => {
-      console.warn('[Ginomia Desktop] Waiting for server to accept connection, retrying...', err);
+      console.warn('[Ginomai Desktop] Waiting for server to accept connection, retrying...', err);
       setTimeout(loadApp, 250);
     });
   };
@@ -122,16 +141,13 @@ function createMainWindow(port) {
 // ─── Projector / Audience Display Window ──────────────────────────────────────
 function launchProjectorWindow(targetDisplayId = null, targetMode = 'sanctuary') {
   const displays = screen.getAllDisplays();
-  let targetDisplay = null;
-
-  if (targetDisplayId) {
-    targetDisplay = displays.find((d) => String(d.id) === String(targetDisplayId));
-  }
-
-  // If no target specified or not found, prefer the first non-primary display (external monitor / projector)
-  if (!targetDisplay) {
-    const primaryDisplay = screen.getPrimaryDisplay();
-    targetDisplay = displays.find((d) => d.id !== primaryDisplay.id) || primaryDisplay;
+  const routing = resolveDisplayRouting(displays, screen.getPrimaryDisplay().id, targetDisplayId);
+  const targetDisplay = routing.audience;
+  if (!targetDisplay) return { success: false, message: 'Connect an external display to launch the sanctuary projector.' };
+  projectorDisplayId = targetDisplay.id;
+  // Sanctuary takes precedence when stage was already using this screen.
+  if (stageWindow && String(stageDisplayId) === String(targetDisplay.id)) {
+    launchStageWindow(routing.stage.id, currentStageMode);
   }
 
   if (projectorWindow) {
@@ -156,7 +172,7 @@ function launchProjectorWindow(targetDisplayId = null, targetMode = 'sanctuary')
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
-    title: 'Ginomia — Sanctuary Projector Output',
+    title: 'Ginomai — Sanctuary Projector Output',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -175,6 +191,7 @@ function launchProjectorWindow(targetDisplayId = null, targetMode = 'sanctuary')
 
   projectorWindow.on('closed', () => {
     projectorWindow = null;
+    projectorDisplayId = null;
     notifyProjectorStatus();
   });
 
@@ -192,12 +209,23 @@ function closeProjectorWindow() {
   return { success: false, message: 'Projector window not open' };
 }
 
+function getProjectorStatus() {
+  const displays = screen.getAllDisplays();
+  const primaryId = screen.getPrimaryDisplay().id;
+  const isOpen = !!projectorWindow && !projectorWindow.isDestroyed();
+  const connected = displays.find(d => String(d.id) === String(projectorDisplayId));
+  return {
+    isOpen,
+    displayId: isOpen ? projectorDisplayId : null,
+    displayBounds: isOpen ? projectorWindow.getBounds() : null,
+    isExternal: isOpen && !!connected && String(connected.id) !== String(primaryId) && String(screen.getDisplayMatching(projectorWindow.getBounds()).id) === String(connected.id),
+    hasExternalDisplay: displays.some(d => String(d.id) !== String(primaryId))
+  };
+}
+
 function notifyProjectorStatus() {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    const status = {
-      isOpen: !!projectorWindow,
-      displayId: projectorWindow ? projectorWindow.getBounds() : null
-    };
+    const status = getProjectorStatus();
     mainWindow.webContents.send('desktop:projector-status-changed', status);
   }
 }
@@ -206,26 +234,8 @@ function notifyProjectorStatus() {
 function launchStageWindow(targetDisplayId = null, stageMode = 'stage') {
   currentStageMode = stageMode || 'stage';
   const displays = screen.getAllDisplays();
-  let targetDisplay = null;
-
-  if (targetDisplayId) {
-    targetDisplay = displays.find((d) => String(d.id) === String(targetDisplayId));
-  }
-
-  // If no target specified or not found, prefer a secondary display not currently occupied by the projector
-  if (!targetDisplay) {
-    const primaryDisplay = screen.getPrimaryDisplay();
-    let projectorDisplayId = null;
-    if (projectorWindow) {
-      try {
-        projectorDisplayId = screen.getDisplayMatching(projectorWindow.getBounds()).id;
-      } catch (e) {}
-    }
-
-    targetDisplay = displays.find((d) => d.id !== primaryDisplay.id && d.id !== projectorDisplayId) ||
-                    displays.find((d) => d.id !== primaryDisplay.id) ||
-                    primaryDisplay;
-  }
+  const targetDisplay = resolveDisplayRouting(displays, screen.getPrimaryDisplay().id, projectorDisplayId, targetDisplayId).stage;
+  stageDisplayId = targetDisplay.id;
 
   const { x, y, width, height } = targetDisplay.bounds;
 
@@ -253,7 +263,7 @@ function launchStageWindow(targetDisplayId = null, stageMode = 'stage') {
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
-    title: 'Ginomia — Stage Confidence Monitor (Choir / Pastors)',
+    title: 'Ginomai — Stage Confidence Monitor (Choir / Pastors)',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -272,6 +282,7 @@ function launchStageWindow(targetDisplayId = null, stageMode = 'stage') {
 
   stageWindow.on('closed', () => {
     stageWindow = null;
+    stageDisplayId = null;
     notifyStageStatus();
   });
 
@@ -431,48 +442,23 @@ function setupAppMenu() {
         {
           label: 'Check for Updates...',
           click: () => {
-            if (app.isPackaged) {
-              autoUpdater.checkForUpdates().then((result) => {
-                if (!result || !result.updateInfo) return;
-                const currentVer = app.getVersion();
-                if (result.updateInfo.version === currentVer) {
-                  dialog.showMessageBox(mainWindow, {
-                    type: 'info',
-                    title: 'Ginomia is Up to Date',
-                    message: `You are running the latest version of Ginomia (v${currentVer}).`
-                  });
-                }
-              }).catch((err) => {
-                dialog.showMessageBox(mainWindow, {
-                  type: 'warning',
-                  title: 'Update Check',
-                  message: 'Could not check for updates.',
-                  detail: err ? (err.message || String(err)) : 'Unknown network error.'
-                });
-              });
-            } else {
-              dialog.showMessageBox(mainWindow, {
-                type: 'info',
-                title: 'Development Mode',
-                message: 'Auto-update is active only in packaged desktop builds.'
-              });
-            }
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:open-updates');
           }
         },
         { type: 'separator' },
         {
-          label: 'Ginomia Releases',
+          label: 'Ginomai Releases',
           click: () => {
-            shell.openExternal('https://github.com/EMWORLDLTD/ginomai-pro/releases');
+            shell.openExternal('https://github.com/EMWORLDLTD/Ginomai/releases');
           }
         },
         {
-          label: 'About Ginomia',
+          label: 'About Ginomai',
           click: () => {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
-              title: 'About Ginomia',
-              message: 'Ginomia v' + app.getVersion(),
+              title: 'About Ginomai',
+              message: 'Ginomai v' + app.getVersion(),
               detail: 'The Word in Motion\n\nNext-Gen Church Presentation, Multi-Monitor Projection & OBS Broadcast System.\nRunning as native desktop application with embedded broadcast server on port ' + serverPort + '.'
             });
           }
@@ -483,16 +469,58 @@ function setupAppMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  if (!isMac && mainWindow) mainWindow.setMenuBarVisibility(false);
 }
 
 // ─── IPC Communication Handlers ──────────────────────────────────────────────
+ipcMain.handle('desktop:get-window-state', event => {
+  if (!isUpdateHost(event)) return null;
+  return { maximized: mainWindow.isMaximized(), fullscreen: mainWindow.isFullScreen() };
+});
+
+ipcMain.handle('desktop:minimize', event => {
+  if (isUpdateHost(event)) mainWindow.minimize();
+});
+
+ipcMain.handle('desktop:maximize', event => {
+  if (!isUpdateHost(event)) return;
+  if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+  else if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+
+ipcMain.handle('desktop:close', event => {
+  if (isUpdateHost(event)) mainWindow.close();
+});
+
+ipcMain.handle('desktop:open-menu', (event, options = {}) => {
+  if (!isUpdateHost(event) || !['File', 'Projector', 'View', 'Help'].includes(options.label)) return;
+  const submenu = Menu.getApplicationMenu()?.items.find(item => item.label === options.label)?.submenu;
+  if (!submenu) return;
+  const zoom = mainWindow.webContents.getZoomFactor();
+  const x = Number.isFinite(options.x) ? Math.max(0, Math.round(options.x * zoom)) : 0;
+  const y = Number.isFinite(options.y) ? Math.max(0, Math.round(options.y * zoom)) : 32;
+  return new Promise(resolve => submenu.popup({ window: mainWindow, x, y, callback: resolve }));
+});
+
+ipcMain.handle('desktop:select-migration-folder', async event => {
+  if (!isUpdateHost(event)) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select your presentation software folder',
+    properties: ['openDirectory']
+  });
+  return result.canceled ? null : result.filePaths[0] || null;
+});
+
 ipcMain.handle('desktop:get-displays', () => {
   const displays = screen.getAllDisplays();
   const primaryDisplay = screen.getPrimaryDisplay();
+  const routing = resolveDisplayRouting(displays, primaryDisplay.id);
   return displays.map((d) => ({
     id: d.id,
     label: d.label || `Display ${d.id}`,
     isPrimary: d.id === primaryDisplay.id,
+    externalOrder: routing.external.findIndex(external => String(external.id) === String(d.id)),
     bounds: d.bounds,
     workArea: d.workArea,
     scaleFactor: d.scaleFactor
@@ -508,10 +536,7 @@ ipcMain.handle('desktop:close-projector', () => {
 });
 
 ipcMain.handle('desktop:get-projector-status', () => {
-  return {
-    isOpen: !!projectorWindow,
-    displayBounds: projectorWindow ? projectorWindow.getBounds() : null
-  };
+  return getProjectorStatus();
 });
 
 ipcMain.handle('desktop:launch-stage-monitor', (event, options = {}) => {
@@ -568,84 +593,57 @@ ipcMain.handle('desktop:toggle-fullscreen', () => {
 });
 
 // ─── Over-The-Air (OTA) Auto-Updater ──────────────────────────────────────────
-function initAutoUpdater() {
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on('checking-for-update', () => {
-    console.log('[Ginomia AutoUpdater] Checking for updates...');
-  });
-
-  autoUpdater.on('update-available', (info) => {
-    console.log('[Ginomia AutoUpdater] Update available: v' + info.version);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('desktop:update-available', info);
-    }
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    console.log('[Ginomia AutoUpdater] Up to date (v' + app.getVersion() + ')');
-  });
-
-  autoUpdater.on('error', (err) => {
-    console.warn('[Ginomia AutoUpdater] Update check error:', err ? (err.message || err) : 'unknown');
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('desktop:update-download-progress', {
-        percent: Math.round(progressObj.percent),
-        transferred: progressObj.transferred,
-        total: progressObj.total
-      });
-    }
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('[Ginomia AutoUpdater] Update downloaded: v' + info.version);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('desktop:update-ready', info);
-    }
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Ready — Ginomia',
-      message: `Ginomia v${info.version} has been downloaded and is ready to install.`,
-      detail: 'Click "Restart Now" to apply the update immediately, or choose "Later" to update when you next exit.',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0,
-      cancelId: 1
-    }).then((result) => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall();
-      }
-    });
-  });
-
-  // Check for updates shortly after launch (only in packaged production app)
-  if (app.isPackaged) {
-    setTimeout(() => {
-      try {
-        autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-          console.warn('[Ginomia AutoUpdater] Background check failed:', err);
-        });
-      } catch (e) {
-        // ignore
-      }
-    }, 4000);
-  }
+let desktopUpdates = null;
+function isUpdateHost(event) {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) return false;
+  try {
+    const url = new URL(event.senderFrame.url);
+    return url.origin === `http://localhost:${serverPort}` && url.pathname === '/index.html' && url.searchParams.get('remote') !== '1';
+  } catch (_) { return false; }
 }
 
-ipcMain.handle('desktop:check-for-updates', () => {
-  if (app.isPackaged) {
-    return autoUpdater.checkForUpdates();
-  }
-  return Promise.resolve({ isDev: true });
-});
+function initAutoUpdater() {
+  if (desktopUpdates) return;
+  desktopUpdates = createUpdateController({
+    app, updater: autoUpdater, CancellationToken,
+    notify: state => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:update-status', state);
+    },
+    getBlockers: () => {
+      const blockers = [];
+      if (projectorWindow && !projectorWindow.isDestroyed()) blockers.push('Projector output');
+      if (stageWindow && !stageWindow.isDestroyed()) blockers.push('Stage output');
+      for (const output of serverModule.getConnectedOutputs()) {
+        if (output.connected > 0) blockers.push(output.target === 'sanctuary' ? 'Connected projector output' : output.target === 'livestream' ? 'Connected livestream output' : `Connected ${output.target === 'dynamic' ? 'audience' : output.target} output`);
+      }
+      const speech = serverModule.getCurrentState().hostSpeechState;
+      if (speech?.isRequested || speech?.isListening) blockers.push('AI microphone');
+      return blockers;
+    },
+    prepareRestart: save => {
+      if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The studio window is unavailable.');
+      return mainWindow.webContents.executeJavaScript(`window.prepareDesktopUpdateRestart?.(${save === true}) ?? {ok:false}`);
+    },
+    flushState: () => serverModule.flushLiveState({ strict: true })
+  });
+  desktopUpdates.start();
+}
 
-ipcMain.handle('desktop:install-update', () => {
-  autoUpdater.quitAndInstall();
-});
-
+for (const [channel, action] of [
+  ['desktop:get-update-status', () => desktopUpdates.snapshot()],
+  ['desktop:get-update-preferences', () => desktopUpdates.snapshot().preferences],
+  ['desktop:set-update-preferences', value => desktopUpdates.setPreferences(value)],
+  ['desktop:check-for-updates', () => desktopUpdates.check()],
+  ['desktop:download-update', () => desktopUpdates.download()],
+  ['desktop:cancel-update-download', () => desktopUpdates.cancelDownload()],
+  ['desktop:install-update', () => desktopUpdates.install()]
+]) {
+  ipcMain.handle(channel, (event, value) => {
+    if (!isUpdateHost(event)) return { error: 'Updates can only be controlled from the host desktop app.' };
+    if (!desktopUpdates) return { error: 'The update service is starting. Please retry.' };
+    return action(value);
+  });
+}
 // ─── App Lifecycle ───────────────────────────────────────────────────────────
 if (gotTheLock) {
   app.whenReady().then(() => {
@@ -667,15 +665,24 @@ if (gotTheLock) {
 
     // Listen for display changes (e.g. connecting/disconnecting projector cable)
     screen.on('display-added', () => {
+      resolveDisplayRouting(screen.getAllDisplays(), screen.getPrimaryDisplay().id);
+      notifyProjectorStatus();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('desktop:displays-updated');
       }
     });
 
     screen.on('display-removed', () => {
+      resolveDisplayRouting(screen.getAllDisplays(), screen.getPrimaryDisplay().id);
+      notifyProjectorStatus();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('desktop:displays-updated');
       }
+    });
+
+    screen.on('display-metrics-changed', () => {
+      notifyProjectorStatus();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:displays-updated');
     });
 
     app.on('activate', () => {
@@ -694,5 +701,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  desktopUpdates?.stop();
   stopBackgroundServer();
 });

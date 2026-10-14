@@ -1,4 +1,4 @@
-// Ginomia - Service Session Management & Persistence Engine
+﻿// Ginomai - Service Session Management & Persistence Engine
 'use strict';
 
 (function(window) {
@@ -42,6 +42,7 @@
     }
 
     saveToStorage() {
+      if (window.sfResettingDevice) return true;
       try {
         localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(this.sessions));
         if (this.activeSessionId) {
@@ -88,7 +89,7 @@
         createdAt: now,
         updatedAt: now,
         version: '1.0',
-        app: 'Ginomia',
+        app: 'Ginomai',
         agendaItems: [],
         activeSongId: null,
         activeBibleBook: '',
@@ -108,6 +109,9 @@
       session.activeCountdownId=s.activeCountdownId || null;
       session.presentationDeck=['media','countdown'].includes(s.activeDeckType) ? s.activeDeckType:null;
       session.mediaPageSelections={...s.mediaPageSelections};
+      session.mediaVideoSlots=JSON.parse(JSON.stringify(s.mediaVideoSlots || []));
+      session.activeVideoSlot=s.activeVideoSlot || 0;
+      session.mediaVideoDeckActive=!!s.mediaVideoDeckActive;
       session.activeSongId = s.activeSongId || null;
       session.activeBibleBook = s.activeBibleBook || '';
       session.activeBibleChapter = s.activeBibleChapter || 1;
@@ -226,6 +230,9 @@
       s.activeCountdownId=session.activeCountdownId || null;
       s.activeDeckType=session.presentationDeck || (s.activeDeckType==='media'||s.activeDeckType==='countdown' ? 'song':s.activeDeckType);
       s.mediaPageSelections={...session.mediaPageSelections};
+      s.mediaVideoSlots=JSON.parse(JSON.stringify(session.mediaVideoSlots || []));
+      s.activeVideoSlot=session.activeVideoSlot || 0;
+      s.mediaVideoDeckActive=!!session.mediaVideoDeckActive;
       s.activeSongId = session.activeSongId || null;
       window.restorePresentationSelection?.();
       if (session.activeBibleBook) s.activeBibleBook = session.activeBibleBook;
@@ -332,7 +339,7 @@
 
       // Prepare portable package
       const exportPackage = {
-        app: 'Ginomia',
+        app: 'Ginomai',
         type: 'session_package',
         formatVersion: '1.0',
         exportedAt: new Date().toISOString(),
@@ -343,7 +350,7 @@
       const blob = new Blob([jsonStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
 
-      const safeFilename = (session.name || 'Ginomia_Session')
+      const safeFilename = (session.name || 'Ginomai_Session')
         .replace(/[^a-zA-Z0-9_\-\s]/g, '')
         .trim()
         .replace(/\s+/g, '_');
@@ -377,7 +384,7 @@
             // Raw session object format
             importedSession = parsed;
           } else {
-            throw new Error('Unrecognized Ginomia session file format');
+            throw new Error('Unrecognized Ginomai session file format');
           }
 
           // Generate fresh unique ID to avoid overwriting existing

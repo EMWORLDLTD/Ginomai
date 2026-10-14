@@ -1,4 +1,4 @@
-const test = require('node:test');
+﻿const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -6,8 +6,8 @@ const vm = require('node:vm');
 
 const announcementsJs = fs.readFileSync(path.join(__dirname, '../js/announcements.js'), 'utf8');
 
-function setupAlertEngineEnvironment() {
-  const store = new Map();
+function setupAlertEngineEnvironment(saved = [], themes = {}) {
+  const store = new Map(saved);
   const localStorageMock = {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => store.set(k, String(v)),
@@ -16,6 +16,7 @@ function setupAlertEngineEnvironment() {
   };
 
   const elements = new Map();
+  const documentEvents = new Map();
   function makeElement(id) {
     const el = {
       id,
@@ -24,7 +25,9 @@ function setupAlertEngineEnvironment() {
       innerHTML: '',
       className: '',
       style: {},
+      dataset: {},
       attributes: {},
+      offsetHeight: 80,
       classList: {
         add(c) { el.className = `${el.className} ${c}`.trim(); },
         remove(c) { el.className = el.className.replace(new RegExp(`\\b${c}\\b`, 'g'), '').trim(); },
@@ -36,11 +39,19 @@ function setupAlertEngineEnvironment() {
       },
       setAttribute(k, v) { el.attributes[k] = v; },
       getAttribute(k) { return el.attributes[k]; },
-      focus() {},
+      focus() { sandbox.document.activeElement = el; },
+      getBoundingClientRect() { return { left: 20, right: 240, top: 100, bottom: 128, width: 220 }; },
       addEventListener() {},
       appendChild(c) { el._children = el._children || []; el._children.push(c); },
+      get children() { return el._children || []; },
+      replaceChildren() { el._children = []; },
       querySelectorAll() { return []; },
-      querySelector() { return null; }
+      querySelector(selector) {
+        if (!['.ann-delete-no', '.ann-delete-yes', '.ann-background-close', 'input', '.ann-background-filters', '.ann-background-grid', '.ann-background-none'].includes(selector)) return null;
+        el._queryNodes ||= {};
+        return el._queryNodes[selector] ||= makeElement(id + selector);
+      },
+      contains(target) { return target === el || (el._children || []).includes(target); }
     };
     elements.set(id, el);
     return el;
@@ -67,12 +78,17 @@ function setupAlertEngineEnvironment() {
   const sandbox = {
     localStorage: localStorageMock,
     document: {
+      body: makeElement('body'),
+      addEventListener: (type, handler) => documentEvents.set(type, handler),
       getElementById: (id) => elements.get(id) || makeElement(id),
       querySelectorAll: (sel) => [],
       querySelector: (sel) => null,
       createElement: (tag) => makeElement(`elem_${Math.random()}`)
     },
     window: {
+      SANCTUARY_THEMES: themes,
+      innerWidth: 1000,
+      innerHeight: 700,
       localStorage: localStorageMock,
       showToast: (msg, type) => toasts.push({ msg, type }),
       broadcastState: (patch) => broadcasts.push(patch),
@@ -85,7 +101,7 @@ function setupAlertEngineEnvironment() {
   const context = vm.createContext(sandbox);
   vm.runInContext(announcementsJs, context);
 
-  return { context, store, toasts, broadcasts, elements, engine: context.window.liveAlertEngine };
+  return { context, store, toasts, broadcasts, elements, documentEvents, engine: context.window.liveAlertEngine };
 }
 
 test('LiveAlertEngine: Initialization and default saved announcements', () => {
@@ -95,6 +111,64 @@ test('LiveAlertEngine: Initialization and default saved announcements', () => {
   assert.ok(Array.isArray(engine.savedAnnouncements));
   assert.equal(engine.savedAnnouncements.length, 0, 'Should not seed sample announcements');
   assert.equal(store.has('sf_saved_announcements'), true);
+});
+
+test('full-screen background choice persists across New, saved messages, reloads and global theme changes', () => {
+  const theme = { id: 'gold', name: 'Golden', type: 'image', imageUrl: 'Themes/gold.webp', textColor: '#fff8e0', font: 'Outfit' };
+  const { context, engine, elements, store, broadcasts } = setupAlertEngineEnvironment([], { gold: theme });
+  context.window.loadAnnouncementComposer({ position: 'fullscreen', text: 'Welcome' });
+  assert.equal(elements.get('ann-background-field').hidden, false);
+  const anchor = context.document.getElementById('ann-background-trigger');
+  context.window.openAnnouncementBackgroundPicker(anchor);
+  const popup = context.document.body._children.at(-1);
+  const grid = popup.querySelector('.ann-background-grid');
+  grid.children.find(card => card.dataset.name === 'golden').onclick();
+  assert.equal(popup.hidden, true);
+  assert.equal(elements.get('ann-background-name').textContent, 'Golden');
+  assert.equal(broadcasts.length, 0, 'choosing a future background must not send a message');
+  assert.equal(JSON.parse(store.get('sf_announcement_background')).id, 'gold');
+  context.window.resetAnnouncementComposer();
+  assert.equal(elements.get('ann-background-field').hidden, true);
+  context.window.loadAnnouncementComposer({ text: 'Next message', position: 'fullscreen' });
+  engine.sendLiveAlert({ text: 'Next message', position: 'fullscreen' });
+  assert.equal(engine.currentAlert.background.imageUrl, theme.imageUrl);
+  context.window.themeManager = { activeSanctuaryTheme: 'another-theme' };
+  engine.sendLiveAlert({ text: 'Another message', position: 'fullscreen' });
+  assert.equal(engine.currentAlert.background.id, 'gold');
+  const reloaded = setupAlertEngineEnvironment([...store], { gold: theme });
+  reloaded.engine.sendLiveAlert({ text: 'After restart', position: 'fullscreen' });
+  assert.equal(reloaded.engine.currentAlert.background.id, 'gold');
+  reloaded.engine.sendLiveAlert({ text: 'Ticker', position: 'upperthird' });
+  assert.equal(reloaded.engine.currentAlert.background, undefined);
+});
+
+test('background picker filters by type and search and closes through the shared shield', () => {
+  const { context, elements } = setupAlertEngineEnvironment([], {
+    still: { id: 'still', name: 'Blue still', type: 'image', imageUrl: 'blue.webp' },
+    motion: { id: 'motion', name: 'Blue motion', type: 'video', videoUrl: 'blue.webm' },
+    upload: { id: 'upload', name: 'My photo', type: 'image', imageUrl: '/uploads/photo.webp', custom: true }
+  });
+  let dismiss;
+  context.window.openDismissShield = handler => { dismiss = handler; };
+  context.window.openAnnouncementBackgroundPicker(context.document.getElementById('ann-background-trigger'));
+  const popup = context.document.body._children.at(-1);
+  const grid = popup.querySelector('.ann-background-grid');
+  popup.querySelector('.ann-background-filters').children.find(button => button.textContent === 'Motion').onclick();
+  assert.deepEqual(grid.children.filter(card => !card.hidden).map(card => card.dataset.name), ['blue motion']);
+  const search = popup.querySelector('input'); search.value = 'missing'; search.oninput();
+  assert.equal(popup.querySelector('.ann-background-none').hidden, false);
+  dismiss(); assert.equal(popup.hidden, true);
+});
+
+test('received remote announcements retain their background after host reload without echoing a send', () => {
+  const { engine, store, broadcasts } = setupAlertEngineEnvironment();
+  const alert = { active: true, text: 'Remote notice', position: 'fullscreen', background: { id: 'blue', bgCss: '#123456' } };
+  engine.receiveLiveAlert(alert);
+  assert.equal(broadcasts.length, 0);
+  const reloaded = setupAlertEngineEnvironment([...store]);
+  assert.equal(reloaded.engine.currentAlert.background.bgCss, '#123456');
+  reloaded.engine.receiveLiveAlert({ active: false, text: '' });
+  assert.equal(reloaded.store.has('sf_live_alert'), false);
 });
 
 test('LiveAlertEngine: CRUD operations on saved announcements', () => {
@@ -143,7 +217,7 @@ test('LiveAlertEngine: Filter and search saved announcements', () => {
 
   engine.savedAnnouncements = [
     { id: '1', tag: 'Parking', text: 'Silver Toyota plate ABC-123 is blocking the driveway.' },
-    { id: '2', tag: 'Welcome', text: 'Welcome to Ginomia sanctuary service.' },
+    { id: '2', tag: 'Welcome', text: 'Welcome to Ginomai sanctuary service.' },
     { id: '3', tag: 'Offering', text: 'Tithe and offering envelopes are available at the ushers desk.' }
   ];
 
@@ -322,3 +396,109 @@ test('tray open and close preserves draft, does not broadcast or rebuild its sav
   assert.equal(broadcasts.length, 0);
   assert.equal(engine.currentAlert, null);
  });
+
+test('full-screen composer settings survive save, selection and sending without replacing the slide', () => {
+  const { context, engine, elements, broadcasts } = setupAlertEngineEnvironment();
+  const timers = [];
+  context.setTimeout = fn => { timers.push(fn); return timers.length; };
+  context.clearTimeout = () => {};
+  context.window.loadAnnouncementComposer({ text: 'Welcome\nPlease be seated', position: 'fullscreen', durationSeconds: 30 });
+  assert.equal(elements.get('alert-position').value, 'fullscreen');
+  context.window.saveAnnouncementDraft();
+  assert.equal(engine.savedAnnouncements[0].position, 'fullscreen');
+  context.window.resetAnnouncementComposer();
+  context.window.loadAnnouncementComposer(engine.savedAnnouncements[0]);
+  assert.equal(elements.get('alert-position').value, 'fullscreen');
+  elements.get('alert-dest-sanctuary').checked = true;
+  context.window.sendQuickLiveAlert();
+  assert.equal(broadcasts.at(-1).alert.position, 'fullscreen');
+  assert.deepEqual(Object.keys(broadcasts.at(-1)), ['alert']);
+  timers.at(-1)();
+  assert.equal(broadcasts.at(-1).alert.active, false);
+  assert.deepEqual(Object.keys(broadcasts.at(-1)), ['alert']);
+});
+
+test('delete confirmation requires Yes; No, Escape and outside dismissal preserve saved messages', () => {
+  const { context, engine, elements, documentEvents, broadcasts } = setupAlertEngineEnvironment();
+  const saved = engine.saveAnnouncement({ title: 'Notice', text: 'Keep this until confirmed' });
+  const anchor = elements.get('ann-search-input') || context.document.getElementById('ann-search-input');
+  let outsideDismiss;
+  let shields = 0;
+  context.window.openDismissShield = (handler, layer) => {
+    outsideDismiss = handler;
+    assert.equal(layer, 100043);
+    shields++;
+  };
+  const popup = () => context.document.body._children.at(-1);
+  const open = () => context.window.confirmAnnouncementDelete(saved.id, anchor);
+  open();
+  assert.equal(engine.savedAnnouncements.length, 1);
+  assert.equal(popup().attributes.role, 'dialog');
+  assert.equal(popup().style.width, '224px');
+  popup().querySelector('.ann-delete-no').onclick();
+  assert.equal(popup().hidden, true);
+  assert.equal(engine.savedAnnouncements.length, 1);
+  open(); outsideDismiss();
+  assert.equal(popup().hidden, true);
+  assert.equal(engine.savedAnnouncements.length, 1);
+  open();
+  let consumed = 0;
+  documentEvents.get('keydown')({ key: 'Escape', preventDefault() { consumed++; }, stopImmediatePropagation() { consumed++; } });
+  assert.equal(consumed, 2);
+  assert.equal(popup().hidden, true);
+  assert.equal(engine.savedAnnouncements.length, 1);
+  open();
+  popup().onkeydown({ key: 'Tab', preventDefault() {} });
+  assert.equal(context.document.activeElement, popup().querySelector('.ann-delete-yes'));
+  engine.editingId = saved.id;
+  popup().querySelector('.ann-delete-yes').onclick();
+  assert.equal(engine.savedAnnouncements.length, 0);
+  assert.equal(engine.editingId, null);
+  assert.equal(popup().hidden, true);
+  assert.equal(shields, 4);
+  assert.equal(broadcasts.length, 0);
+});
+
+test('announcement custom dropdown uses the dismissal shield, syncs selection and supports Escape', () => {
+  const { context, elements, documentEvents } = setupAlertEngineEnvironment();
+  const element = id => context.document.getElementById(id);
+  const select = element('alert-position');
+  const wrapper = element('select-wrapper');
+  const trigger = element('select-trigger');
+  const popup = element('select-options');
+  const options = [element('top-option'), element('bottom-option'), element('full-option')];
+  const values = ['upperthird', 'lowerthird', 'fullscreen'];
+  select.value = 'upperthird';
+  select.options = values.map(value => ({ value, text: value }));
+  Object.defineProperty(select, 'selectedIndex', { get: () => values.indexOf(select.value) });
+  select.closest = () => ({ firstChild: { textContent: 'Position' } });
+  let change;
+  select.addEventListener = (type, handler) => { if (type === 'change') change = handler; };
+  popup.querySelectorAll = () => options;
+  popup.querySelector = () => options.find(option => option.classList.contains('selected'));
+  const build = () => options.forEach((option, index) => {
+    option.dataset = { value: values[index] };
+    option.classList.toggle('selected', select.value === values[index]);
+    option.onclick = () => { select.value = values[index]; change(); };
+  });
+  let dismiss;
+  let syncs = 0;
+  context.window.openDismissShield = handler => { dismiss = handler; };
+  context.window.syncCustomSelect = () => syncs++;
+  context.window.configureAnnouncementSelect(select, wrapper, trigger, popup, build);
+  const click = () => trigger.onclick({ preventDefault() {}, stopPropagation() {} });
+  click();
+  assert.equal(popup.hidden, false);
+  assert.equal(trigger.attributes['aria-expanded'], 'true');
+  assert.equal(options[2].attributes.role, 'option');
+  options[2].onclick();
+  assert.equal(select.value, 'fullscreen');
+  assert.equal(popup.hidden, true);
+  assert.match(trigger.attributes['aria-label'], /fullscreen/);
+  assert.equal(syncs, 2);
+  click(); dismiss(); assert.equal(popup.hidden, true);
+  click();
+  documentEvents.get('keydown')({ key: 'Escape', preventDefault() {}, stopImmediatePropagation() {} });
+  assert.equal(popup.hidden, true);
+  assert.equal(wrapper.classList.contains('open'), false);
+});

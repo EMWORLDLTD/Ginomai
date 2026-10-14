@@ -1,9 +1,49 @@
-// Ginomia - Live Alert & Announcement Hub Engine
+﻿// Ginomai - Live Alert & Announcement Hub Engine
 'use strict';
 
 (function() {
   const STORAGE_KEY = 'sf_saved_announcements';
   const LIVE_ALERT_STORAGE_KEY = 'sf_live_alert';
+  const BACKGROUND_STORAGE_KEY = 'sf_announcement_background';
+  const DEFAULT_BACKGROUND = { id: 'announcement_midnight', name: 'Midnight', type: 'gradient', bgCss: '#10131b', textColor: '#ffffff', font: 'Outfit', dimmer: 0 };
+  let activeAnnouncementPopup = null;
+  let deleteConfirmation = null;
+  let backgroundPicker = null;
+  let announcementBackground = DEFAULT_BACKGROUND;
+  try {
+    const saved = JSON.parse(localStorage.getItem(BACKGROUND_STORAGE_KEY));
+    if (saved?.id && saved?.name) announcementBackground = saved;
+  } catch (_) {}
+
+  function getAnnouncementBackground() {
+    const theme = window.SANCTUARY_THEMES?.[announcementBackground.id];
+    return theme ? backgroundFromTheme(theme) : { ...announcementBackground };
+  }
+
+  function backgroundFromTheme(theme) {
+    return { id: theme.id, name: theme.name, type: theme.type || 'gradient',
+      imageUrl: theme.imageUrl || '', videoUrl: theme.videoUrl || '', bgCss: theme.bgCss || '',
+      previewGradient: theme.previewGradient || '', custom: Boolean(theme.custom),
+      fit: 'cover', dimmer: 30, font: theme.font || 'Outfit',
+      textColor: theme.textColor || '#ffffff', textShadow: theme.textShadow || '0 2px 8px #000' };
+  }
+
+  function paintBackgroundThumbnail(node, background) {
+    node.style.background = background.previewGradient || background.bgCss || '#10131b';
+    if (background.imageUrl) node.style.backgroundImage = `url(${JSON.stringify(background.imageUrl)})`;
+  }
+
+  function syncAnnouncementBackground() {
+    const field = document.getElementById('ann-background-field');
+    if (field) field.hidden = document.getElementById('alert-position')?.value !== 'fullscreen';
+    const background = getAnnouncementBackground();
+    const name = document.getElementById('ann-background-name');
+    if (name) name.textContent = background.name;
+    const trigger = document.getElementById('ann-background-trigger');
+    if (trigger) trigger.title = background.name;
+    const thumb = document.getElementById('ann-background-thumb');
+    if (thumb) paintBackgroundThumbnail(thumb, background);
+  }
 
   const LEGACY_ANNOUNCEMENTS = [
     {
@@ -91,6 +131,16 @@
       } catch (e) {}
     }
 
+    receiveLiveAlert(alert) {
+      this.currentAlert = alert || null;
+      try {
+        if (alert?.active) localStorage.setItem(LIVE_ALERT_STORAGE_KEY, JSON.stringify(alert));
+        else localStorage.removeItem(LIVE_ALERT_STORAGE_KEY);
+      } catch (_) {}
+      this.scheduleExpiry();
+      this.updateLiveStatusUI();
+    }
+
     setupStorageListener() {
       if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
       window.addEventListener('storage', (e) => {
@@ -104,6 +154,13 @@
         if (e.key === STORAGE_KEY) {
           this.loadSavedAnnouncements();
           this.renderSavedList();
+        }
+        if (e.key === BACKGROUND_STORAGE_KEY) {
+          try {
+            const saved = JSON.parse(e.newValue);
+            announcementBackground = saved?.id && saved?.name ? saved : DEFAULT_BACKGROUND;
+            syncAnnouncementBackground();
+          } catch (_) {}
         }
       });
     }
@@ -133,6 +190,7 @@
         expiresAt: Number(options.durationSeconds) > 0 ? Date.now() + Math.min(Number(options.durationSeconds), 86400) * 1000 : null,
         timestamp: Date.now()
       };
+      if (alertPayload.position === 'fullscreen') alertPayload.background = getAnnouncementBackground();
 
       this.currentAlert = alertPayload;
       this.scheduleExpiry();
@@ -143,7 +201,7 @@
 
       // Broadcast to all outputs
       if (typeof window.broadcastState === 'function') {
-        window.broadcastState({ alert: alertPayload }, true);
+        window.broadcastState({ alert: alertPayload });
       }
 
       this.updateLiveStatusUI();
@@ -179,7 +237,7 @@
       } catch (e) {}
 
       if (typeof window.broadcastState === 'function') {
-        window.broadcastState({ alert: { active: false, text: '' } }, true);
+        window.broadcastState({ alert: { active: false, text: '' } });
       }
 
       this.updateLiveStatusUI();
@@ -192,7 +250,7 @@
     getDestinationsLabel(dest) {
       if (!dest) return 'All Displays';
       const parts = [];
-      if (dest.sanctuary) parts.push('In-House');
+      if (dest.sanctuary) parts.push('Projector');
       if (dest.livestream) parts.push('Stream');
       if (dest.stage) parts.push('Stage');
       return parts.length > 0 ? parts.join(' + ') : 'None';
@@ -250,6 +308,11 @@
     deleteAnnouncement(id) {
       const before = this.savedAnnouncements.length;
       this.savedAnnouncements = this.savedAnnouncements.filter(a => a.id !== id);
+      if (this.editingId === id) {
+        this.editingId = null;
+        const saveButton = document.getElementById('ann-save-draft');
+        if (saveButton) saveButton.textContent = 'Save';
+      }
       this.persistSavedAnnouncements();
       this.renderSavedList();
       if (typeof window.showToast === 'function') {
@@ -260,6 +323,8 @@
 
     updateLiveStatusUI() {
       this.updatePreview();
+      const sizeLabel = document.getElementById('bento-textscale-label');
+      if (sizeLabel && window.getPreviewTextScaleControl) sizeLabel.textContent = window.getPreviewTextScaleControl().value.toFixed(1) + 'x';
       const isLive = Boolean(this.currentAlert && this.currentAlert.active && this.currentAlert.text);
       const strip = document.getElementById('bento-live-alert-strip');
       const stripDest = document.getElementById('bento-alert-strip-dest');
@@ -313,6 +378,7 @@
     }
 
     renderSavedList() {
+      closeAnnouncementPopup(false);
       const container = document.getElementById('saved-announcements-list');
       if (!container) return;
 
@@ -321,8 +387,10 @@
 
       if (!filtered.length) {
         container.innerHTML = `
-          <div style="padding:24px 12px; text-align:center; color:var(--text-muted); font-size:11px;">
-            ${q ? 'No matching saved announcements' : 'Write a message and choose Save to keep it here without going live. Select a saved message to edit it.'}
+          <div class="ann-library-empty">
+            <span class="ann-library-empty-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
+            <strong>${q ? 'No matching messages' : 'No saved messages yet'}</strong>
+            <p>${q ? 'Try another title or keyword.' : 'Write a message, then choose Save to use it again.'}</p>
           </div>
         `;
         return;
@@ -336,7 +404,11 @@
       container.querySelectorAll('.ann-list-row').forEach((row, index) => {
         const item = filtered[index];
         row.querySelector('.ann-message-select').onclick = () => window.loadAnnouncementComposer(item);
-        row.querySelector('.ann-remove').onclick = () => this.deleteAnnouncement(item.id);
+        row.querySelector('.ann-remove').onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          window.confirmAnnouncementDelete(item.id, event.currentTarget);
+        };
       });
     }
 
@@ -367,6 +439,205 @@
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  function closeAnnouncementPopup(restoreFocus = true) {
+    const active = activeAnnouncementPopup;
+    if (!active) return false;
+    activeAnnouncementPopup = null;
+    active.popup.hidden = true;
+    active.wrapper?.classList.remove('open');
+    active.anchor.setAttribute('aria-expanded', 'false');
+    window.closeDismissShield?.();
+    if (restoreFocus && active.anchor.isConnected !== false) active.anchor.focus?.();
+    return true;
+  }
+
+  function openAnnouncementPopup(popup, anchor, wrapper = null) {
+    closeAnnouncementPopup(false);
+    popup.classList.add('ann-local-popover');
+    document.body.appendChild(popup);
+    popup.hidden = false;
+    wrapper?.classList.add('open');
+    anchor.setAttribute('aria-expanded', 'true');
+    activeAnnouncementPopup = { popup, anchor, wrapper };
+    window.openDismissShield?.(() => closeAnnouncementPopup(), 100043);
+    const rect = anchor.getBoundingClientRect();
+    const width = Math.min(popup === backgroundPicker ? 420 : wrapper ? Math.max(160, rect.width) : 224, window.innerWidth - 16);
+    popup.style.width = width + 'px';
+    const height = popup.offsetHeight;
+    const below = rect.bottom + 4;
+    popup.style.left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) + 'px';
+    popup.style.top = Math.max(8, Math.min(below + height <= window.innerHeight - 8 ? below : rect.top - height - 4, window.innerHeight - height - 8)) + 'px';
+  }
+
+  // Reuse the app's custom select nodes, with a portal to avoid tray scroll clipping.
+  window.configureAnnouncementSelect = function(select, wrapper, trigger, popup, buildOptions) {
+    popup.id = select.id + '-options';
+    popup.hidden = true;
+    popup.setAttribute('role', 'listbox');
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-controls', popup.id);
+    const label = select.closest('label')?.firstChild?.textContent || document.querySelector(`label[for="${select.id}"]`)?.textContent || 'Options';
+    const sync = () => {
+      const option = select.options[select.selectedIndex];
+      trigger.setAttribute('aria-label', `${label.trim()}: ${option?.text || ''}`);
+      window.syncCustomSelect?.(select);
+    };
+    const open = () => {
+      buildOptions();
+      popup.querySelectorAll('.custom-select-option').forEach(item => {
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', String(item.dataset.value === select.value));
+        item.tabIndex = -1;
+      });
+      openAnnouncementPopup(popup, trigger, wrapper);
+      (popup.querySelector('.selected') || popup.firstElementChild)?.focus();
+    };
+    trigger.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (activeAnnouncementPopup?.popup === popup) closeAnnouncementPopup();
+      else open();
+    };
+    trigger.onkeydown = event => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        open();
+      }
+    };
+    popup.onkeydown = event => {
+      const items = Array.from(popup.querySelectorAll('.custom-select-option'));
+      const index = items.indexOf(document.activeElement);
+      let next = index;
+      if (event.key === 'ArrowDown') next = (index + 1) % items.length;
+      else if (event.key === 'ArrowUp') next = (index + items.length - 1) % items.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = items.length - 1;
+      else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        items[index]?.click();
+        return;
+      } else return;
+      event.preventDefault();
+      items[next]?.focus();
+    };
+    select.addEventListener('change', () => { sync(); closeAnnouncementPopup(); });
+    sync();
+  };
+
+  window.openAnnouncementBackgroundPicker = function(anchor) {
+    if (activeAnnouncementPopup?.popup === backgroundPicker && backgroundPicker) { closeAnnouncementPopup(); return; }
+    if (!backgroundPicker) {
+      backgroundPicker = document.createElement('div');
+      backgroundPicker.id = 'ann-background-picker';
+      backgroundPicker.className = 'ann-background-picker';
+      backgroundPicker.setAttribute('role', 'dialog');
+      backgroundPicker.setAttribute('aria-modal', 'true');
+      backgroundPicker.setAttribute('aria-labelledby', 'ann-background-picker-title');
+      backgroundPicker.innerHTML = '<div class="ann-background-picker-heading"><strong id="ann-background-picker-title">Choose a background</strong><button type="button" class="ann-background-close" aria-label="Close backgrounds">×</button></div><input type="search" class="ann-search-input" placeholder="Search backgrounds…" aria-label="Search backgrounds"><div class="ann-background-filters" role="group" aria-label="Background type"></div><div class="ann-background-grid"></div><p class="ann-background-none" hidden>No matching backgrounds</p>';
+      backgroundPicker.querySelector('.ann-background-close').onclick = () => closeAnnouncementPopup();
+      backgroundPicker.onkeydown = event => {
+        const cards = Array.from(backgroundPicker.querySelectorAll('.ann-background-option:not([hidden])'));
+        const index = cards.indexOf(document.activeElement);
+        if (index >= 0 && ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+          event.preventDefault();
+          const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3 }[event.key] || 0;
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? cards.length - 1 : Math.max(0, Math.min(cards.length - 1, index + step));
+          cards[next]?.focus();
+        }
+        if (event.key === 'Tab') {
+          const focusable = Array.from(backgroundPicker.querySelectorAll('button:not([hidden]), input'));
+          if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable.at(-1)?.focus(); }
+          else if (!event.shiftKey && document.activeElement === focusable.at(-1)) { event.preventDefault(); focusable[0]?.focus(); }
+        }
+      };
+    }
+    anchor.setAttribute('aria-controls', backgroundPicker.id);
+    const current = getAnnouncementBackground();
+    const backgrounds = [DEFAULT_BACKGROUND, ...Object.values(window.SANCTUARY_THEMES || {}).map(backgroundFromTheme)];
+    if (!backgrounds.some(item => item.id === current.id)) backgrounds.unshift(current);
+    const grid = backgroundPicker.querySelector('.ann-background-grid');
+    grid.replaceChildren();
+    let filter = 'all';
+    const search = backgroundPicker.querySelector('input');
+    search.value = '';
+    const applyFilter = () => {
+      const query = search.value.trim().toLowerCase();
+      let count = 0;
+      for (const card of grid.children) {
+        card.hidden = !card.dataset.name.includes(query) || (filter === 'motion' ? card.dataset.type !== 'video' : filter === 'still' ? card.dataset.type === 'video' : filter === 'uploads' ? card.dataset.custom !== 'true' : false);
+        if (!card.hidden) count++;
+      }
+      backgroundPicker.querySelector('.ann-background-none').hidden = count > 0;
+    };
+    search.oninput = applyFilter;
+    const filters = backgroundPicker.querySelector('.ann-background-filters');
+    filters.replaceChildren();
+    for (const [id, name] of [['all', 'All'], ['still', 'Still'], ['motion', 'Motion'], ['uploads', 'Uploads']]) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.textContent = name;
+      button.setAttribute('aria-pressed', String(id === filter));
+      button.onclick = () => {
+        filter = id;
+        for (const item of filters.children) item.setAttribute('aria-pressed', String(item === button));
+        applyFilter();
+      };
+      filters.appendChild(button);
+    }
+    for (const background of backgrounds) {
+      const card = document.createElement('button');
+      card.type = 'button'; card.className = 'ann-background-option';
+      card.dataset.name = background.name.toLowerCase(); card.dataset.type = background.type; card.dataset.custom = String(Boolean(background.custom));
+      card.setAttribute('aria-pressed', String(background.id === current.id));
+      card.setAttribute('aria-label', `${background.name}${background.type === 'video' ? ', motion background' : ''}`);
+      const thumb = document.createElement('span'); thumb.className = 'ann-background-swatch'; thumb.setAttribute('aria-hidden', 'true');
+      paintBackgroundThumbnail(thumb, background);
+      thumb.innerHTML = '<svg class="ann-background-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 4 4 10-10"/></svg>';
+      const label = document.createElement('span'); label.className = 'ann-background-option-name'; label.textContent = background.name;
+      card.appendChild(thumb); card.appendChild(label);
+      if (background.type === 'video') { const badge = document.createElement('span'); badge.className = 'ann-background-motion'; badge.textContent = 'Motion'; thumb.appendChild(badge); }
+      card.onclick = () => {
+        announcementBackground = { ...background };
+        try { localStorage.setItem(BACKGROUND_STORAGE_KEY, JSON.stringify(announcementBackground)); } catch (_) {}
+        syncAnnouncementBackground();
+        closeAnnouncementPopup();
+      };
+      grid.appendChild(card);
+    }
+    openAnnouncementPopup(backgroundPicker, anchor);
+    search.focus();
+  };
+
+  window.confirmAnnouncementDelete = function(id, anchor) {
+    if (!liveAlertEngine.savedAnnouncements.some(item => item.id === id)) return;
+    if (!deleteConfirmation) {
+      deleteConfirmation = document.createElement('div');
+      deleteConfirmation.id = 'ann-delete-confirmation';
+      deleteConfirmation.className = 'ann-delete-confirmation';
+      deleteConfirmation.setAttribute('role', 'dialog');
+      deleteConfirmation.setAttribute('aria-modal', 'true');
+      deleteConfirmation.setAttribute('aria-label', 'Delete this announcement?');
+      deleteConfirmation.innerHTML = '<p>Delete this announcement?</p><div class="ann-delete-actions"><button type="button" class="ann-action-btn ann-delete-no">No</button><button type="button" class="ann-action-btn ann-delete-yes">Yes</button></div>';
+      deleteConfirmation.onkeydown = event => {
+        if (event.key !== 'Tab') return;
+        event.preventDefault();
+        const no = deleteConfirmation.querySelector('.ann-delete-no');
+        const yes = deleteConfirmation.querySelector('.ann-delete-yes');
+        (document.activeElement === no ? yes : no).focus();
+      };
+    }
+    anchor.setAttribute('aria-haspopup', 'dialog');
+    anchor.setAttribute('aria-controls', deleteConfirmation.id);
+    deleteConfirmation.querySelector('.ann-delete-no').onclick = () => closeAnnouncementPopup();
+    deleteConfirmation.querySelector('.ann-delete-yes').onclick = () => {
+      closeAnnouncementPopup(false);
+      liveAlertEngine.deleteAnnouncement(id);
+      document.getElementById('ann-search-input')?.focus();
+    };
+    openAnnouncementPopup(deleteConfirmation, anchor);
+    deleteConfirmation.querySelector('.ann-delete-no').focus();
+  };
+
   const liveAlertEngine = new LiveAlertEngine();
   window.liveAlertEngine = liveAlertEngine;
 
@@ -391,10 +662,12 @@
       announcementListRendered = true;
     }
     liveAlertEngine.updateLiveStatusUI();
+    syncAnnouncementBackground();
     document.getElementById('live-alert-input')?.focus();
   };
 
   window.closeAnnouncementHub = function() {
+    closeAnnouncementPopup(false);
     const tray = document.getElementById('announcement-hub-drawer');
     if (!tray) return;
     tray.hidden = true;
@@ -454,8 +727,11 @@
       const field = document.getElementById('alert-dest-' + name);
       if (field) field.checked = false;
     });
-    document.getElementById('alert-position').value = item.position === 'lowerthird' ? 'lowerthird' : 'upperthird';
+    document.getElementById('alert-position').value = ['upperthird', 'lowerthird', 'fullscreen'].includes(item.position) ? item.position : 'upperthird';
     document.getElementById('alert-duration').value = String(item.durationSeconds ?? 60);
+    window.syncCustomSelect?.(document.getElementById('alert-position'));
+    window.syncCustomSelect?.(document.getElementById('alert-duration'));
+    syncAnnouncementBackground();
     document.getElementById('alert-save-message').checked = false;
     input?.scrollIntoView?.({ block: 'nearest' });
   };
@@ -534,11 +810,14 @@
     }
 
     const preview = document.getElementById('ann-editor-preview');
+    window.syncCustomSelect?.(posSelect);
+    window.syncCustomSelect?.(speedSelect);
     if (preview) preview.textContent = textInput?.value || '';
     modal.style.display = 'flex';
   };
 
   window.closeNewAnnouncementModal = function() {
+    closeAnnouncementPopup(false);
     const modal = document.getElementById('announcement-edit-modal-backdrop');
     if (modal) modal.style.display = 'none';
   };
@@ -585,6 +864,7 @@
   if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        if (closeAnnouncementPopup()) { e.preventDefault(); e.stopImmediatePropagation(); return; }
         const editor = document.getElementById('announcement-edit-modal-backdrop');
         if (editor && editor.style.display === 'flex') { window.closeNewAnnouncementModal(); e.stopImmediatePropagation(); return; }
         const drawer = document.getElementById('announcement-hub-drawer');
@@ -593,7 +873,14 @@
           window.closeAnnouncementHub();
         }
       }
-    });
+      if (e.key === 'Tab' && activeAnnouncementPopup && activeAnnouncementPopup.popup !== deleteConfirmation && activeAnnouncementPopup.popup !== backgroundPicker) closeAnnouncementPopup();
+    }, true);
+    document.addEventListener('scroll', (e) => {
+      if (activeAnnouncementPopup && !activeAnnouncementPopup.popup.contains(e.target)) closeAnnouncementPopup(false);
+    }, true);
+    window.addEventListener?.('resize', () => closeAnnouncementPopup(false));
+    document.getElementById('alert-position')?.addEventListener('change', syncAnnouncementBackground);
+    syncAnnouncementBackground();
   }
 
 })();

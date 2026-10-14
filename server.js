@@ -1,4 +1,4 @@
-// Ginomia - Native Broadcast & OBS Sync Server
+﻿// Ginomai - Native Broadcast & OBS Sync Server
 // The Word in Motion
 'use strict';
 
@@ -11,19 +11,22 @@ const createAccessControl = require('./lib/access-control');
 const access = createAccessControl();
 const sanctuaryMedia = require('./lib/sanctuary-media')();
 const presentationMedia = require('./lib/presentation-media')();
+const sharedMediaLibrary = require('./lib/media-library');
 const softwareMigrator = require('./lib/software-migrator')(sanctuaryMedia);
 const outputs = require('./lib/output-status')();
+const liveStateStore = require('./lib/live-state-store')();
 const semanticService = new (require('./lib/semantic-service.cjs'))();
 let outputRevision = 0;
 let held = false;
 function displayState(full = false) {
-  if (full) return {...currentState,_serverTime:Date.now()};
+  if (full) return {...currentState,isHoldLive:held,_serverTime:Date.now()};
   const { dashboard, hostSpeechState, ...projected } = currentState;
-  return {...projected,_serverTime:Date.now()};
+  return {...projected,isHoldLive:held,_serverTime:Date.now()};
 }
 
 const PORT = process.env.PORT || 8500;
 const PUBLIC_DIR = __dirname;
+const contentPacks = new (require('./lib/content-packs').ContentPacks)({ root: PUBLIC_DIR });
 const liveReload = process.env.SF_DEV_RELOAD === '1'
   ? require('./scripts/live-reload')(PUBLIC_DIR) : null;
 let currentBoundPort = PORT;
@@ -45,6 +48,11 @@ let currentState = {
   _outputRevision: 0,
   _timestamp: Date.now()
 };
+const savedLiveState = liveStateStore.load();
+if (savedLiveState) {
+  currentState = { ...currentState, ...savedLiveState, _timestamp: Math.max(Date.now(), savedLiveState._timestamp || 0) };
+  outputRevision = currentState._outputRevision;
+}
 
 // ─── Catalog ──────────────────────────────────────────────────────────────────
 let controlCatalog = { bible: {}, songs: [] };
@@ -64,6 +72,7 @@ let shadowDeckState = null;
 
 // ─── Lexicon Cache ────────────────────────────────────────────────────────────
 let lexiconCache = null;
+let storageCleanupRunning = false;
 
 // ─── Cloud Lyrics Cache (In-Memory, 1hr TTL, max 500 entries) ─────────────────
 const lyricsCache = new Map();
@@ -96,7 +105,7 @@ const DEFAULT_PRIVILEGES = {
   // Always blocked (never in privileges object — enforced in code)
   // deleteSong: never
   // openSettings: never
-  // aiMic: never
+  // Microphone device selection remains host-only.
   // maxLinesPerSlide: never
 };
 
@@ -122,6 +131,7 @@ const FULL_CONTROL_PRIVILEGES = {
 // Current remote session state (Dedicated Single Operator with Full Control)
 let remoteSession = {
   enabled: false,
+  revision: Date.now(),
   importMode: 'direct',
   privileges: { ...FULL_CONTROL_PRIVILEGES },
   connectedOperators: [],   // [{ id, name, joinedAt }]
@@ -139,6 +149,7 @@ function publishState() {
   sseClients.forEach(client => {
     try { client.write(`data: ${JSON.stringify(displayState(client.sfAuthenticated))}\n\n`); } catch { sseClients.delete(client); }
   });
+  liveStateStore.save(currentState);
 }
 
 function broadcastToOperators(payload) {
@@ -149,7 +160,7 @@ function broadcastToOperators(payload) {
 }
 
 function revokeOperatorAccess() {
-  broadcastToOperators({ type: 'SESSION_ENDED' });
+  broadcastToOperators({ type: 'SESSION_ENDED', enabled: remoteSession.enabled, revision: remoteSession.revision });
   access.revoke();
   for (const client of operatorClients.values()) client.end();
   operatorClients.clear();
@@ -187,7 +198,7 @@ function getLanAddresses() {
 
 // ─── Always-Blocked Commands (regardless of privileges) ───────────────────────
 const ALWAYS_BLOCKED_FROM_REMOTE = new Set([
-  'DELETE_SONG', 'OPEN_SETTINGS', 'TOGGLE_AI_MIC', 'SET_MAX_LINES'
+  'DELETE_SONG', 'OPEN_SETTINGS', 'TOGGLE_AI_MIC', 'SET_MAX_LINES', 'SET_AUDIO_DEVICE'
 ]);
 
 // ─── Privilege → Command type mapping ─────────────────────────────────────────
@@ -195,9 +206,11 @@ function isCommandAllowed(command, privileges) {
   if (ALWAYS_BLOCKED_FROM_REMOTE.has(command.type)) return false;
   switch (command.type) {
     case 'PROJECT':      return privileges.projectSlide;
+    case 'ALERT_UPDATE': return command.alert?.active ? privileges.projectSlide : privileges.clearScreen;
     case 'NAVIGATE':     return privileges.navigateSlides;
     case 'CLEAR':        return privileges.clearScreen;
     case 'BLACKOUT':     return privileges.clearScreen;
+    case 'SET_HOLD':     return privileges.clearScreen && typeof command.enabled === 'boolean';
     case 'LOAD_SONG':    return privileges.loadSong;
     case 'IMPORT_SONG':  return privileges.importSongsDirect;
     case 'IMPORT_BIBLE': return privileges.importBibles;
@@ -210,6 +223,8 @@ function isCommandAllowed(command, privileges) {
     case 'SET_FONT_SIZE': return privileges.adjustFontSize;
     case 'TOGGLE_TRANSPARENT_BG': return privileges.toggleTransparentBg;
     case 'AUTO_PROJECT': return privileges.autoProject;
+    case 'SET_SPEECH_AI':
+    case 'SET_SERMON_RECORDING': return typeof command.enabled === 'boolean';
     case 'PUSH_TO_HOST': return privileges.importSongsDirect && privileges.addAgendaItems;
     case 'STATE_PATCH':  return true; // filtered internally
     case 'SHADOW_DECK':  return true; // always allowed — continuity
@@ -301,13 +316,49 @@ const server = http.createServer((req, res) => {
   const publicRead = req.method === 'GET' && (publicReads.has(pathname) || pathname.startsWith('/api/lexicon/'));
   const operatorAccess = identity?.role === 'operator' && remoteSession.enabled && (
     (req.method === 'POST' && operatorPosts.has(pathname)) ||
-    (req.method === 'GET' && (operatorReads.has(pathname) || pathname === `/api/operator-events/${identity.operatorId}` || (remoteSession.privileges.importBibles && pathname.startsWith('/api/bibles/download/'))))
+    (req.method === 'GET' && (operatorReads.has(pathname) || pathname === `/api/operator-events/${identity.operatorId}` || (remoteSession.privileges.importBibles && pathname.startsWith('/api/bibles/download/')))) ||
+    (remoteSession.privileges.importBibles && ['GET', 'POST'].includes(req.method) && /^\/api\/content-packs\/(?!AI_SEMANTIC(?:\/|$))[A-Z0-9_]+(?:\/cancel)?$/.test(pathname))
   );
   if (pathname.startsWith('/api/') && !isHost && !publicRead && !operatorAccess && !['/api/session/join', '/api/output-ack'].includes(pathname)) {
-    return json(403, { error: 'Pair this device with the host to continue', pairingRequired: true });
+    return json(403, { error: remoteSession.enabled ? 'Pair this device with the host to continue' : 'Remote session is offline', pairingRequired: remoteSession.enabled, sessionOffline: !remoteSession.enabled, revision: remoteSession.revision });
   }
   if (!isHost && pathname === '/api/session' && req.method === 'GET') {
-    return json(200, { enabled: remoteSession.enabled, privileges: identity ? remoteSession.privileges : {}, importMode: remoteSession.importMode });
+    return json(200, { enabled: remoteSession.enabled, revision: remoteSession.revision, paired: identity?.role === 'operator', privileges: identity ? remoteSession.privileges : {}, importMode: remoteSession.importMode });
+  }
+  if (storageCleanupRunning && pathname.startsWith('/api/') && !['GET', 'HEAD'].includes(req.method)) {
+    return json(409, { error: 'Data cleanup is in progress. Please wait.' });
+  }
+  if (pathname === '/api/storage/clear' && req.method === 'POST') {
+    readBody((error, payload) => {
+      if (error || !['all', 'bibles'].includes(payload?.scope) || (payload.deleteMedia !== undefined && typeof payload.deleteMedia !== 'boolean')) return json(400, { error: 'Choose a valid cleanup option.' });
+      if (storageCleanupRunning) return json(409, { error: 'Data cleanup is in progress. Please wait.' });
+      storageCleanupRunning = true;
+      Promise.resolve().then(async () => {
+        if (payload.scope === 'all') await semanticService.close();
+        await contentPacks.clearDownloads(payload.scope);
+        lexiconCache = null;
+        if (payload.scope === 'all') {
+          if (payload.deleteMedia === true) {
+            await sanctuaryMedia.clear();
+            await presentationMedia.clear();
+          }
+          lyricsCache.clear();
+          held = false;
+          shadowDeckState = null;
+          controlCatalog = { bible: {}, songs: [] };
+          hostSpeechState = { isListening: false, transcript: '', detectedVerses: [], detectedSongs: [], paraphraseMatches: [], updatedAt: Date.now() };
+          remoteSession.enabled = false;
+          revokeOperatorAccess();
+          remoteSession = { enabled: false, revision: Date.now(), importMode: 'direct', privileges: { ...FULL_CONTROL_PRIVILEGES }, connectedOperators: [], savedProfiles: [], pendingImports: [] };
+          currentState = { mode: 'full', projectorActive: true, livestreamActive: true, text: '', reference: '', version: '', compare: false, textSize: 1, textAutoScale: true, bg: '#0F172A', clear: true, clearBg: true, _timestamp: Date.now() };
+          publishState();
+          await liveStateStore.flush({ strict: true });
+        }
+        json(200, { success: true });
+      }).catch(() => json(500, { error: 'Cleanup could not finish. Some data may already have been cleared. Please retry.' }))
+        .finally(() => { storageCleanupRunning = false; });
+    });
+    return;
   }
   if (!isHost && pathname === '/api/session/push-to-host' && (!remoteSession.privileges.importSongsDirect || !remoteSession.privileges.addAgendaItems)) {
     return json(403, { error: 'The host has not allowed library and agenda uploads' });
@@ -318,12 +369,18 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/semantic/query' && req.method === 'POST') {
     readBody((err, payload) => {
       if (err || typeof payload.text !== 'string' || payload.text.length > 2000 || payload.version !== 'KJV') return json(400, { error: 'Expected KJV text up to 2000 characters.' });
-      semanticService.query(payload.text).then(result => json(200, { result })).catch(() => json(503, { error: 'Semantic retrieval unavailable or busy.' }));
+      Promise.resolve().then(async () => {
+        if (!(await contentPacks.status('AI_SEMANTIC')).installed) return json(409, { error: 'Download the AI Bible detection pack in Settings to enable semantic suggestions.', downloadRequired: true });
+        const manifest = await contentPacks.filePath('assets/semantic/manifest.json');
+        semanticService.setFolder(path.dirname(manifest));
+        const result = await semanticService.query(payload.text);
+        json(200, { result });
+      }).catch(() => json(503, { error: 'Semantic retrieval unavailable or busy.' }));
     });
     return;
   }
   if (pathname === '/api/presentation-media' && req.method === 'GET') {
-    presentationMedia.list().then(items => json(200, {items})).catch(() => json(500, {error:'Could not read presentation media.'})); return;
+    Promise.all([presentationMedia.list(),sanctuaryMedia.list()]).then(([media,backgrounds])=>json(200,{items:[...media,...backgrounds.map(sharedMediaLibrary.asPresentation)].sort((a,b)=>b.createdAt-a.createdAt)})).catch(() => json(500, {error:'Could not read presentation media.'})); return;
   }
   if (['/api/presentation-media','/api/presentation-media/page'].includes(pathname) && req.method === 'POST') {
     const action=pathname.endsWith('/page') ? 'page':'upload';
@@ -333,7 +390,7 @@ const server = http.createServer((req, res) => {
     presentationMedia.serve(req,res,pathname).catch(()=>{if(!res.headersSent) res.writeHead(500);res.end();}); return;
   }
   if (pathname === '/api/sanctuary-media' && req.method === 'GET') {
-    sanctuaryMedia.list().then(items => json(200, { items })).catch(() => json(500, { error: 'Could not read uploaded backgrounds.' }));
+    Promise.all([sanctuaryMedia.list(),presentationMedia.list()]).then(([backgrounds,media])=>json(200,{items:[...backgrounds,...media.map(sharedMediaLibrary.asBackground).filter(Boolean)].sort((a,b)=>b.createdAt-a.createdAt)})).catch(() => json(500, { error: 'Could not read uploaded backgrounds.' }));
     return;
   }
   if (pathname === '/api/sanctuary-media' && req.method === 'POST') {
@@ -344,7 +401,7 @@ const server = http.createServer((req, res) => {
   }
   if (pathname === '/api/sanctuary-media' && req.method === 'DELETE') {
     const id = reqUrl.searchParams.get('id');
-    sanctuaryMedia.remove(id).then(result => json(200, result)).catch(error => {
+    (id?.startsWith('media_')?presentationMedia:sanctuaryMedia).remove(id).then(result => json(200, result)).catch(error => {
       if (!res.destroyed) json(error.status || 500, { error: error.message || 'Could not delete this background.' });
     });
     return;
@@ -380,6 +437,7 @@ const server = http.createServer((req, res) => {
     readBody((err, payload) => {
       if (err) return json(400, { error: 'Invalid hold state' });
       held = payload.held === true;
+      publishState();
       json(200, { held });
     });
     return;
@@ -418,6 +476,7 @@ const server = http.createServer((req, res) => {
     }
     json(200, {
       enabled: remoteSession.enabled,
+      revision: remoteSession.revision,
       pairingCode: access.code(),
       importMode: remoteSession.importMode,
       privileges: remoteSession.privileges,
@@ -425,7 +484,7 @@ const server = http.createServer((req, res) => {
       savedProfiles: remoteSession.savedProfiles,
       pendingImports: remoteSession.pendingImports,
       hostSpeechState: hostSpeechState,
-      lanUrl: addresses[0] ? `http://${addresses[0]}:${currentBoundPort}/index.html?remote=1` : null,
+      lanUrl: addresses[0] ? `http://${addresses[0]}:${currentBoundPort}/remote` : null,
       port: currentBoundPort,
     });
     return;
@@ -435,6 +494,8 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/session/start' && req.method === 'POST') {
     readBody((err, payload) => {
       if (err) return json(400, { error: 'Bad JSON' });
+      if (remoteSession.enabled) return json(200, { success: true, enabled: true, revision: remoteSession.revision });
+      remoteSession.revision = Math.max(Date.now(), remoteSession.revision + 1);
       remoteSession.enabled = true;
       revokeOperatorAccess();
       access.rotate();
@@ -445,18 +506,19 @@ const server = http.createServer((req, res) => {
       // Also tell host control channel
       const ev = `data: ${JSON.stringify({ type: 'REMOTE_SERVER_STATUS', enabled: true, session: remoteSession })}\n\n`;
       controlClients.forEach(c => { try { c.write(ev); } catch {} });
-      json(200, { success: true, enabled: true });
+      json(200, { success: true, enabled: true, revision: remoteSession.revision });
     });
     return;
   }
 
   // POST /api/session/stop — host stops the session
   if (pathname === '/api/session/stop' && req.method === 'POST') {
+    if (remoteSession.enabled) remoteSession.revision = Math.max(Date.now(), remoteSession.revision + 1);
     remoteSession.enabled = false;
     revokeOperatorAccess();
-    const ev = `data: ${JSON.stringify({ type: 'REMOTE_SERVER_STATUS', enabled: false })}\n\n`;
+    const ev = `data: ${JSON.stringify({ type: 'REMOTE_SERVER_STATUS', enabled: false, revision: remoteSession.revision })}\n\n`;
     controlClients.forEach(c => { try { c.write(ev); } catch {} });
-    json(200, { success: true, enabled: false });
+    json(200, { success: true, enabled: false, revision: remoteSession.revision });
     return;
   }
 
@@ -508,10 +570,8 @@ const server = http.createServer((req, res) => {
       tagline: 'The Word in Motion',
       version: packageMetadata.version,
       build: packageMetadata.version,
-      releaseDate: '2026-09-10',
-      isLatest: true,
-      latestVersion: packageMetadata.version,
-      changelogUrl: 'https://github.com/EMWORLDLTD/ginomai-pro/releases',
+      releaseDate: '2026-10-07',
+      changelogUrl: 'https://github.com/EMWORLDLTD/Ginomai/releases',
       features: [
         'Bento Studio modular 3-zone architecture',
         '0ms tactile latency slide projection',
@@ -560,7 +620,7 @@ const server = http.createServer((req, res) => {
         method: 'GET',
         headers: {
           'Authorization': `Token ${apiKey}`,
-          'User-Agent': `Ginomia/${packageMetadata.version}`
+          'User-Agent': `Ginomai/${packageMetadata.version}`
         },
         timeout: 8000
       }, (resDg) => {
@@ -650,7 +710,8 @@ const server = http.createServer((req, res) => {
       if (payload.detectedVerses && Array.isArray(payload.detectedVerses)) hostSpeechState.detectedVerses = payload.detectedVerses;
       if (payload.detectedSongs && Array.isArray(payload.detectedSongs)) hostSpeechState.detectedSongs = payload.detectedSongs;
       if (payload.paraphraseMatches && Array.isArray(payload.paraphraseMatches)) hostSpeechState.paraphraseMatches = payload.paraphraseMatches;
-      hostSpeechState.updatedAt = Date.now();
+      if (payload.sermon && typeof payload.sermon === 'object') hostSpeechState.sermon = payload.sermon;
+      hostSpeechState.updatedAt = Math.max(Date.now(), hostSpeechState.updatedAt + 1);
 
       currentState = { ...currentState, hostSpeechState, _timestamp: Date.now() };
 
@@ -704,11 +765,16 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/session/join' && req.method === 'POST') {
     readBody((err, payload) => {
       if (err) return json(400, { error: 'Bad JSON' });
-      if (!remoteSession.enabled) return json(403, { error: 'Session not active', sessionOffline: true });
-      const pairedId = identity?.role === 'operator' ? identity.operatorId : null;
+      if (!remoteSession.enabled) return json(403, { error: 'Session not active', sessionOffline: true, revision: remoteSession.revision });
+      if (payload.revision !== undefined && payload.revision !== remoteSession.revision) {
+        return json(409, { error: 'The host restarted remote access. Enter the current pairing code.', pairingRequired: true, revision: remoteSession.revision });
+      }
+      const currentIdentity = access.identify(req);
+      const pairedId = currentIdentity?.role === 'operator' ? currentIdentity.operatorId : null;
       const newId = require('crypto').randomUUID();
       if (!pairedId && !access.pair(req, res, payload.pairingCode, newId)) {
-        return json(403, { error: 'Enter the six-digit pairing code from the host Broadcast Hub. After repeated attempts, wait one minute.', pairingRequired: true });
+        const retryAfter = access.retryAfter(req);
+        return json(retryAfter ? 429 : 403, { error: retryAfter ? 'Too many incorrect codes.' : 'Incorrect pairing code. Enter the six-digit code from the host Broadcast Hub.', pairingRequired: true, retryAfter, revision: remoteSession.revision });
       }
       const deviceId = (payload.deviceId && typeof payload.deviceId === 'string') 
         ? payload.deviceId.trim() 
@@ -733,6 +799,7 @@ const server = http.createServer((req, res) => {
       controlClients.forEach(c => { try { c.write(ev); } catch {} });
 
       json(200, {
+        revision: remoteSession.revision,
         operatorId,
         deviceId,
         name,
@@ -858,6 +925,7 @@ const server = http.createServer((req, res) => {
 
   // Toggle remote server endpoint
   if (pathname === '/api/remote-server/toggle' && req.method === 'POST') {
+    remoteSession.revision = Math.max(Date.now(), remoteSession.revision + 1);
     remoteSession.enabled = !remoteSession.enabled;
     revokeOperatorAccess();
     if (remoteSession.enabled) access.rotate();
@@ -871,7 +939,7 @@ const server = http.createServer((req, res) => {
       remoteSession.connectedOperators = [];
       remoteSession.pendingImports = [];
       broadcastToOperators({ type: 'SESSION_ENDED' });
-      const ev = `data: ${JSON.stringify({ type: 'REMOTE_SERVER_STATUS', enabled: false })}\n\n`;
+      const ev = `data: ${JSON.stringify({ type: 'REMOTE_SERVER_STATUS', enabled: false, revision: remoteSession.revision })}\n\n`;
       controlClients.forEach(c => { try { c.write(ev); } catch {} });
     }
     json(200, { success: true, enabled: remoteSession.enabled });
@@ -890,11 +958,33 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === '/api/sync' && req.method === 'POST') {
-    readBody((err, payload) => {
+    readBody(async (err, payload) => {
       if (err) return json(400, { error: 'Invalid JSON' });
-      currentState = { ...payload, _timestamp: Date.now() };
+      if (Number.isFinite(payload._timestamp) && payload._timestamp < (currentState._clientTimestamp || 0)) {
+        return json(409, { error: 'A newer live update has already been received' });
+      }
+      currentState = { ...payload, _clientTimestamp: payload._timestamp || 0,
+        _timestamp: Math.max(Date.now(), currentState._timestamp + 1) };
       publishState();
+      await liveStateStore.flush();
       json(200, { success: true, timestamp: currentState._timestamp });
+    });
+    return;
+  }
+
+  if (pathname === '/api/workspace' && req.method === 'POST') {
+    readBody((err, payload) => {
+      if (err || !payload.dashboard || typeof payload.dashboard !== 'object' || Array.isArray(payload.dashboard)) {
+        return json(400, { error: 'Expected a workspace dashboard' });
+      }
+      currentState.dashboard = payload.dashboard;
+      // Operators receive workspace navigation without changing public output state.
+      sseClients.forEach(client => {
+        if (!client.sfAuthenticated) return;
+        try { client.write(`data: ${JSON.stringify(displayState(true))}\n\n`); } catch { sseClients.delete(client); }
+      });
+      liveStateStore.save(currentState);
+      json(200, { success: true });
     });
     return;
   }
@@ -941,6 +1031,7 @@ const server = http.createServer((req, res) => {
           text: command.text,
           reference: command.reference || '',
           slideId: command.slideId || ('remote_' + Date.now()),
+          _operatorRequestId: command._operatorRequestId || null,
           contentType: command.contentType || (isLex ? 'lexicon' : 'bible'),
           isLexicon: isLex,
           lexiconData: isLex ? (command.lexiconData || null) : null,
@@ -953,6 +1044,10 @@ const server = http.createServer((req, res) => {
           blackout: false,
           _timestamp: Date.now()
         };
+        publishState();
+        command._committedLiveState = displayState(true);
+      } else if (command.type === 'SET_HOLD') {
+        held = command.enabled === true;
         publishState();
       } else if (command.type === 'CLEAR') {
         currentState = {
@@ -1384,14 +1479,14 @@ const server = http.createServer((req, res) => {
   async function fetchFromLrclib(queryTerm, artist = '') {
     const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(queryTerm)}`;
     let response = await fetch(searchUrl, {
-      headers: { 'User-Agent': `Ginomia/${packageMetadata.version}` },
+      headers: { 'User-Agent': `Ginomai/${packageMetadata.version}` },
       signal: AbortSignal.timeout(4500)
     });
 
     if (response.status === 503 || response.status === 429 || response.status === 502) {
       await new Promise(r => setTimeout(r, 300));
       response = await fetch(searchUrl, {
-        headers: { 'User-Agent': `Ginomia/${packageMetadata.version}` },
+        headers: { 'User-Agent': `Ginomai/${packageMetadata.version}` },
         signal: AbortSignal.timeout(4500)
       });
     }
@@ -2065,7 +2160,7 @@ const server = http.createServer((req, res) => {
         json(200, { results: uniqueResults, count: uniqueResults.length, query: queryTerm });
       } else {
         if (lastErr) {
-          console.info(`[Ginomia] Cloud lyrics provider info: ${lastErr.message}.`);
+          console.info(`[Ginomai] Cloud lyrics provider info: ${lastErr.message}.`);
         }
         json(200, {
           results: [],
@@ -2079,6 +2174,20 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  const contentPackMatch = /^\/api\/content-packs\/([A-Z0-9_]+)(\/cancel)?$/.exec(pathname);
+  if (contentPackMatch && ['GET', 'POST', 'DELETE'].includes(req.method)) {
+    const code = contentPackMatch[1];
+    if (contentPackMatch[2] && req.method !== 'POST') return json(405, { error: 'Use POST to cancel a download.' });
+    Promise.resolve().then(async () => {
+      if (req.method === 'DELETE' && code === 'AI_SEMANTIC') await semanticService.close();
+      const result = await (contentPackMatch[2] ? contentPacks.cancel(code) : req.method === 'POST' ? contentPacks.install(code) : req.method === 'DELETE' ? contentPacks.remove(code) : contentPacks.status(code));
+      if (req.method === 'DELETE' && code === 'KJV_STRONGS') lexiconCache = null;
+      return result;
+    })
+      .then(status => json(200, status)).catch(error => json(error.status || 502, { error: error.message }));
+    return;
+  }
+
   // GET /api/bibles/catalog — returns all available cloud Bible translations
   if (pathname === '/api/bibles/catalog' && req.method === 'GET') {
     const manifestPath = path.join(PUBLIC_DIR, 'bibles', 'manifest.json');
@@ -2086,7 +2195,10 @@ const server = http.createServer((req, res) => {
       if (!err && content) {
         try {
           const manifest = JSON.parse(content);
-          json(200, { bibles: manifest, count: manifest.length });
+          Promise.all(manifest.map(async bible => {
+            const status = await contentPacks.status(bible.code);
+            return { ...bible, installed: status.installed, bundled: status.bundled, cloudAvailable: status.cloudAvailable, downloadBytes: status.downloadBytes, size: status.installed ? bible.size : `${(status.downloadBytes / 1048576).toFixed(1)} MB download` };
+          })).then(bibles => json(200, { bibles, count: bibles.length })).catch(() => json(500, { error: 'Could not read the Bible catalogue.' }));
           return;
         } catch (e) {}
       }
@@ -2112,16 +2224,14 @@ const server = http.createServer((req, res) => {
   // GET /api/bibles/download/:code — on-demand download of Bible translation JSON
   if (pathname.startsWith('/api/bibles/download/') && req.method === 'GET') {
     const code = pathname.split('/').pop().toUpperCase().trim();
-    const bibleFilePath = path.join(PUBLIC_DIR, 'bibles', `${code}.json`);
-    
-    fs.readFile(bibleFilePath, 'utf8', (err, data) => {
-      if (!err && data) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(data);
-        return;
-      }
-      json(404, { error: `Bible translation "${code}" not found on server.` });
-    });
+    Promise.resolve().then(async () => {
+      contentPacks.pack(code);
+      const filename = await contentPacks.filePath(`bibles/${code}.json`);
+      if (!filename) return json(404, { error: 'Download this Bible pack first or import a Bible file.' });
+      const data = await fs.promises.readFile(filename);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(data);
+    }).catch(error => json(error.status || 500, { error: error.message }));
     return;
   }
 
@@ -2146,15 +2256,90 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /api/lexicon/search — search Strong's Greek and Hebrew entries
+  if (pathname === '/api/lexicon/search' && req.method === 'GET') {
+    const q = (parsedUrl.query.q || '').trim();
+    const lang = (parsedUrl.query.lang || 'all').toLowerCase();
+    const limit = Math.min(parseInt(parsedUrl.query.limit || '30', 10), 100);
+
+    Promise.resolve().then(async () => {
+      if (!lexiconCache) {
+        try {
+          const lexPath = await contentPacks.filePath('lexicon/strongs_unified.json');
+          if (lexPath) {
+            lexiconCache = JSON.parse(await fs.promises.readFile(lexPath, 'utf8'));
+          }
+        } catch (e) {
+          console.error('[Lexicon] Error loading cache:', e);
+        }
+      }
+
+      if (!lexiconCache) {
+        return json(500, { error: 'Could not load lexicon cache.' });
+      }
+
+      if (!q) {
+        return json(200, { results: [] });
+      }
+
+      const qLower = q.toLowerCase();
+      const qUpper = q.toUpperCase();
+      const escapedQ = qLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordBoundaryRegex = new RegExp(`(^|[^a-zA-Z0-9])${escapedQ}([^a-zA-Z0-9]|$)`, 'i');
+
+      const matches = [];
+      for (const id in lexiconCache) {
+        const item = lexiconCache[id];
+        if (!item) continue;
+        const isGreek = item.lang === 'Greek' || item.id.startsWith('G');
+        const isHebrew = item.lang === 'Hebrew' || item.id.startsWith('H');
+        if (lang === 'greek' && !isGreek) continue;
+        if (lang === 'hebrew' && !isHebrew) continue;
+
+        let score = 0;
+        const entryId = (item.id || id).toUpperCase();
+        const lemma = item.lemma || '';
+        const translit = (item.transliteration || '').toLowerCase();
+        const shortDef = (item.short_definition || '').toLowerCase();
+        const kjvDef = (item.kjv_definition || '').toLowerCase();
+
+        if (entryId === qUpper) score += 1500;
+        else if (lemma === q) score += 1200;
+        else if (translit === qLower) score += 1000;
+        else if (shortDef === qLower) score += 850;
+        else if (wordBoundaryRegex.test(shortDef)) score += 650;
+        else if (wordBoundaryRegex.test(kjvDef)) score += 550;
+        else if (shortDef.includes(qLower)) score += 250;
+        else if (kjvDef.includes(qLower)) score += 150;
+        else if (translit.includes(qLower)) score += 100;
+
+        if (score > 0) {
+          matches.push({ item, score });
+        }
+      }
+
+      matches.sort((a, b) => b.score - a.score);
+      json(200, {
+        query: q,
+        total: matches.length,
+        results: matches.slice(0, limit).map(m => m.item)
+      });
+    }).catch(err => {
+      json(500, { error: 'Search failed: ' + err.message });
+    });
+    return;
+  }
+
   // GET /api/lexicon/:id — lookup Greek or Hebrew Strong's entry
   if (pathname.startsWith('/api/lexicon/') && req.method === 'GET') {
     const rawId = pathname.split('/').pop().toUpperCase();
     const normalizedId = rawId.replace(/^([GH])0+(\d+)/, '$1$2');
+    Promise.resolve().then(async () => {
     if (!lexiconCache) {
       try {
-        const lexPath = path.join(PUBLIC_DIR, 'lexicon', 'strongs_unified.json');
-        if (fs.existsSync(lexPath)) {
-          lexiconCache = JSON.parse(fs.readFileSync(lexPath, 'utf8'));
+        const lexPath = await contentPacks.filePath('lexicon/strongs_unified.json');
+        if (lexPath) {
+          lexiconCache = JSON.parse(await fs.promises.readFile(lexPath, 'utf8'));
         }
       } catch (e) {
         console.error('[Lexicon] Error loading cache:', e);
@@ -2166,10 +2351,31 @@ const server = http.createServer((req, res) => {
     } else {
       json(404, { error: `Strong's entry "${rawId}" not found.` });
     }
+    }).catch(() => json(500, { error: 'Could not read the lexicon.' }));
     return;
   }
 
   // ─── Static File Server ───────────────────────────────────────────────────
+  const shortLinks = {
+    '/live': '/display.html?target=obs',
+    '/livestream': '/display.html?target=livestream',
+    '/projector': '/display.html?target=sanctuary',
+    '/stage': '/display.html?target=stage',
+    '/overlay': '/display.html?target=livestream&layout=lt',
+    '/auto': '/display.html?target=auto',
+    '/remote': '/index.html?remote=1'
+  };
+  const shortPath = pathname.replace(/\/$/, '');
+  const shortDestination = Object.prototype.hasOwnProperty.call(shortLinks, shortPath) ? shortLinks[shortPath] : null;
+  if (shortDestination && ['GET', 'HEAD'].includes(req.method)) {
+    const destination = new URL(shortDestination, 'http://localhost');
+    for (const [key, value] of reqUrl.searchParams) {
+      if (!destination.searchParams.has(key)) destination.searchParams.append(key, value);
+    }
+    res.writeHead(302, { Location: destination.pathname + destination.search, 'Cache-Control': 'no-store' });
+    res.end();
+    return;
+  }
   if (pathname === '/remote.html') { res.writeHead(302, { Location: '/operator.html' }); res.end(); return; }
   let decodedPath;
   try { decodedPath = decodeURIComponent(pathname); } catch { res.writeHead(400); res.end('Bad path'); return; }
@@ -2181,6 +2387,16 @@ const server = http.createServer((req, res) => {
   }
   let filePath = path.resolve(PUBLIC_DIR, '.' + (pathname === '/' ? '/index.html' : decodedPath));
   if (!filePath.startsWith(PUBLIC_DIR + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
+
+  if (/^\/(bibles|lexicon)\/[A-Za-z0-9_]+\.json$/.test(decodedPath) && decodedPath !== '/bibles/manifest.json') {
+    contentPacks.filePath(decodedPath.slice(1)).then(async filename => {
+      if (!filename) { res.writeHead(404); res.end('Download this content pack first.'); return; }
+      const data = await fs.promises.readFile(filename);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(data);
+    }).catch(() => { res.writeHead(500); res.end('Could not read content.'); });
+    return;
+  }
 
   fs.stat(filePath, (err, stats) => {
     if (err || !stats.isFile()) { res.writeHead(404); res.end('Not Found'); return; }
@@ -2218,15 +2434,15 @@ function startServer(port = PORT, callback) {
       if (err.code === 'EADDRINUSE') {
         attempts++;
         if (attempts < maxAttempts) {
-          console.warn(`[Ginomia] Port ${attemptPort} in use, trying next port ${attemptPort + 1}...`);
+          console.warn(`[Ginomai] Port ${attemptPort} in use, trying next port ${attemptPort + 1}...`);
           attemptPort++;
           setTimeout(tryListen, 50);
         } else {
-          console.error(`[Ginomia] Could not bind after ${maxAttempts} attempts:`, err);
+          console.error(`[Ginomai] Could not bind after ${maxAttempts} attempts:`, err);
           if (callback) callback(err, null, attemptPort);
         }
       } else {
-        console.error('[Ginomia] Server error:', err);
+        console.error('[Ginomai] Server error:', err);
         if (callback) callback(err, null, attemptPort);
       }
     });
@@ -2236,12 +2452,12 @@ function startServer(port = PORT, callback) {
       currentBoundPort = attemptPort;
       const lanIp = getLanAddresses()[0];
       console.log(`=======================================================`);
-      console.log(` Ginomia — The Word in Motion (Studio Server)`);
+      console.log(` Ginomai — The Word in Motion (Studio Server)`);
       console.log(` Host Console:       http://localhost:${attemptPort}`);
       if (lanIp) {
-        console.log(` Remote Operator:   http://${lanIp}:${attemptPort}/operator.html`);
-        console.log(` Sanctuary Display: http://${lanIp}:${attemptPort}/display.html?target=sanctuary`);
-        console.log(` Livestream OBS:    http://${lanIp}:${attemptPort}/display.html?target=livestream`);
+        console.log(` Remote Operator:   http://${lanIp}:${attemptPort}/remote`);
+        console.log(` Sanctuary Display: http://${lanIp}:${attemptPort}/projector`);
+        console.log(` Livestream OBS:    http://${lanIp}:${attemptPort}/live`);
       }
       console.log(`=======================================================`);
       if (callback) callback(null, activeServer, attemptPort);
@@ -2273,5 +2489,7 @@ module.exports = {
   stopServer,
   getLanAddresses,
   getCurrentState: () => currentState,
+  getConnectedOutputs: () => outputs.connected(),
+  flushLiveState: (options) => liveStateStore.flush(options),
   publishState
 };

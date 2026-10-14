@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
@@ -7,8 +7,9 @@ const path = require('node:path');
 const { once } = require('node:events');
 
 test('background uploads require the host, persist originals, and serve byte ranges to displays', async t => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ginomia-media-test-'));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ginomai-media-test-'));
   process.env.SF_MEDIA_DIR = directory;
+  process.env.SF_PRESENTATION_DIR = path.join(directory, 'presentations');
   const { server } = require('../server');
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');

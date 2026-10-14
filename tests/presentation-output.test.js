@@ -3,14 +3,27 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const source=fs.readFileSync(require.resolve('../js/presentation-output'),'utf8');
 function fixture() {
   let now=5000,tick;const elements=[];
-  const node=tag=>{const value={tag,hidden:false,style:{},children:[],textContent:'',readyState:1,duration:60,currentTime:0,paused:true,
+  const node=tag=>{const value={tag,hidden:false,style:{setProperty(key,value){this[key]=value;}},children:[],textContent:'',readyState:1,duration:60,currentTime:0,paused:true,
     classList:{toggle(){}},append(...children){this.children.push(...children);},addEventListener(){},removeAttribute(key){delete this[key];},
-    pause(){this.paused=true;},play(){this.paused=false;return Promise.resolve();}};elements.push(value);return value;};
+    setAttribute(key,value){this[key]=value;},getAttribute(key){return this[key];},pause(){this.paused=true;},play(){this.paused=false;return Promise.resolve();}};elements.push(value);return value;};
   const window={PresentationModel:require('../js/presentation-model')};
-  vm.runInNewContext(source,{window,document:{createElement:node,body:node('body'),getElementById:()=>null},setInterval:fn=>tick=fn,Date:{now:()=>now}});
+  const context={window,document:{createElement:node,body:node('body'),getElementById:()=>null},setInterval:fn=>tick=fn,Date:{now:()=>now}};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../js/countdown-renderer'),'utf8'),context);
+  vm.runInNewContext(source,context);
   return {render:window.renderPresentationOutput,layer:elements.find(el=>el.id==='presentation-output'),video:elements.find(el=>el.tag==='video'),advance:value=>{now=value;tick();}};
 }
 const media={contentType:'media',slideId:'video',media:{kind:'video',url:'/presentation/files/media_abcd.webm'},destinations:['sanctuary','livestream'],playback:{position:5,updatedAt:1000,playing:true,soundTarget:'livestream'}};
+
+test('countdown background videos remain muted, reuse resident nodes, and stop on clear or replacement',()=>{
+ const f=fixture(),data={contentType:'countdown',slideId:'custom-timer',countdown:{startsAt:6500,headingScale:1.5,timerScale:1.25,completionScale:2,headingColor:'#ffaa00',timerColor:'#88ddff',completionColor:'#22ff88',background:{id:'golden',type:'video',videoUrl:'Themes/golden_sunrise_loop.webm',dimmer:40}}};
+ f.render(data,{isSanctuary:true});const display=f.layer.children[2],background=f.layer.children.find(child=>child.className==='countdown-background'),video=background.children[1];
+ assert.equal(video.muted,true);assert.equal(video.loop,true);assert.equal(video.paused,false);assert.equal(background.children[2].style.opacity,'0.4');
+ assert.equal(display.style['--countdown-heading-size'],'3vw');assert.equal(display.style['--countdown-completion-size'],'7.6vw');assert.equal(display.style['--countdown-heading-color'],'#ffaa00');assert.equal(display.style['--countdown-completion-color'],'#22ff88');
+ f.render({...data,countdown:{...data.countdown,timerScale:2}},{isSanctuary:true});assert.equal(display.style.fontSize,'20vw');assert.equal(display.style['--countdown-heading-size'],'3vw');assert.equal(f.layer.children.find(child=>child.className==='countdown-background'),background);
+ f.advance(7000);assert.equal(display.children[0].hidden,true);
+ f.render({...data,clear:true},{isSanctuary:true});assert.equal(video.paused,true);assert.equal(background.hidden,true);
+ f.render(data,{isSanctuary:true});assert.equal(video.paused,false);f.render(media,{isSanctuary:true});assert.equal(video.paused,true);
+});
 test('resident video renderer mutes previews, selects one sound destination, and stops on replacement or clear',()=>{
  const f=fixture();f.render(media,{embedded:true});assert.equal(f.video.muted,true);assert.equal(f.video.paused,false);
  f.render(media,{embedded:false,isSanctuary:true});assert.equal(f.video.muted,true);
@@ -22,6 +35,31 @@ test('media never appears on fixed overlay-only sources or excluded destinations
  const f=fixture();assert.equal(f.render(media,{isExplicitLt:true}),true);assert.equal(f.layer.hidden,true);
  f.render({...media,destinations:['sanctuary']},{embedded:false});assert.equal(f.layer.hidden,true);
  f.render(media,{isSanctuary:true});assert.equal(f.layer.hidden,false);
+});
+
+test('Both plays on both selected outputs while mute, legacy off values, and embedded previews stay silent',()=>{
+ for(const isSanctuary of [true,false]) {
+   const f=fixture(),both={...media,playback:{...media.playback,soundTarget:'both'}};
+   f.render(both,{isSanctuary,embedded:false});assert.equal(f.video.muted,false);
+   f.render({...both,playback:{...both.playback,muted:true}},{isSanctuary});assert.equal(f.video.muted,true);
+   f.render(both,{isSanctuary,embedded:true});assert.equal(f.video.muted,true);
+   for(const soundTarget of ['', 'off',undefined]) {f.render({...both,playback:{...both.playback,soundTarget}},{isSanctuary});assert.equal(f.video.muted,true);}
+ }
+});
+
+test('non-looping video stops at its final frame and never advances to another source',()=>{
+ const f=fixture();f.render({...media,playback:{...media.playback,position:59,updatedAt:5000}},{isSanctuary:true});
+ const source=f.video.src;f.advance(10000);assert.equal(f.video.currentTime,60);assert.equal(f.video.paused,true);assert.equal(f.video.src,source);assert.equal(f.layer.hidden,false);
+});
+
+test('interrupted and superseded play requests cannot block the next live video',async()=>{
+ const f=fixture();let reject;
+ f.video.play=()=>new Promise((resolve,fail)=>{reject=fail;});
+ f.render(media,{isSanctuary:true});const oldReject=reject;
+ f.render({...media,media:{...media.media,url:'/presentation/files/media_beef.webm'}},{isSanctuary:true});
+ oldReject(Object.assign(new Error('Interrupted'),{name:'NotAllowedError'}));await Promise.resolve();
+ const error=f.layer.children.find(node=>node.className==='presentation-output-error');assert.equal(error.hidden,true);
+ reject(Object.assign(new Error('Paused'),{name:'AbortError'}));await Promise.resolve();assert.equal(error.hidden,true);
 });
 test('server time corrects countdown and video timing across output clock differences',()=>{
  const f=fixture();f.render({...media,_serverTime:1000},{embedded:true});assert.equal(f.video.currentTime,5);

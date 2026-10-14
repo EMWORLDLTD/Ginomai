@@ -6,6 +6,33 @@
     pending = true;
     requestAnimationFrame(() => {
       pending = false;
+      const alert = document.getElementById('live-alert-container');
+      const alertText = document.getElementById('live-alert-text-wrap');
+      if (alertText) {
+        alertText.style.fontSize = '';
+        if (alert?.classList.contains('active') && alert.classList.contains('alert-fullscreen')) {
+          const area = document.getElementById('live-alert-box');
+          const css = getComputedStyle(area);
+          const height = area.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom);
+          const width = area.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
+          const scale = Number(alertText.dataset?.textScale) || 1;
+          const baseline = parseFloat(getComputedStyle(alertText).fontSize);
+          let low = 1, high = baseline * Math.max(1, scale);
+          const fits = size => {
+            alertText.style.fontSize = size + 'px';
+            // CSS padding may be fractional; scroll dimensions round to whole pixels.
+            return alertText.scrollHeight <= height + 1 && alertText.scrollWidth <= width + 1;
+          };
+          if (!fits(high)) {
+            for (let i = 0; i < 12; i++) {
+              const mid = (low + high) / 2;
+              if (fits(mid)) low = mid; else high = mid;
+            }
+            high = low;
+          }
+          fits(high * Math.min(1, scale));
+        }
+      }
       const stageText = document.getElementById('stage-current-slide-text');
       if (document.body.classList.contains('is-stage') && stageText) {
         stageText.style.fontSize = '';
@@ -31,6 +58,10 @@
         box.style.maxHeight = maxHeight + 'px';
         text.style.flexShrink = '0';
         const preferred = Number(text.dataset.preferredSize);
+        if (text.dataset.autoScale === 'false') {
+          text.style.fontSize = preferred + 'px';
+          return;
+        }
         const baseline = Number(text.dataset.fitBaseSize) || preferred;
         // Fit the normal size first, then apply manual reductions proportionally.
         // Otherwise several minus clicks can be swallowed by the same fit ceiling.

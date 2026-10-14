@@ -4,7 +4,7 @@
   <script src="js/shared-events.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ginomia — The Word in Motion</title>
+  <title>Ginomai — The Word in Motion</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Didact+Gothic&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -13,11 +13,16 @@
   <link rel="stylesheet" href="css/interaction.css?v=20260903-13">
   <link rel="stylesheet" href="css/song-editor.css?v=20260927-01">
   <link rel="stylesheet" href="css/library-manager.css?v=20260927-01">
-  <link rel="stylesheet" href="css/broadcast-hub.css?v=20260927-01">
+  <link rel="stylesheet" href="css/broadcast-hub.css?v=20261005-01">
   <link rel="stylesheet" href="css/stage-preview.css?v=20260927-01">
   <link rel="stylesheet" href="css/presentation-controls.css">
-  <link rel="stylesheet" href="css/presentation-media.css">
+  <link rel="stylesheet" href="css/presentation-media.css?v=20261012-01">
   <link rel="stylesheet" href="css/announcements.css?v=20260928-01">
+  <link rel="stylesheet" href="css/app-updates.css">
+  <link rel="stylesheet" href="css/cloud-account.css">
+  <script src="js/cloud-config.js"></script>
+  <script type="module" src="js/cloud-desktop.mjs"></script>
+  <link rel="stylesheet" href="css/desktop-titlebar.css">
   <script src="js/accessibility.js"></script>
   <style id="sf-deck-grid-guarantee">
     .bento-single-deck:not(:has(> .bento-empty-unit.hero)),
@@ -31,12 +36,16 @@
       min-height: fit-content !important;
     }
   </style>
-  <script src="js/theme-manager.js"></script>
-  <script src="js/sanctuary-media.js"></script>
+  <script src="js/theme-manager.js?v=20261005-01"></script>
+  <script src="js/sanctuary-media.js?v=20261005-01"></script>
   <script src="js/bible-db.js"></script>
   <script src="js/songs-db.js"></script>
+  <script src="js/cloud-restore-journal.js"></script>
   <script src="js/import-engine.js"></script>
   <script src="js/custom-dialog.js"></script>
+  <script src="js/content-packs.js"></script>
+  <script src="js/device-cleanup.js"></script>
+  <link rel="stylesheet" href="css/content-packs.css">
   <script src="js/session-manager.js"></script>
   <script src="js/auto-projection-policy.js"></script>
   <script src="js/detection-cards.js"></script>
@@ -47,6 +56,21 @@
 </head>
 <body data-theme-style="bento" data-theme-mode="dark">
 
+  <header id="desktop-titlebar" hidden>
+    <nav class="desktop-menus" aria-label="Application menu" role="menubar">
+      <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" data-desktop-menu="File">File</button>
+      <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" data-desktop-menu="Projector">Projector</button>
+      <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" data-desktop-menu="View">View</button>
+      <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" data-desktop-menu="Help">Help</button>
+    </nav>
+    <div class="desktop-window-controls">
+      <button type="button" id="desktop-minimize" aria-label="Minimize" title="Minimize"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1 6h10"/></svg></button>
+      <button type="button" id="desktop-maximize" aria-label="Maximize" title="Maximize"><svg class="desktop-maximize-icon" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9"/></svg><svg class="desktop-restore-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 3.5v-2h7v7h-2"/><rect x="1.5" y="3.5" width="7" height="7"/></svg></button>
+      <button type="button" id="desktop-close" aria-label="Close" title="Close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m1.5 1.5 9 9m-9 0 9-9"/></svg></button>
+    </div>
+  </header>
+  <script src="js/desktop-titlebar.js"></script>
+
   <!-- BENTO STUDIO LAYOUT ROOT (Matches Styles/scriptureflow-studio-full.html) -->
   <div id="bento-layout-root" class="bento-app">
 
@@ -54,7 +78,7 @@
     <div class="bento-topbar">
       <div class="bento-brand">
         <div class="bento-logo">G</div>
-        <div class="bento-brand-name">Ginomia</div>
+        <div class="bento-brand-name">Ginomai</div>
         <div class="bento-pro-badge">THE WORD IN MOTION</div>
       </div>
 <button type="button" class="bento-cmdk" onclick="openCommandPalette()" title="Jump to verse or song (Ctrl+K)">
@@ -164,8 +188,14 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.9 19.1a10 10 0 0 1 0-14.2"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/><path d="M7.8 16.2a5 5 0 0 1 0-8.4"/><path d="M16.2 7.8a5 5 0 0 1 0 8.4"/><circle cx="12" cy="12" r="1.5"/></svg>
         </button>
 
-<button type="button" class="bento-icon-btn desktop-only" style="display:none;" title="Desktop projector" onclick="toggleDesktopProjector()">
+<button type="button" id="desktop-projector-btn" class="bento-icon-btn" title="Connect projector to external display" aria-label="Connect projector to external display" aria-pressed="false" onclick="toggleDesktopProjector()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span>Projector</span>
+        </button>
+<button type="button" id="desktop-update-indicator" class="bento-icon-btn sf-update-indicator" title="Update available" aria-label="Update available" aria-haspopup="dialog" aria-controls="update-panel-backdrop" aria-expanded="false" onclick="openUpdatePanel()" hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg>
+          <span>Update available</span>
+          <span class="sf-update-dot" aria-hidden="true" hidden></span>
         </button>
 <button type="button" class="bento-icon-btn" title="Studio settings" onclick="openSettingsModal()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -184,7 +214,7 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
               Service agenda
             </div>
-            <div class="agenda-add-menu"><button type="button" id="agenda-add-trigger" aria-expanded="false" aria-controls="agenda-add-options" onclick="toggleAgendaAdd(event)">Add</button><div id="agenda-add-options" hidden><button type="button" onclick="closeAgendaAdd();openOmniSearchPalette('all')">Song or Bible</button><button type="button" onclick="closeAgendaAdd();openCountdownSetup()">Countdown</button><button type="button" onclick="closeAgendaAdd();switchBentoTab('media')">Media</button><button type="button" onclick="closeAgendaAdd();addCustomAgendaPrompt()">Custom item</button></div></div>
+            <div class="agenda-add-menu"><button type="button" id="agenda-add-trigger" aria-expanded="false" aria-controls="agenda-add-options" onclick="toggleAgendaAdd(event)">Add</button></div>
             <div class="bento-count-badge" id="bento-agenda-count">0</div>
           </div>
           <div class="bento-list" id="bento-agenda-list">
@@ -199,7 +229,7 @@
         </div>
 
         <!-- Resizable Splitter for Bento Agenda Height -->
-        <div class="bento-agenda-resizer" id="bento-resizer-agenda" title="Drag up/down to resize Service Agenda height (Double-click to reset)"><i></i><i></i><i></i></div>
+        <div class="bento-agenda-resizer" id="bento-resizer-agenda"><i></i><i></i><i></i></div>
 
         <div class="bento-card bento-library-card" id="bento-library-card">
           <div class="bento-card-head">
@@ -209,6 +239,7 @@
               <span id="bento-tab-songs" role="tab" aria-selected="true" class="active" onclick="switchBentoTab('songs')">Songs</span>
               <button type="button" id="bento-tab-media" role="tab" aria-selected="false" onclick="switchBentoTab('media')">Media</button>
             </div>
+            <button type="button" id="media-library-upload" class="media-upload-icon" title="Upload media" aria-label="Upload media" onclick="document.getElementById('presentation-media-input').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/></svg></button>
             <div class="bento-trans-sel" id="bento-trans-sel" onclick="toggleTranslationDropdown(event)">
               <span id="bento-active-version-label">NIV</span>
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -246,7 +277,7 @@
       </div>
 
       <!-- Resizable Splitter for Bento Left Sidebar Width -->
-      <div class="bento-workspace-resizer" id="bento-resizer-left" title="Drag left/right to resize Sidebar width (Double-click to reset)"><i></i><i></i><i></i></div>
+      <div class="bento-workspace-resizer" id="bento-resizer-left"><i></i><i></i><i></i></div>
 
       <!-- CENTER: Deck workspace -->
       <div class="bento-col bento-col-center" id="bento-col-center">
@@ -263,6 +294,10 @@
             <div class="bento-tbtn" id="bento-strongs-btn" onclick="toggleStrongsMode()" title="Toggle Strong's Greek/Hebrew Concordance (Alt+S)" style="display: none;">
               <span class="sf-strong-icon">S</span>
               <span>Strong</span>
+            </div>
+            <div class="bento-tbtn" id="bento-concordance-search-btn" onclick="openOmniSearchPalette('strongs')" title="Search Greek/Hebrew Strong's Concordance (Alt+W)" style="display: none;">
+              <span class="sf-strong-icon" style="background:rgba(56,189,248,0.2); color:#38BDF8; font-size:8.5px; font-weight:800;">Α-Ω</span>
+              <span>Word Study</span>
             </div>
             <div class="bento-tbtn" id="bento-compare-btn" onclick="toggleCompareMode()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/></svg>
@@ -312,6 +347,7 @@
         <svg class="ann-toggle-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
       </button>
       <p id="ann-live-preview" role="status">No message live</p>
+      <button type="button" id="desktop-update-footer" class="sf-update-footer" aria-haspopup="dialog" aria-controls="update-panel-backdrop" aria-expanded="false" onclick="openUpdatePanel()" hidden>Update available</button>
       <span id="ann-live-destinations"></span>
       <button type="button" id="ann-stop-live" class="alert-clear-btn" onclick="clearLiveAlert()" hidden>Stop</button>
       <button type="button" id="ann-collapse" class="ann-action-btn" onclick="closeAnnouncementHub()" aria-label="Collapse announcements">Collapse</button>
@@ -326,20 +362,30 @@
       <section class="ann-section ann-simple-compose">
         <label for="live-alert-input">Message</label>
         <textarea id="live-alert-input" class="live-alert-textarea" placeholder="Type your message…" rows="3"></textarea>
-        <fieldset class="ann-targets"><legend>Send to</legend>
-          <label><input type="checkbox" id="alert-dest-sanctuary"> Audience</label>
+        <fieldset class="ann-targets" aria-labelledby="ann-targets-label"><span id="ann-targets-label" class="ann-targets-label">Send to</span>
+          <label><input type="checkbox" id="alert-dest-sanctuary"> Projector</label>
           <label><input type="checkbox" id="alert-dest-livestream"> Stream</label>
           <label><input type="checkbox" id="alert-dest-stage"> Stage</label>
         </fieldset>
         <div class="ann-simple-options">
-          <label>Position<select id="alert-position"><option value="upperthird">Top</option><option value="lowerthird">Bottom</option></select></label>
-          <label>Stop after<select id="alert-duration"><option value="30">30 seconds</option><option value="60" selected>1 minute</option><option value="120">2 minutes</option><option value="300">5 minutes</option><option value="0">Until I stop it</option></select></label>
+          <label>Position<select id="alert-position" class="settings-select-custom ann-custom-select"><option value="upperthird">Top</option><option value="lowerthird">Bottom</option><option value="fullscreen">Full screen</option></select></label>
+          <label>Stop after<select id="alert-duration" class="settings-select-custom ann-custom-select"><option value="30">30 seconds</option><option value="60" selected>1 minute</option><option value="120">2 minutes</option><option value="300">5 minutes</option><option value="0">Until I stop it</option></select></label>
+        <div id="ann-background-field" class="ann-background-field" hidden>
+          <label id="ann-background-label">Background</label>
+          <button type="button" id="ann-background-trigger" class="ann-background-trigger" aria-labelledby="ann-background-label ann-background-name" aria-describedby="ann-background-help" aria-haspopup="dialog" aria-expanded="false" onclick="openAnnouncementBackgroundPicker(this)">
+            <span id="ann-background-thumb" class="ann-background-thumb" aria-hidden="true"></span><span id="ann-background-name">Midnight</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <small id="ann-background-help">Remembered for your next full-screen message.</small>
         </div>
+        </div>
+        <div class="ann-composer-footer">
         <label class="ann-save-choice"><input type="checkbox" id="alert-save-message"> Save when sending</label>
         <div class="alert-composer-actions">
           <button type="button" class="ann-action-btn" onclick="resetAnnouncementComposer()">New</button>
           <button type="button" id="ann-save-draft" class="ann-action-btn" onclick="saveAnnouncementDraft()">Save</button>
           <button type="button" class="alert-send-btn" onclick="sendQuickLiveAlert()">Send</button>
+        </div>
         </div>
       </section>
 
@@ -362,7 +408,7 @@
       </div>
 
       <!-- Resizable Splitter for Bento Right Preview Width -->
-      <div class="bento-workspace-resizer" id="bento-resizer-right" title="Drag left/right to resize Live Preview width (Double-click to reset)"><i></i><i></i><i></i></div>
+      <div class="bento-workspace-resizer" id="bento-resizer-right"><i></i><i></i><i></i></div>
 
       <!-- RIGHT: Preview + AI feed -->
       <div class="bento-col bento-col-right" id="bento-col-right">
@@ -373,8 +419,6 @@
               Output preview
             </div>
             <div class="bento-prev-top-cluster">
-              <button type="button" id="presentation-settings-trigger" aria-label="Output style" title="Preview output style" aria-controls="presentation-settings" aria-expanded="false" onclick="togglePresentationSettings()">Style</button>
-
               <div class="bento-live-cluster idle" id="bento-live-status"><i></i>IDLE</div>
             </div>
           </div>
@@ -457,20 +501,23 @@
           <section id="stage-appearance-panel" aria-label="Preview controls">
             <div class="stage-appearance-row"><span>Text size</span><div class="bento-zoom" title="Adjust text scaling"><button type="button" aria-label="Decrease text size" onclick="adjustTextScale(-0.1)">−</button><span id="bento-textscale-label">1.0x</span><button type="button" aria-label="Increase text size" onclick="adjustTextScale(0.1)">+</button></div></div>
 
+            <div class="stage-output-tools">
+              <button type="button" id="presentation-settings-trigger" aria-label="Output style" title="Preview output style" aria-controls="presentation-settings" aria-expanded="false" onclick="togglePresentationSettings()">Style</button>
             <div id="bento-trans-wrapper" class="stage-transition-picker">
               <button type="button" id="bento-trans-trigger" aria-expanded="false" aria-controls="bento-trans-dialog" onclick="toggleTransitionDialog(event)" title="Slide transition"><span id="bento-stage-trans-label">Crossfade</span><span aria-hidden="true">⌄</span></button>
               <div id="bento-trans-dialog" class="stage-transition-popup" role="dialog" aria-label="Slide transition" hidden onclick="event.stopPropagation()">
                 <div class="stage-transition-popup-heading">Slide transition</div>
                 <div class="stage-transition-options"><button type="button" class="bento-trans-option" data-type="fade" onclick="selectTransitionOption('fade')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg></span><span>Crossfade</span></button><button type="button" class="bento-trans-option" data-type="zoom-in" onclick="selectTransitionOption('zoom-in')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></span><span>Zoom in</span></button><button type="button" class="bento-trans-option" data-type="zoom-out" onclick="selectTransitionOption('zoom-out')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></span><span>Zoom out</span></button><button type="button" class="bento-trans-option" data-type="slide-left" onclick="selectTransitionOption('slide-left')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></span><span>Slide left</span></button><button type="button" class="bento-trans-option" data-type="slide-right" onclick="selectTransitionOption('slide-right')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span><span>Slide right</span></button><button type="button" class="bento-trans-option" data-type="slide-up" onclick="selectTransitionOption('slide-up')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></span><span>Slide up</span></button><button type="button" class="bento-trans-option" data-type="slide-down" onclick="selectTransitionOption('slide-down')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span><span>Slide down</span></button><button type="button" class="bento-trans-option" data-type="cut" onclick="selectTransitionOption('cut')"><span class="stage-effect-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span><span>Cut</span></button></div>
-                <div class="stage-transition-popup-footer"><div class="stage-transition-speed-options" role="group" aria-label="Transition speed"><button type="button" class="bento-trans-speed-btn" data-dur="150" onclick="setTransitionDurationSetting(150)" title="150 milliseconds">Fast</button><button type="button" class="bento-trans-speed-btn" data-dur="300" onclick="setTransitionDurationSetting(300)" title="300 milliseconds">Normal</button><button type="button" class="bento-trans-speed-btn" data-dur="500" onclick="setTransitionDurationSetting(500)" title="500 milliseconds">Smooth</button><button type="button" class="bento-trans-speed-btn" data-dur="800" onclick="setTransitionDurationSetting(800)" title="800 milliseconds">Slow</button></div><button type="button" onclick="testLiveTransitionEffect()" title="Test on live outputs">Test</button></div>
+                <div class="stage-transition-popup-footer"><div class="stage-transition-speed-options" role="group" aria-label="Transition speed"><button type="button" class="bento-trans-speed-btn" data-dur="150" onclick="setTransitionDurationSetting(150)" title="150 milliseconds">Fast</button><button type="button" class="bento-trans-speed-btn" data-dur="300" onclick="setTransitionDurationSetting(300)" title="300 milliseconds">Normal</button><button type="button" class="bento-trans-speed-btn" data-dur="500" onclick="setTransitionDurationSetting(500)" title="500 milliseconds">Smooth</button><button type="button" class="bento-trans-speed-btn" data-dur="800" onclick="setTransitionDurationSetting(800)" title="800 milliseconds">Slow</button></div><button type="button" onclick="testLiveTransitionEffect()" title="Preview without changing live outputs">Preview</button></div>
               </div>
+            </div>
             </div>
           </section>
           <div id="media-playback-controls" hidden aria-label="Live video controls"></div>
         </div>
 
 <!-- Resizable Splitter between Stage Preview & AI Feed in Right Column -->
-        <div class="bento-prev-resizer" id="bento-resizer-preview" title="Drag up/down to resize Preview / AI Feed height (Double-click to reset)"><i></i><i></i><i></i></div>
+        <div class="bento-prev-resizer" id="bento-resizer-preview"><i></i><i></i><i></i></div>
 
         <div class="bento-card bento-feed-card" id="bento-feed-card">
           <div class="bento-card-head">
@@ -527,6 +574,10 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
           <span>Songs</span>
         </button>
+        <button type="button" id="omni-tab-strongs" class="omni-mode-pill" onclick="switchOmniSearchMode('strongs')" title="Search Strong's Greek &amp; Hebrew Concordance">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><circle cx="10" cy="10" r="2"/></svg>
+          <span>Concordance</span>
+        </button>
       </div>
 
       <div class="omni-header-actions">
@@ -559,118 +610,6 @@
   <div id="cmd-modal-backdrop" class="modal-backdrop" style="display:none;">
     <div class="cmd-modal">
       <input type="text" id="cmd-input" class="cmd-input" placeholder="Type a scripture or song..." autocomplete="off">
-    </div>
-  </div>
-
-  <!-- Sanctuary Presentation Theme Palette & Display Settings Modal -->
-  <div id="sanctuary-theme-modal-backdrop" class="modal-backdrop" style="display:none;" onclick="if(event.target===this) closeSanctuaryThemeModal()">
-    <div class="sanctuary-theme-modal-card" role="dialog" aria-modal="true" aria-labelledby="sanctuary-modal-heading" onclick="event.stopPropagation()">
-      <div class="sanctuary-modal-header">
-        <div class="sanctuary-modal-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a6dff" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"/></svg>
-          <div><span class="sanctuary-eyebrow">SANCTUARY DISPLAY</span><h2 id="sanctuary-modal-heading">Set the atmosphere</h2><p>Choose a background. Make every word stand out.</p></div>
-        </div>
-        <button type="button" class="sanctuary-modal-close" onclick="closeSanctuaryThemeModal()" aria-label="Close presentation settings" title="Close (Esc)">✕</button>
-      </div>
-
-      <div class="sanctuary-settings-layout">
-      <section class="sanctuary-background-panel" aria-label="Background library">
-      <div class="sanctuary-section-heading">Background library <button type="button" class="sanctuary-upload-button" id="sanctuary-upload-button" onclick="document.getElementById('sanctuary-upload-input').click()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/></svg>Upload background</button></div>
-      <input id="sanctuary-upload-input" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.avif,.mp4,.webm,.mov,.m4v,.ogv" multiple hidden onchange="uploadSanctuaryBackgrounds(this)">
-      <p class="sanctuary-upload-status" id="sanctuary-upload-status" role="status" aria-live="polite">Images, GIFs and videos · Up to 250 MB each · Videos loop without sound</p>
-      <!-- Category Filter Tabs -->
-      <div class="sanctuary-cat-tabs">
-        <span class="sanctuary-tab-indicator" aria-hidden="true"></span>
-        <button type="button" class="sanctuary-cat-tab active" data-cat="all" aria-pressed="true" onclick="filterSanctuaryThemes('all')">All backgrounds</button>
-        <button type="button" class="sanctuary-cat-tab" data-cat="motion" aria-pressed="false" onclick="filterSanctuaryThemes('motion')">Motion</button>
-        <button type="button" class="sanctuary-cat-tab" data-cat="still" aria-pressed="false" onclick="filterSanctuaryThemes('still')">Still</button>
-        <button type="button" class="sanctuary-cat-tab" data-cat="colors" aria-pressed="false" onclick="filterSanctuaryThemes('colors')">Colors</button>
-        <button type="button" class="sanctuary-cat-tab" data-cat="uploads" aria-pressed="false" onclick="filterSanctuaryThemes('uploads')">Custom</button>
-        <button type="button" class="sanctuary-cat-tab" data-cat="minimal" aria-pressed="false" onclick="filterSanctuaryThemes('minimal')">Minimal</button>
-      </div>
-
-      <!-- Themes Grid (3 columns on wide modal) -->
-      <div class="sanctuary-modal-themes-grid" id="sanctuary-themes-grid"></div>
-
-      </section>
-      <aside class="sanctuary-output-panel" aria-label="Output settings">
-        <div class="sanctuary-preview-sticky-wrap">
-          <div class="sanctuary-section-heading">Fine-tune your display</div>
-          <div class="sanctuary-control-header">
-            <label for="sanctuary-preview-ratio">Theme preview</label>
-            <select id="sanctuary-preview-ratio" onchange="updateSanctuaryFramingPreview()">
-              <option value="16/9">16:9</option>
-              <option value="4/3">4:3</option>
-              <option value="1/1">1:1</option>
-            </select>
-          </div>
-          <div class="sanctuary-framing-preview" id="sanctuary-framing-preview">
-            <img id="sanctuary-framing-image" alt="Selected background framing" hidden>
-            <video id="sanctuary-framing-video" muted loop playsinline preload="auto" autoplay hidden></video>
-            <div id="sanctuary-framing-dimmer" class="sanctuary-framing-dimmer"></div>
-            <div id="sanctuary-framing-text" class="sanctuary-framing-text">Amazing grace<br>How sweet the sound</div>
-            <span>Preview only</span>
-          </div>
-          <p id="sanctuary-source-dimensions" class="sanctuary-control-hint" style="margin: 6px 0 0;">Output automatically follows your screen.</p>
-        </div>
-
-        <div class="sanctuary-output-controls-scroll">
-          <div class="sanctuary-control-section">
-            <div class="sanctuary-control-header">
-              <label for="sanctuary-media-fit">Background sizing</label>
-            </div>
-            <select id="sanctuary-media-fit" onchange="window.themeManager.setSanctuaryFit(this.value)">
-              <option value="cover">Fill — crop edges</option>
-              <option value="contain">Fit — show whole file</option>
-              <option value="fill">Stretch — fill without cropping</option>
-            </select>
-            <p id="sanctuary-fit-hint" class="sanctuary-control-hint">Fills any screen. Edges may be cropped.</p>
-            <button type="button" id="sanctuary-delete-selected-btn" class="sanctuary-delete-selected-btn" onclick="window.deleteSelectedSanctuaryBackground()" style="display:none;" title="Delete this uploaded file" aria-label="Delete this uploaded background">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              <span>Delete this background</span>
-            </button>
-          </div>
-
-          <!-- Background Dimmer & Contrast Slider -->
-          <div class="sanctuary-control-section">
-            <div class="sanctuary-control-header">
-              <label for="sanctuary-dimmer-slider">Background dimmer</label>
-              <span class="sanctuary-control-val" id="sanctuary-dimmer-val">30%</span>
-            </div>
-            <input type="range" min="0" max="80" step="5" value="30" class="sanctuary-dimmer-slider" id="sanctuary-dimmer-slider" oninput="onSanctuaryDimmerChange(this.value)">
-            <p class="sanctuary-control-hint" style="margin-top: 6px; margin-bottom: 0;">Soften the background to keep your text readable.</p>
-          </div>
-
-          <!-- Livestream & OBS Broadcast Mode Rule -->
-          <div class="sanctuary-control-section">
-            <div class="sanctuary-control-header">
-              <label for="obs-mode-rule-select">Broadcast layout</label>
-            </div>
-            <select id="obs-mode-rule-select" onchange="onObsModeRuleChange(this.value)">
-              <option value="follow">Follow studio</option>
-              <option value="always_full">Full screen</option>
-              <option value="always_lt">Lower third</option>
-            </select>
-            <p class="sanctuary-control-hint" style="margin-top: 6px; margin-bottom: 0;">Layout for your OBS Studio and vMix output.</p>
-          </div>
-
-          <!-- Big-Screen Projection Font Family -->
-          <div class="sanctuary-control-section">
-            <div class="sanctuary-control-header">
-              <span>Projection typography</span>
-            </div>
-            <div class="sanctuary-font-group">
-              <button type="button" class="sanctuary-font-btn active" data-font="Outfit" onclick="onSanctuaryFontChange('Outfit')"><span class="sanctuary-font-sample" style="font-family:'Outfit', serif">Aa</span>Outfit</button>
-              <button type="button" class="sanctuary-font-btn" data-font="Cormorant Garamond" onclick="onSanctuaryFontChange('Cormorant Garamond')"><span class="sanctuary-font-sample" style="font-family:'Cormorant Garamond', serif">Aa</span>Cormorant</button>
-              <button type="button" class="sanctuary-font-btn" data-font="Cinzel" onclick="onSanctuaryFontChange('Cinzel')"><span class="sanctuary-font-sample" style="font-family:'Cinzel', serif">Aa</span>Cinzel</button>
-              <button type="button" class="sanctuary-font-btn" data-font="Inter" onclick="onSanctuaryFontChange('Inter')"><span class="sanctuary-font-sample" style="font-family:'Inter', serif">Aa</span>Inter</button>
-              <button type="button" class="sanctuary-font-btn" data-font="Century Gothic" onclick="onSanctuaryFontChange('Century Gothic')"><span class="sanctuary-font-sample" style="font-family:'Century Gothic', 'CenturyGothic', AppleGothic, 'Didact Gothic', sans-serif">Aa</span>Century Gothic</button>
-            </div>
-          </div>
-        </div>
-      </aside>
-      </div>
-      <footer class="sanctuary-modal-footer"><span id="sanctuary-draft-status" role="status">Preview changes here. Apply when ready.</span><div class="sanctuary-footer-actions"><button type="button" class="sanctuary-cancel-button" onclick="closeSanctuaryThemeModal()">Cancel</button><button type="button" id="sanctuary-apply-button" disabled onclick="window.themeManager.applySanctuaryDraft(); closeSanctuaryThemeModal()">Apply</button></div></footer>
     </div>
   </div>
 
@@ -741,11 +680,13 @@
         </div>
       </div>
 
-      <div style="display:flex; gap:8px; align-items:center; margin:12px 0;">
+      <div class="hub-service-timer">
         <span>Stage service timer</span>
+        <div class="hub-service-timer-actions">
         <button type="button" class="hub-action-btn" onclick="controlServiceTimer('start')">Start / Resume</button>
         <button type="button" class="hub-action-btn" onclick="controlServiceTimer('pause')">Pause</button>
         <button type="button" class="hub-action-btn" onclick="controlServiceTimer('reset')">Reset</button>
+        </div>
       </div>
       <div class="hub-section-heading"><h2>Connect your screens</h2><p>Choose an output, then copy its link or open a preview.</p></div>
       <div class="hub-output-grid">
@@ -787,6 +728,24 @@
           </div>
         </div>
 
+
+        <!-- 4. Stage Confidence Monitor (Choir / Pastors) -->
+        <div class="links-row" style="padding:11px 4px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px; min-width:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div style="min-width:0;">
+              <div class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Stage Confidence Monitor</div>
+              <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">High-contrast stage view for Choir & Pastors with clock and next slide anticipation.</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+            <button class="hub-action-btn" onclick="copyOutputLink('stage', this)">Copy Link</button>
+            <button class="hub-action-btn icon-only" onclick="openOutputLink('stage')" title="Open in new window" aria-label="Open in new window">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </button>
+          </div>
+        </div>
+
 <details class="hub-advanced"><summary>Advanced output</summary>        <!-- 3. Lower-third overlay -->
         <div class="links-row" style="padding:11px 4px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
           <div style="display:flex; align-items:center; gap:12px; min-width:0;">
@@ -805,22 +764,6 @@
         </div>
 
 </details>
-        <!-- 4. Stage Confidence Monitor (Choir / Pastors) -->
-        <div class="links-row" style="padding:11px 4px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
-          <div style="display:flex; align-items:center; gap:12px; min-width:0;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <div style="min-width:0;">
-              <div class="links-row-title" style="font-weight:600; font-size:12.5px; letter-spacing:-0.005em;">Stage Confidence Monitor</div>
-              <div class="links-row-desc" style="font-size:11px; font-weight:400; line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">High-contrast stage view for Choir & Pastors with clock and next slide anticipation.</div>
-            </div>
-          </div>
-          <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
-            <button class="hub-action-btn" onclick="copyOutputLink('stage', this)">Copy Link</button>
-            <button class="hub-action-btn icon-only" onclick="openOutputLink('stage')" title="Open in new window" aria-label="Open in new window">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            </button>
-          </div>
-        </div>
 
         <!-- 3. Remote Co-Pilot Controller -->
         <div id="hub-remote-row" class="links-row" style="padding:11px 4px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
@@ -1113,7 +1056,7 @@
               </div>
             </div>
             <div style="font-size:12px; color:var(--text-muted, #94a3b8); line-height:1.5;">
-              Import all your data files into GNOMY in 1 to 2 clicks. Songs map to your songbook, Bibles map to Scripture database, background motion videos and still images map to your Sanctuary Themes library, and agendas map to your live deck.
+              Select your VideoPsalm folder or complete EasyWorship profile, including a profile copied from another computer. Preview the songs, media and compatible styles, then choose what to import. Close the source application before copying its profile.
             </div>
           </div>
 
@@ -1123,16 +1066,15 @@
               Select Software Root Folder or Path
             </label>
             <div class="library-migration-actions" style="display:flex; gap:8px; align-items:center;">
-              <input type="text" id="import-migrate-folder-path" class="import-text-field" placeholder="e.g. /Users/corpine/Downloads/Blip/VideoPsalm" style="flex:1; padding:9px 12px; font-size:12px; font-family:var(--font-mono, monospace);">
-              <input type="file" id="import-migrate-folder-picker" webkitdirectory directory multiple style="display:none;" onchange="handleMigrationFolderSelected(event)">
-              <button type="button" class="mode-toggle-btn" onclick="document.getElementById('import-migrate-folder-picker').click()" style="padding:9px 14px; font-size:12px; white-space:nowrap;">
+              <input type="text" id="import-migrate-folder-path" class="import-text-field" placeholder="Choose a folder or paste its full path" style="flex:1; padding:9px 12px; font-size:12px; font-family:var(--font-mono, monospace);">
+              <button type="button" id="import-migrate-browse-btn" class="mode-toggle-btn" onclick="browseMigrationFolder()" style="padding:9px 14px; font-size:12px; white-space:nowrap;">
                 Browse Folder
               </button>
               <button type="button" class="mode-toggle-btn active" onclick="handleMigrationScan()" style="padding:9px 14px; font-size:12px; white-space:nowrap;">
                 Scan Folder
               </button>
-              <button type="button" id="import-migrate-execute-btn" class="bento-btn bento-btn-primary" onclick="handleMigrationExecute()" style="padding:9px 18px; font-size:12px; white-space:nowrap; font-weight:700;">
-                Migrate Everything
+              <button type="button" id="import-migrate-execute-btn" class="bento-btn bento-btn-primary" onclick="handleMigrationExecute()" disabled style="padding:9px 18px; font-size:12px; white-space:nowrap; font-weight:700;">
+                Import Selected
               </button>
             </div>
           </div>
@@ -1144,7 +1086,7 @@
 
           <!-- Live Status Indicator -->
           <div id="import-migrate-status" style="font-size:12px; color:var(--text-muted, #94a3b8); font-family:var(--font-mono, monospace);">
-            Ready. Click "Scan Folder" to preview data or "Migrate Everything" to import immediately.
+            Ready. Select a folder and click "Scan Folder" to preview its contents.
           </div>
 
           <!-- Migration Breakdown Card -->
@@ -1168,11 +1110,22 @@
               </label>
               <label class="import-checkbox-label">
                 <input type="checkbox" id="import-migrate-opt-media" class="bento-modal-checkbox" checked>
-                <span>Ingest Background Videos & Images</span>
+                <span>Import Background Videos & Images</span>
               </label>
               <label class="import-checkbox-label">
                 <input type="checkbox" id="import-migrate-opt-agendas" class="bento-modal-checkbox" checked>
                 <span>Import Service Agendas</span>
+              </label>
+              <label class="import-checkbox-label">
+                <input type="checkbox" id="import-migrate-opt-themes" class="bento-modal-checkbox" checked>
+                <span>Import Compatible Styles</span>
+              </label>
+              <label class="import-checkbox-label" for="import-migrate-duplicates">
+                <span>Existing songs</span>
+                <select id="import-migrate-duplicates" class="import-text-field">
+                  <option value="skip">Keep existing songs</option>
+                  <option value="replace">Replace matching songs</option>
+                </select>
               </label>
             </div>
 
@@ -1294,13 +1247,14 @@ My chains are gone, I've been set free..."></textarea>
 
       <div style="padding:20px; font-size:12.5px; line-height:1.6; display:flex; flex-direction:column; gap:12px;">
         <p class="reset-prompt-p" style="margin-bottom:2px;">Choose which data you would like to clear from this device:</p>
+        <p id="reset-cleanup-status" role="status" hidden>Clearing selected data…</p>
         
         <div style="display:flex; flex-direction:column; gap:8px;">
           <!-- Option 1: Factory Reset -->
           <div style="background:rgba(242,85,75,0.08); border:1px solid rgba(242,85,75,0.25); border-radius:10px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
             <div>
-              <div style="font-weight:700; font-size:13px; color:#FCA5A5;">Clear Everything (Factory Reset)</div>
-              <div style="font-size:11px; color:#94A3B8; margin-top:2px;">Wipes all downloaded Bibles, saved songs, agendas, and resets workspace.</div>
+              <div class="reset-choice-title" style="font-weight:700; font-size:13px; color:#FCA5A5;">Clear Everything (Factory Reset)</div>
+              <div class="reset-choice-description" style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes downloads, saved songs, sessions and transcripts, then resets workspace settings. You can choose whether to delete uploaded media.</div>
             </div>
             <button type="button" class="mode-toggle-btn active reset-confirm-btn" onclick="performSystemReset()" style="background:#F2554B; border:1px solid #DC2626; color:#FFFFFF; font-size:11px; font-weight:700; padding:6px 14px; border-radius:8px; flex-shrink:0;">Clear All</button>
           </div>
@@ -1308,8 +1262,8 @@ My chains are gone, I've been set free..."></textarea>
           <!-- Option 2: Clear Bibles Only -->
           <div style="background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.2); border-radius:10px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
             <div>
-              <div style="font-weight:700; font-size:13px; color:#93C5FD;">Clear Downloaded Bibles Only</div>
-              <div style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes all offline Bible versions from storage to free up disk space.</div>
+              <div class="reset-choice-title" style="font-weight:700; font-size:13px; color:#93C5FD;">Clear Downloaded Bibles Only</div>
+              <div class="reset-choice-description" style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes imported translations and downloaded Bible content, including Strong’s. Bundled KJV stays available.</div>
             </div>
             <button type="button" class="mode-toggle-btn" onclick="performClearBiblesOnly()" style="background:rgba(59,130,246,0.2); border:1px solid rgba(59,130,246,0.4); color:#93C5FD; font-size:11px; font-weight:700; padding:6px 14px; border-radius:8px; flex-shrink:0;">Clear Bibles</button>
           </div>
@@ -1317,14 +1271,14 @@ My chains are gone, I've been set free..."></textarea>
           <!-- Option 3: Clear Songs Only -->
           <div style="background:rgba(236,72,153,0.06); border:1px solid rgba(236,72,153,0.2); border-radius:10px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
             <div>
-              <div style="font-weight:700; font-size:13px; color:#F472B6;">Clear Saved Songs Only</div>
-              <div style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes all custom & cloud imported songs from the local database.</div>
+              <div class="reset-choice-title" style="font-weight:700; font-size:13px; color:#F472B6;">Clear Saved Songs Only</div>
+              <div class="reset-choice-description" style="font-size:11px; color:#94A3B8; margin-top:2px;">Deletes all custom & cloud imported songs from the local database.</div>
             </div>
             <button type="button" class="mode-toggle-btn" onclick="performClearSongsOnly()" style="background:rgba(236,72,153,0.2); border:1px solid rgba(236,72,153,0.4); color:#F472B6; font-size:11px; font-weight:700; padding:6px 14px; border-radius:8px; flex-shrink:0;">Clear Songs</button>
           </div>
         </div>
 
-        <div style="font-size:11px; color:#64748B; margin-top:2px; font-style:italic;">Note: Theme and visual styling settings will always be preserved.</div>
+        <div style="font-size:11px; color:#64748B; margin-top:2px; font-style:italic;">Theme appearance and bundled KJV are preserved. Exported files outside the app are kept.</div>
       </div>
 
       <div class="reset-footer" style="display:flex; justify-content:flex-end; gap:10px; padding:12px 20px;">
@@ -1438,7 +1392,7 @@ My chains are gone, I've been set free..."></textarea>
 
             <div class="settings-nav-item" onclick="switchSettingsTab('display', this)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-              <span>Display & Lower-Third</span>
+              <span>Display</span>
             </div>
 
             <div class="settings-nav-item" onclick="switchSettingsTab('medley', this)">
@@ -1448,7 +1402,7 @@ My chains are gone, I've been set free..."></textarea>
 
             <div class="settings-nav-item" onclick="switchSettingsTab('speech', this)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-              <span>AI Speech Engine</span>
+              <span>AI &amp; Transcript</span>
             </div>
 
             <div class="settings-nav-item" onclick="switchSettingsTab('imports', this)">
@@ -1466,6 +1420,11 @@ My chains are gone, I've been set free..."></textarea>
               <span>Hotkeys</span>
             </div>
 
+            <button type="button" class="settings-nav-item" onclick="switchSettingsTab('updates', this)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg>
+              <span>Updates</span>
+            </button>
+
             <div class="settings-nav-item" onclick="switchSettingsTab('help', this)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               <span>Help</span>
@@ -1473,10 +1432,10 @@ My chains are gone, I've been set free..."></textarea>
           </div>
 
           <div class="settings-version-tag">
-            <div class="settings-version-title" style="font-weight:600;">GINOMIA</div>
+            <div class="settings-version-title" style="font-weight:600;">GINOMAI</div>
             <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-top:2px;">
-              <span>Build 2.4.0</span>
-              <button type="button" onclick="checkForUpdates()" title="Check for software updates" style="background:none; border:none; color:var(--purple, #8a6dff); font-size:10px; font-weight:600; cursor:pointer; padding:0; text-decoration:underline;">Check</button>
+              <span id="settings-build-version">Build 2.4.5</span>
+              <button id="check-update-btn-sidebar" type="button" onclick="checkForUpdates()" title="Check for software updates" style="background:none; border:none; color:var(--purple, #8a6dff); font-size:10px; font-weight:600; cursor:pointer; padding:0; text-decoration:underline;">Check</button>
             </div>
           </div>
         </aside>
@@ -1494,7 +1453,7 @@ My chains are gone, I've been set free..."></textarea>
             <!-- Section 1: UI Layout Style -->
             <div class="settings-card-group">
               <div class="settings-field-label" style="margin-bottom:2px;">Console Layout Style</div>
-              <div class="settings-field-sub" style="margin-bottom:12px;">Ginomia flagship console architecture</div>
+              <div class="settings-field-sub" style="margin-bottom:12px;">Ginomai flagship console architecture</div>
               
               <div class="theme-styles-picker-grid" style="grid-template-columns: 1fr;">
                 <!-- Bento Studio Card -->
@@ -1660,7 +1619,7 @@ My chains are gone, I've been set free..."></textarea>
                   <div class="settings-field-sub">Sanctuary full display magnification for congregational worship (Default: 2.2x)</div>
                 </div>
                 <div style="display:flex; align-items:center; gap:12px; width:220px;">
-                  <input type="range" id="setting-song-scale-full" min="1.0" max="3.5" step="0.1" value="2.2" style="flex:1; accent-color:var(--purple, #8A6DFF); cursor:pointer;" oninput="updateSongScaleFullSetting(this.value)">
+                  <input type="range" id="setting-song-scale-full" min="1.0" max="6.0" step="0.1" value="2.2" style="flex:1; accent-color:var(--purple, #8A6DFF); cursor:pointer;" oninput="updateSongScaleFullSetting(this.value)">
                   <span id="setting-song-scale-full-readout" style="min-width:42px; font-size:12px; font-weight:700; color:#E2E8F0; text-align:right; font-variant-numeric:tabular-nums;">2.2x</span>
                 </div>
               </div>
@@ -1690,37 +1649,14 @@ My chains are gone, I've been set free..."></textarea>
           <!-- TAB 2: DISPLAY & LOWER THIRD -->
           <div id="tab-display" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
             <div>
-              <div class="settings-section-title">Display & Broadcast Routing</div>
-              <div class="settings-section-desc">Manage lower-third overlays, OBS/vMix feeds, and background transparency.</div>
+              <div class="settings-section-title">Display preferences</div>
+              <div class="settings-section-desc">Set song titles and slide text. Use Style beneath the output preview for backgrounds and livestream layout.</div>
             </div>
 
             <div class="settings-card-group">
               <div class="settings-field-row">
                 <div class="settings-field-info">
-                  <div class="settings-field-label">Default Output Aspect Ratio</div>
-                  <div class="settings-field-sub">Sets aspect bounds for sanctuary projector window</div>
-                </div>
-                <select class="settings-select-custom">
-                  <option value="16:9">16:9 Widescreen (1920x1080)</option>
-                  <option value="21:9">21:9 Ultrawide Cinema</option>
-                  <option value="lower-third">Lower-Third Banner Mode</option>
-                </select>
-              </div>
-
-              <div class="settings-field-row">
-                <div class="settings-field-info">
-                  <div class="settings-field-label">Remove Background (Transparent Overlay)</div>
-                  <div class="settings-field-sub">Make lower-third / display card background transparent for seamless OBS/vMix camera overlays</div>
-                </div>
-                <label class="settings-switch">
-                  <input type="checkbox" id="setting-transparent-bg-toggle" onchange="toggleTransparentBg(this.checked)">
-                  <span class="settings-slider"></span>
-                </label>
-              </div>
-
-              <div class="settings-field-row">
-                <div class="settings-field-info">
-                  <div class="settings-field-label">Show Song Title Header on Screen</div>
+                  <div class="settings-field-label">Show song title</div>
                   <div class="settings-field-sub">Display song title & verse tag above projected song lyrics on sanctuary/OBS output</div>
                 </div>
                 <label class="settings-switch">
@@ -1731,19 +1667,8 @@ My chains are gone, I've been set free..."></textarea>
 
               <div class="settings-field-row">
                 <div class="settings-field-info">
-                  <div class="settings-field-label">Song Lyrics Editor Experience</div>
-                  <div class="settings-field-sub">Choose whether editing a song opens in the center deck split-screen or in a floating dialog</div>
-                </div>
-                <select class="settings-select-custom" id="setting-song-editor-mode" style="width:200px;" onchange="setSongEditorModeSetting(this.value)">
-                  <option value="split" selected>In-Deck Split View</option>
-                  <option value="modal">Overlay Modal Dialog</option>
-                </select>
-              </div>
-
-              <div class="settings-field-row">
-                <div class="settings-field-info">
                   <div class="settings-field-label">Max Lines per Slide (Verse Auto-Splitting)</div>
-                  <div class="settings-field-sub">Break down long verses or choruses into 2, 3, or 4 sub-slides</div>
+                  <div class="settings-field-sub">Split long verses or choruses into shorter slides</div>
                 </div>
                 <select class="settings-select-custom" id="setting-max-lines-select" style="width:180px;" onchange="updateMaxLinesSetting(this.value)">
                   <option value="2">2 Lines per Slide</option>
@@ -1760,12 +1685,15 @@ My chains are gone, I've been set free..."></textarea>
                   <div class="settings-field-sub">Automatically adjust font size to fit long verses on a single slide</div>
                 </div>
                 <label class="settings-switch">
-                  <input type="checkbox" checked>
+                  <input type="checkbox" id="setting-auto-shrink-toggle" onchange="toggleTextAutoScale(this.checked)">
                   <span class="settings-slider"></span>
                 </label>
               </div>
             </div>
 
+            <details id="display-advanced-settings">
+              <summary class="settings-field-label" style="cursor:pointer; padding:8px 0;">Advanced: word studies and transitions</summary>
+              <div style="display:flex; flex-direction:column; gap:16px; margin-top:12px;">
             <!-- Section 2: Concordance & Word Study Presentation -->
             <div class="settings-card-group">
               <div class="settings-field-label">Concordance & Word Study Presentation</div>
@@ -1814,9 +1742,9 @@ My chains are gone, I've been set free..."></textarea>
                   <div class="settings-field-label">Slide & Song Transition Effects</div>
                   <div class="settings-field-sub">Choose animation effect when clicking between songs, verses, and slides across all themes and displays</div>
                 </div>
-                <button type="button" class="mode-toggle-btn" style="padding:6px 14px; font-size:11.5px; font-weight:700; color:#38BDF8; background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.3); display:flex; align-items:center; gap:6px; cursor:pointer;" onclick="testLiveTransitionEffect()" title="Send a sample verse to test this transition live">
+                <button type="button" class="mode-toggle-btn" style="padding:6px 14px; font-size:11.5px; font-weight:700; color:#38BDF8; background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.3); display:flex; align-items:center; gap:6px; cursor:pointer;" onclick="testLiveTransitionEffect()" title="Preview this effect without changing live outputs">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  <span>Test Effect Live</span>
+                  <span>Preview effect</span>
                 </button>
               </div>
 
@@ -1897,6 +1825,11 @@ My chains are gone, I've been set free..."></textarea>
 
               </div>
 
+              <div id="transition-preview" hidden>
+                <p class="settings-field-sub">Preview only · Live outputs stay unchanged</p>
+                <iframe id="transition-preview-frame" title="Transition effect preview" style="display:block; width:100%; aspect-ratio:16/9; border:1px solid var(--border, #343340); border-radius:8px;"></iframe>
+              </div>
+
               <!-- Speed / Duration Row -->
               <div class="settings-field-row" style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.06); padding-top:12px;">
                 <div class="settings-field-info">
@@ -1912,6 +1845,8 @@ My chains are gone, I've been set free..."></textarea>
               </div>
 
             </div>
+              </div>
+            </details>
           </div>
 
           <!-- TAB: MEDLEY VIEW -->
@@ -1960,8 +1895,34 @@ My chains are gone, I've been set free..."></textarea>
           <!-- TAB 3: SPEECH AI ENGINE -->
           <div id="tab-speech" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
             <div>
-              <div class="settings-section-title">AI Speech Recognition & Provider Settings</div>
-              <div class="settings-section-desc">Configure Deepgram Cloud live streaming, custom church vocabulary, audio hardware input, and auto-projection.</div>
+              <div class="settings-section-title">AI &amp; Transcript</div>
+              <div class="settings-section-desc">Manage Bible detection, transcription and microphone settings.</div>
+            </div>
+
+            <div class="settings-card-group" id="ai-content-settings">
+              <div class="settings-field-row content-pack-row" data-pack="AI_SEMANTIC">
+                <div class="settings-field-info">
+                  <div class="settings-field-label">Offline AI Bible detection</div>
+                  <div class="settings-field-sub">Find KJV verses from spoken phrases and paraphrases.</div>
+                  <div class="content-pack-status" role="status" data-pack-status>Checking availability…</div>
+                </div>
+                <div class="content-pack-actions">
+                  <button type="button" class="mode-toggle-btn" data-pack-download onclick="downloadOptionalPack('AI_SEMANTIC')">Download</button>
+                  <button type="button" class="mode-toggle-btn" data-pack-remove hidden onclick="removeOptionalPack('AI_SEMANTIC')">Remove</button>
+                </div>
+              </div>
+              <div class="settings-field-row content-pack-row" data-pack="KJV_STRONGS">
+                <div class="settings-field-info">
+                  <div class="settings-field-label">Strong’s Concordance</div>
+                  <div class="settings-field-sub">Hebrew and Greek word meanings for the KJV Bible.</div>
+                  <div class="content-pack-status" role="status" data-pack-status>Checking availability…</div>
+                </div>
+                <div class="content-pack-actions">
+                  <button type="button" class="mode-toggle-btn" data-pack-download onclick="downloadOptionalPack('KJV_STRONGS')">Download</button>
+                  <button type="button" class="mode-toggle-btn" data-pack-remove hidden onclick="removeOptionalPack('KJV_STRONGS')">Remove</button>
+                </div>
+              </div>
+              <div class="content-pack-help">Download once to use offline. Other translations are in Bibles &amp; Songs Repositories.</div>
             </div>
 
             <!-- Remote Mode Audio Notice -->
@@ -2104,7 +2065,7 @@ My chains are gone, I've been set free..."></textarea>
               <div class="settings-field-row">
                 <div class="settings-field-info">
                   <div class="settings-field-label">Online Cloud Sync</div>
-                  <div class="settings-field-sub">Connect to Ginomia Cloud for automatic song lyrics updates</div>
+                  <div class="settings-field-sub">Connect to Ginomai Cloud for automatic song lyrics updates</div>
                 </div>
                 <label class="settings-switch">
                   <input type="checkbox" checked>
@@ -2141,6 +2102,17 @@ My chains are gone, I've been set free..."></textarea>
           <div id="tab-control" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
             <div class="settings-section-title">Control</div>
             <div class="settings-card-group">
+              <div class="settings-field-row">
+                <div class="settings-field-info">
+                  <div class="settings-field-label">Song editor</div>
+                  <div class="settings-field-sub">Choose whether editing a song opens in the center deck split-screen or in a floating dialog</div>
+                </div>
+                <select class="settings-select-custom" id="setting-song-editor-mode" style="width:200px;" onchange="setSongEditorModeSetting(this.value)">
+                  <option value="split" selected>In-Deck Split View</option>
+                  <option value="modal">Overlay Modal Dialog</option>
+                </select>
+              </div>
+
               <div class="settings-field-row" style="flex-wrap:wrap; gap:10px;">
                 <div class="settings-field-info" style="flex:1 1 200px;">
                   <label class="settings-field-label" for="projection-workflow">Slide selection</label>
@@ -2197,30 +2169,36 @@ My chains are gone, I've been set free..."></textarea>
             </div>
           </div>
 
+          <div id="tab-updates" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
+            <div><div class="settings-section-title">Software updates</div><div class="settings-section-desc">Keep Ginomai current. Choose when to download and restart.</div></div>
+            <div class="settings-card-group">
+              <div class="settings-field-row">
+                <div class="settings-field-info"><label class="settings-field-label" for="automatic-update-downloads">Automatically download updates</label><div class="settings-field-sub" id="automatic-update-description">Download updates in the background. Restart when you’re ready to install.</div></div>
+                <label class="settings-switch"><input type="checkbox" id="automatic-update-downloads" aria-describedby="automatic-update-description" onchange="setAutomaticUpdateDownloads(this.checked)" disabled><span class="settings-slider"></span></label>
+              </div>
+              <div class="settings-field-row sf-update-settings-row">
+                <div class="settings-field-info"><div class="settings-field-label" id="updates-installed-version">Installed version</div><div class="settings-field-sub" id="updates-settings-status" role="status" aria-live="polite">Reading update status…</div></div>
+                <div class="sf-update-actions"><button type="button" id="updates-settings-action" class="settings-help-btn" onclick="runUpdateAction()">Check for Updates</button><button type="button" id="updates-settings-cancel" class="settings-help-btn" onclick="cancelUpdateDownload()" hidden>Cancel download</button></div>
+              </div>
+              <p id="updates-settings-error" class="sf-update-error" role="status" hidden></p>
+              <button type="button" class="settings-link sf-update-notes-link" onclick="openUpdateReleaseNotes(event)">What’s new</button>
+            </div>
+          </div>
+
           <!-- TAB 6: HELP & SUPPORT -->
           <div id="tab-help" class="settings-tab-page" style="display:none; flex-direction:column; gap:16px;">
-            <button type="button" class="sf-action" onclick="closeSettingsModal(); openSystemResetModal()">Reset workspace or remove local data…</button>
             <div>
-              <div class="settings-section-title">Help</div>
+              <div class="settings-section-title">Help &amp; Support</div>
               <div class="settings-section-desc">Tutorials, interactive walkthroughs, changelog, and direct support assistance.</div>
             </div>
 
-            <div class="settings-card-group settings-help-group">
-              
-              <!-- Check for Updates -->
-              <div class="settings-field-row settings-help-row">
-                <div class="settings-field-info">
-                  <div class="settings-field-label">Check for Updates</div>
-                  <div class="settings-field-sub" id="settings-update-status-text">Version 2.4.0 · Check for the latest release & performance improvements</div>
-                </div>
-                <button type="button" class="settings-help-btn" id="check-update-btn" onclick="checkForUpdates()">
-                  <svg id="check-update-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                  <span id="check-update-btn-text">Check for Updates</span>
-                </button>
-              </div>
+            <section class="settings-help-section" aria-labelledby="settings-help-learn-title">
+              <h3 class="settings-help-section-title" id="settings-help-learn-title">Learn</h3>
+              <div class="settings-help-learn-grid">
 
               <!-- YouTube Tutorial -->
-              <div class="settings-field-row settings-help-row">
+              <div class="settings-help-card settings-help-card-feature">
+                <svg class="settings-help-card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 <div class="settings-field-info">
                   <div class="settings-field-label">YouTube Tutorial</div>
                   <div class="settings-field-sub">Watch our official video guides for a quick start</div>
@@ -2232,10 +2210,11 @@ My chains are gone, I've been set free..."></textarea>
               </div>
 
               <!-- What's New -->
-              <div class="settings-field-row settings-help-row">
+              <div class="settings-help-card">
+                <svg class="settings-help-card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 3v6h6M12 7v5l3 2"/></svg>
                 <div class="settings-field-info">
                   <div class="settings-field-label">What's New</div>
-                  <div class="settings-field-sub">Read the full changelog for every Ginomia release</div>
+                  <div class="settings-field-sub">Read the full changelog for every Ginomai release</div>
                 </div>
                 <button type="button" class="settings-help-btn" onclick="openChangelogModal()">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -2244,7 +2223,8 @@ My chains are gone, I've been set free..."></textarea>
               </div>
 
               <!-- Interactive Highlights -->
-              <div class="settings-field-row settings-help-row">
+              <div class="settings-help-card">
+                <svg class="settings-help-card-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
                 <div class="settings-field-info">
                   <div class="settings-field-label">Interactive Highlights</div>
                   <div class="settings-field-sub">Discover key features with an interactive walkthrough</div>
@@ -2254,9 +2234,15 @@ My chains are gone, I've been set free..."></textarea>
                   <span>Start Tour</span>
                 </button>
               </div>
+              </div>
+            </section>
+
+            <section class="settings-help-section" aria-labelledby="settings-help-support-title">
+              <h3 class="settings-help-section-title" id="settings-help-support-title">Support</h3>
+              <div class="settings-help-support-grid">
 
               <!-- Send Logs to Support -->
-              <div class="settings-field-row settings-help-row">
+              <div class="settings-help-card">
                 <div class="settings-field-info">
                   <div class="settings-field-label">Send Logs to Support</div>
                   <div class="settings-field-sub">Send all app logs (startup, transcription & install) to support</div>
@@ -2268,13 +2254,13 @@ My chains are gone, I've been set free..."></textarea>
               </div>
 
               <!-- Contact Us on WhatsApp -->
-              <div class="settings-field-row settings-help-row">
+              <div class="settings-help-card">
                 <div class="settings-field-info">
                   <div class="settings-field-label">Contact Us on WhatsApp</div>
-                  <div class="settings-field-sub">Chat directly with the Ginomia team for help or feedback</div>
+                  <div class="settings-field-sub">Chat directly with the Ginomai team for help or feedback</div>
                 </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <button type="button" class="settings-help-icon-btn" title="Copy WhatsApp Link / Number" onclick="copySupportWhatsApp()">
+                <div class="settings-help-card-actions">
+                  <button type="button" class="settings-help-icon-btn" title="Copy WhatsApp Link / Number" aria-label="Copy WhatsApp link or number" onclick="copySupportWhatsApp()">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   </button>
                   <button type="button" class="settings-help-btn settings-help-btn-green" onclick="openSupportWhatsApp()">
@@ -2284,12 +2270,26 @@ My chains are gone, I've been set free..."></textarea>
                 </div>
               </div>
 
-            </div>
+              </div>
+            </section>
+
+            <section class="settings-help-update" aria-label="Version and updates">
+              <div class="settings-field-info">
+                <div class="settings-field-label">Version &amp; Updates</div>
+                <div class="settings-field-sub" id="settings-update-status-text">Reading installed version...</div>
+              </div>
+              <button type="button" class="settings-help-btn" id="check-update-btn" onclick="checkForUpdates()">
+                <svg id="check-update-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span id="check-update-btn-text">Check for Updates</span>
+              </button>
+            </section>
 
             <!-- Community & Social Section -->
-            <div>
-              <div class="settings-field-label" style="margin-bottom:2px; font-size:13px;">Community & Social</div>
-              <div class="settings-field-sub" style="margin-bottom:12px;">Join our community and stay updated with the latest news</div>
+            <section class="settings-help-community" aria-label="Community and social">
+              <div class="settings-field-info">
+                <div class="settings-field-label">Community &amp; Social</div>
+                <div class="settings-field-sub">Join our community and stay updated with the latest news</div>
+              </div>
               
               <div class="settings-social-grid">
                 <a href="https://x.com" target="_blank" rel="noopener noreferrer" class="settings-social-card" title="Twitter / X">
@@ -2313,8 +2313,12 @@ My chains are gone, I've been set free..."></textarea>
                   </svg>
                 </a>
               </div>
-            </div>
+            </section>
 
+            <footer class="settings-help-maintenance">
+              <span>Maintenance</span>
+              <button type="button" onclick="closeSettingsModal(); openSystemResetModal()">Reset workspace or remove local data…</button>
+            </footer>
           </div>
 
         </main>
@@ -2426,7 +2430,7 @@ My chains are gone, I've been set free..."></textarea>
     </div>
     <div style="font-size:22px; font-weight:800; color:var(--text-starlight); margin-bottom:8px; letter-spacing:-0.01em;">Studio Session Offline</div>
     <div style="font-size:13.5px; color:var(--text-muted); max-width:440px; line-height:1.6; margin-bottom:24px;">
-      The host has not started the remote operator session yet. Your screen will automatically connect and unlock as soon as the host clicks <strong>"Start Remote Session"</strong>.
+      The host has not started the remote operator session yet. This screen will update automatically when the host clicks <strong>"Start Remote Session"</strong>. Then enter the host's pairing code to connect.
     </div>
     <div style="display:flex; align-items:center; gap:8px; padding:8px 18px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:20px; font-size:11.5px; color:#94A3B8;">
       <div style="width:8px; height:8px; border-radius:50%; background:#F59E0B; box-shadow:0 0 8px #F59E0B;"></div>
@@ -2453,8 +2457,8 @@ My chains are gone, I've been set free..."></textarea>
       <div style="margin-bottom:18px; text-align:left;">
         <label for="operator-join-name-input" style="display:block; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:#94A3B8; margin-bottom:6px;">Your Name / Call Sign</label>
         <input type="text" id="operator-join-name-input" maxlength="40" placeholder="e.g. Bro John / Sarah" autocomplete="name" class="import-text-field" style="width:100%; padding:12px 14px; font-size:14px; outline:none;">
-        <label for="operator-pairing-code">Host pairing code</label>
-        <input id="operator-pairing-code" class="import-text-field" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="Six-digit code from Broadcast Hub">
+        <label for="operator-pairing-code" style="display:block; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:#94A3B8; margin:16px 0 6px;">Host pairing code</label>
+        <input id="operator-pairing-code" class="import-text-field" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="Six-digit code" style="width:100%; padding:12px 14px; font-size:14px; outline:none;">
         <div id="operator-join-error" style="display:none; margin-top:6px; font-size:11.5px; color:#F87171;">Please enter your name to continue.</div>
       </div>
 
@@ -2572,6 +2576,11 @@ My chains are gone, I've been set free..."></textarea>
           <span class="strongs-id-badge" id="strongs-drawer-id">G3056</span>
           <span class="strongs-lang-pill" id="strongs-drawer-lang">Greek Word Study</span>
         </div>
+        <div class="strongs-drawer-search-wrap">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="strongs-drawer-search-input" placeholder="Search word, lemma, or ID..." autocomplete="off" oninput="handleStrongsDrawerSearch(this.value)">
+          <div id="strongs-drawer-search-dropdown" class="strongs-drawer-search-dropdown" style="display:none;"></div>
+        </div>
         <div class="strongs-head-actions">
           <select id="drawer-concordance-style-select" class="strongs-style-select" onchange="updateConcordanceStyleSetting(this.value)" title="Select Concordance presentation card style">
             <option value="hero" selected>Focus Card</option>
@@ -2628,6 +2637,20 @@ My chains are gone, I've been set free..."></textarea>
           <div class="strongs-section-title" id="strongs-drawer-lex-title">Thayer's Greek-English Lexicon</div>
           <div class="strongs-thayer-content" id="strongs-drawer-full-def"></div>
         </div>
+
+        <!-- Scripture Occurrences in KJV Strong's Bible -->
+        <div class="strongs-section-card" id="strongs-drawer-occurrences-card" style="display:none;">
+          <div class="strongs-section-title" id="strongs-drawer-occurrences-title" onclick="toggleStrongsOccurrencesCollapse()" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; user-select:none;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span>Scripture Occurrences</span>
+              <span class="strongs-count-badge" id="strongs-occurrences-count-badge">0</span>
+            </div>
+            <svg id="strongs-occurrences-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform 0.04s ease;"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="strongs-occurrences-container" id="strongs-drawer-occurrences-container">
+            <div class="strongs-occurrences-list" id="strongs-drawer-occurrences-list"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -2679,19 +2702,19 @@ My chains are gone, I've been set free..."></textarea>
   <div id="session-dropzone-overlay" class="session-dropzone-overlay" style="display:none;">
     <div class="session-dropzone-box">
       <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      <div class="t">Drop Ginomia Session File Here</div>
+      <div class="t">Drop Ginomai Session File Here</div>
       <div class="d">Release your .sflow service package to load the agenda instantly</div>
     </div>
   </div>
 
-  <!-- ── Ginomia Changelog Modal ───────────────────────────────────── -->
+  <!-- ── Ginomai Changelog Modal ───────────────────────────────────── -->
   <div id="changelog-modal-backdrop" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeChangelogModal()">
     <div class="changelog-modal-card" style="width:580px; max-width:92vw; background:var(--card, #131218); border:1px solid var(--border-strong, rgba(255,255,255,0.14)); border-radius:18px; padding:24px; box-shadow:0 24px 64px rgba(0,0,0,0.8); max-height:85vh; display:flex; flex-direction:column; overflow:hidden;" onclick="event.stopPropagation()">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-shrink:0;">
         <div style="display:flex; align-items:center; gap:10px;">
           <div style="width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg, #8a6dff, #f178b6); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:14px;">G</div>
           <div>
-            <div style="font-size:15px; font-weight:700; color:var(--text, #f3f2f7);">What's New in Ginomia</div>
+            <div style="font-size:15px; font-weight:700; color:var(--text, #f3f2f7);">What's New in Ginomai</div>
             <div style="font-size:11px; color:var(--mute, #696773);">Release notes & studio performance updates</div>
           </div>
         </div>
@@ -2703,7 +2726,7 @@ My chains are gone, I've been set free..."></textarea>
       <div style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:14px; padding-right:4px;">
         <div style="background:var(--card-2, #1a1920); border:1px solid var(--border, rgba(255,255,255,0.07)); border-radius:12px; padding:14px 16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <span style="font-size:13px; font-weight:700; color:var(--text, #f3f2f7);">v2.4.0 (The Word in Motion)</span>
+            <span style="font-size:13px; font-weight:700; color:var(--text, #f3f2f7);">v2.4.5 (The Word in Motion)</span>
             <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px; background:rgba(62,207,126,0.15); color:#3ecf7e; border:1px solid rgba(62,207,126,0.3);">CURRENT</span>
           </div>
           <ul style="margin:0; padding-left:18px; font-size:12px; color:var(--dim, #a3a1ae); line-height:1.7;">
@@ -2743,6 +2766,10 @@ My chains are gone, I've been set free..."></textarea>
           <input type="text" id="sf-dialog-input" class="sf-dialog-input" placeholder="" spellcheck="false" autocomplete="off" />
         </div>
         <div class="sf-dialog-message" id="sf-dialog-message" style="display:none;"></div>
+        <label class="sf-dialog-checkbox-wrap" id="sf-dialog-checkbox-wrap" hidden>
+          <input type="checkbox" id="sf-dialog-checkbox" />
+          <span id="sf-dialog-checkbox-label"></span>
+        </label>
       </div>
       <div class="sf-dialog-foot">
         <button type="button" class="sf-dialog-btn secondary" id="sf-dialog-cancel-btn" onclick="event.stopPropagation(); window.sfCloseCustomDialog(null)">Cancel</button>
@@ -2778,15 +2805,15 @@ My chains are gone, I've been set free..."></textarea>
         <div class="alert-destinations-cluster">
           <label class="alert-dest-checkbox">
             <input type="checkbox" id="ann-modal-dest-sanctuary" checked>
-            <span>In-House (Projector)</span>
+            <span>Projector</span>
           </label>
           <label class="alert-dest-checkbox">
             <input type="checkbox" id="ann-modal-dest-livestream" checked>
-            <span>Livestream (OBS/vMix)</span>
+            <span>Stream</span>
           </label>
           <label class="alert-dest-checkbox">
             <input type="checkbox" id="ann-modal-dest-stage">
-            <span>Stage (Choir/Pastors)</span>
+            <span>Stage</span>
           </label>
         </div>
       </div>
@@ -2794,12 +2821,12 @@ My chains are gone, I've been set free..."></textarea>
       <div style="display:flex; gap:12px;">
         <div class="ann-modal-field" style="flex:1;">
           <label class="ann-modal-label" for="ann-modal-speed">Scroll speed</label>
-          <select id="ann-modal-speed" class="ann-modal-select"><option value="slow">Slow</option><option value="normal" selected>Normal</option><option value="fast">Fast</option></select>
+          <select id="ann-modal-speed" class="ann-modal-select settings-select-custom ann-custom-select"><option value="slow">Slow</option><option value="normal" selected>Normal</option><option value="fast">Fast</option></select>
           <label class="ann-modal-label" for="ann-modal-pos">Default Position</label>
-          <select id="ann-modal-pos" class="ann-modal-select">
+          <select id="ann-modal-pos" class="ann-modal-select settings-select-custom ann-custom-select">
             <option value="lowerthird">Bottom ticker</option>
             <option value="upperthird">Top ticker</option>
-            <option value="fullscreen">Fullscreen</option>
+            <option value="fullscreen">Full screen</option>
           </select>
         </div>
         <div class="ann-modal-field" style="justify-content:center; padding-top:16px;">
@@ -2824,23 +2851,28 @@ My chains are gone, I've been set free..."></textarea>
   </div>
 
   <!-- ── Song Theme Binding Modal ──────────────────────────────────── -->
-  <div id="song-theme-picker-modal-backdrop" onclick="if(event.target===this) closeSongThemeBindingModal()">
-    <div class="song-theme-picker-card" role="dialog" aria-modal="true" aria-labelledby="song-theme-picker-heading" onclick="event.stopPropagation()">
-      <div class="ann-modal-header">
-        <div>
-          <h3 class="ann-modal-title" id="song-theme-picker-heading">Attach Theme to Song</h3>
-          <p id="song-theme-picker-sub" style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Select a default visual theme to automatically activate whenever this song is selected.</p>
-        </div>
-        <button type="button" class="ann-drawer-close-btn" onclick="closeSongThemeBindingModal()">
+  <div id="song-theme-picker-modal-backdrop" onpointerdown="if(event.target===this) { event.preventDefault(); event.stopPropagation(); }" onclick="event.stopPropagation(); if(event.target===this) { event.preventDefault(); closeSongThemeBindingModal(); }">
+    <div class="song-theme-picker-card ann-background-picker" role="dialog" aria-modal="true" aria-labelledby="song-theme-picker-heading" onclick="event.stopPropagation()">
+      <div class="ann-background-picker-heading">
+        <strong id="song-theme-picker-heading">Choose a background</strong>
+        <button type="button" class="ann-background-close" aria-label="Close backgrounds" onclick="closeSongThemeBindingModal()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <input type="hidden" id="song-theme-target-song-id" value="">
-      <div id="song-theme-picker-grid" class="song-theme-grid">
+      <input id="song-theme-picker-search" class="ann-search-input" type="search" placeholder="Search backgrounds…" aria-label="Search backgrounds" autocomplete="off" oninput="filterSongThemeBackgrounds()">
+      <div id="song-theme-picker-filters" class="ann-background-filters" role="group" aria-label="Background type">
+        <button type="button" data-filter="all" aria-pressed="true" onclick="filterSongThemeBackgrounds('all')">All</button>
+        <button type="button" data-filter="still" aria-pressed="false" onclick="filterSongThemeBackgrounds('still')">Still</button>
+        <button type="button" data-filter="motion" aria-pressed="false" onclick="filterSongThemeBackgrounds('motion')">Motion</button>
+        <button type="button" data-filter="uploads" aria-pressed="false" onclick="filterSongThemeBackgrounds('uploads')">Uploads</button>
+      </div>
+      <div id="song-theme-picker-grid" class="ann-background-grid">
         <!-- Dynamically populated by Theme Manager -->
       </div>
+      <p id="song-theme-picker-empty" class="ann-background-none" hidden>No matching backgrounds</p>
       <div class="ann-modal-footer">
-        <button type="button" class="ann-modal-btn secondary" onclick="detachSongTheme()">Reset to Global Default</button>
+        <button type="button" class="ann-modal-btn secondary" onclick="detachSongTheme()">Reset background</button>
         <button type="button" class="ann-modal-btn secondary" onclick="closeSongThemeBindingModal()">Close</button>
       </div>
     </div>
@@ -2859,6 +2891,7 @@ My chains are gone, I've been set free..."></textarea>
           <p id="style-shared-note" class="presentation-scope">Uses projector theme. Shared edits affect both full-screen outputs.</p>
           <div class="style-library-heading"><strong>Background library</strong><button type="button" id="style-upload-trigger" onclick="document.getElementById('style-background-upload').click()">Upload background</button></div>
           <input id="style-background-upload" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.avif,.mp4,.webm,.mov,.m4v,.ogv" multiple hidden onchange="uploadStyleBackground(this)">
+          <p id="style-upload-status" role="status" aria-live="polite" class="presentation-scope"></p>
           <div class="style-background-filters" role="group" aria-label="Background type">
             <span class="style-selection-indicator" aria-hidden="true"></span>
             <button type="button" data-style-category="all" aria-pressed="true" onclick="filterStyleBackgrounds('all')">All backgrounds</button>
@@ -2885,6 +2918,8 @@ My chains are gone, I've been set free..."></textarea>
             <div id="stream-image-list" role="group" aria-label="Choose a lower-third background image"></div>
             <p id="stream-image-empty" class="presentation-scope" hidden>No uploaded images yet. Use Upload image to add one.</p>
           </section>
+          <label id="stream-bottom-fade-row" hidden>Enable bottom fade <input id="stream-bottom-fade" type="checkbox" onchange="updateStreamAppearance({bottomFade:this.checked})"></label>
+          <label id="stream-fade-strength-row" hidden>Fade strength <span class="stream-fade-strength-control"><input id="stream-fade-strength" type="range" min="0" max="100" step="1" oninput="updateStreamAppearance({opacity:Number(this.value)})"><output id="stream-fade-strength-value" for="stream-fade-strength">90%</output></span></label>
           <p id="stream-upload-status" role="status" class="presentation-scope"></p>
           <details class="presentation-appearance">
             <summary>More options</summary>
@@ -2929,42 +2964,81 @@ My chains are gone, I've been set free..."></textarea>
     </section>
   </div>
   <div id="agenda-add-shield" hidden aria-hidden="true" style="position:fixed;inset:0;z-index:90001;" onpointerdown="event.preventDefault();event.stopPropagation()" onclick="event.preventDefault();event.stopImmediatePropagation();closeAgendaAdd()"></div>
+  <div id="agenda-add-options" hidden aria-label="Add to service agenda">
+    <button type="button" onclick="closeAgendaAdd();openOmniSearchPalette('all')">Song or Bible</button>
+    <button type="button" onclick="closeAgendaAdd();openCountdownSetup()">Countdown</button>
+    <button type="button" onclick="closeAgendaAdd();switchBentoTab('media')">Media</button>
+    <button type="button" onclick="closeAgendaAdd();addCustomAgendaPrompt()">Custom item</button>
+  </div>
   <div id="countdown-setup-shield" class="presentation-dialog-shield" hidden onpointerdown="if(event.target===this){event.preventDefault();event.stopPropagation()}" onclick="if(event.target===this){event.preventDefault();event.stopImmediatePropagation();closeCountdownSetup()}">
     <section class="presentation-dialog countdown-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="countdown-setup-title">
       <header><h3 id="countdown-setup-title">Service countdown</h3><button type="button" onclick="closeCountdownSetup()" aria-label="Close countdown">Close</button></header>
       <div class="countdown-setup-layout">
         <div class="countdown-setup-fields">
           <div class="countdown-input-modes" role="group" aria-label="Set countdown by">
-            <button type="button" id="countdown-mode-time" aria-pressed="true" onclick="setCountdownInputMode('time')">Service start time</button>
+            <button type="button" id="countdown-mode-time" aria-pressed="true" onclick="setCountdownInputMode('time')">Start at</button>
             <button type="button" id="countdown-mode-minutes" aria-pressed="false" onclick="setCountdownInputMode('minutes')">Minutes</button>
           </div>
           <div id="countdown-time-fields" class="countdown-time-fields">
-            <label>Service start time <input id="countdown-start" type="time" required oninput="updateCountdownSetup()"></label>
-            <label>Service date <input id="countdown-date" type="date" required oninput="updateCountdownSetup()"></label>
+            <label>Time <input id="countdown-start" type="time" required oninput="updateCountdownSetup()"></label>
+            <label>Date <input id="countdown-date" type="date" required oninput="updateCountdownSetup()"></label>
           </div>
           <label id="countdown-minutes-field" hidden>Countdown minutes <input id="countdown-minutes" type="number" min="1" max="1440" step="1" value="15" oninput="updateCountdownSetup(true)"></label>
           <p id="countdown-schedule-hint" class="countdown-setup-hint"></p>
           <label>Heading <input id="countdown-message" type="text" maxlength="160" value="Service starts in" oninput="updateCountdownSetup()"></label>
-          <label>When countdown ends <input id="countdown-completion" type="text" maxlength="160" placeholder="Please rise to your feet" oninput="updateCountdownSetup()"></label>
+          <label>End message <input id="countdown-completion" type="text" maxlength="160" placeholder="Please rise to your feet" oninput="updateCountdownSetup()"></label>
           <label>Show on <select id="countdown-dest"><option value="both">Both</option><option value="sanctuary">Projector</option><option value="livestream">Livestream</option></select></label>
-          <details class="countdown-appearance"><summary>Appearance</summary>
+          <details class="countdown-appearance"><summary>Text style</summary>
+            <label>Edit <select id="countdown-style-part" onchange="setCountdownStylePart(this.value)"><option value="timer">Timer</option><option value="heading">Heading</option><option value="completion">End message</option></select></label>
             <label>Font <select id="countdown-font" onchange="updateCountdownSetup()"><option value="">Output font</option><option value="Outfit">Outfit</option><option value="Inter">Inter</option><option value="Cormorant Garamond">Cormorant Garamond</option><option value="Cinzel">Cinzel</option></select></label>
-            <label>Timer size <select id="countdown-size" onchange="updateCountdownSetup()"><option value="0.8">Medium</option><option value="1" selected>Large</option><option value="1.2">Extra large</option></select></label>
+            <fieldset id="countdown-style-heading" class="countdown-text-controls" hidden><legend>Heading</legend>
+              <label>Color <input id="countdown-heading-color" type="color" value="#ffffff" aria-label="Heading color" oninput="updateCountdownSetup()"><input id="countdown-heading-color-hex" class="countdown-color-code" type="text" value="#ffffff" maxlength="7" aria-label="Heading color hex" spellcheck="false" oninput="setCountdownColor('heading',this.value)"></label>
+              <label>Size <input id="countdown-heading-size" type="range" min="0.5" max="3" step="0.05" value="1" aria-label="Heading size" oninput="updateCountdownSetup()"><output id="countdown-heading-size-value">100%</output></label>
+            </fieldset>
+            <fieldset id="countdown-style-timer" class="countdown-text-controls"><legend>Countdown timer</legend>
+              <label>Color <input id="countdown-timer-color" type="color" value="#ffffff" aria-label="Timer color" oninput="updateCountdownSetup()"><input id="countdown-timer-color-hex" class="countdown-color-code" type="text" value="#ffffff" maxlength="7" aria-label="Timer color hex" spellcheck="false" oninput="setCountdownColor('timer',this.value)"></label>
+              <label>Size <input id="countdown-size" type="range" min="0.5" max="2" step="0.05" value="1" aria-label="Timer size" oninput="updateCountdownSetup()"><output id="countdown-size-value">100%</output></label>
+            </fieldset>
+            <fieldset id="countdown-style-completion" class="countdown-text-controls" hidden><legend>Finished message</legend>
+              <label>Color <input id="countdown-completion-color" type="color" value="#ffffff" aria-label="Finished message color" oninput="updateCountdownSetup()"><input id="countdown-completion-color-hex" class="countdown-color-code" type="text" value="#ffffff" maxlength="7" aria-label="Finished message color hex" spellcheck="false" oninput="setCountdownColor('completion',this.value)"></label>
+              <label>Size <input id="countdown-completion-size" type="range" min="0.5" max="3" step="0.05" value="1" aria-label="Finished message size" oninput="updateCountdownSetup()"><output id="countdown-completion-size-value">100%</output></label>
+            </fieldset>
           </details>
         </div>
         <aside class="countdown-setup-preview-column" aria-label="Output preview">
           <strong>Output preview</strong>
           <div id="countdown-setup-preview" class="countdown-preview" aria-label="Countdown preview"><div id="countdown-preview-display" class="countdown-display"><div id="countdown-preview-message" class="countdown-message">Service starts in</div><div id="countdown-preview-clock" class="countdown-clock">15:00</div></div></div>
           <div class="countdown-preview-modes" role="group" aria-label="Preview state"><button type="button" id="countdown-preview-running" aria-pressed="true" onclick="setCountdownPreviewFinished(false)">Countdown</button><button type="button" id="countdown-preview-finished" aria-pressed="false" onclick="setCountdownPreviewFinished(true)">Finished message</button></div>
-          <p class="countdown-setup-hint">Start shows the countdown on your selected outputs. Add to agenda prepares it for later.</p>
+          <div class="countdown-background-controls">
+            <div class="countdown-background-heading"><strong>Background</strong><button type="button" id="countdown-upload-button" onclick="document.getElementById('countdown-background-input').click()">Upload</button></div>
+            <input id="countdown-background-search" type="search" placeholder="Search backgrounds…" aria-label="Search backgrounds" autocomplete="off" oninput="filterCountdownBackgrounds(this.value)">
+            <input type="hidden" id="countdown-background">
+            <div id="countdown-background-grid" class="countdown-background-grid" role="group" aria-label="Choose background"></div>
+            <p id="countdown-background-empty" class="countdown-setup-hint" role="status" hidden>No backgrounds found.</p>
+            <input id="countdown-background-input" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.avif,.mp4,.webm,.mov,.m4v,.ogv" hidden onchange="uploadCountdownBackground(this)">
+            <p id="countdown-upload-status" class="countdown-setup-hint" role="status"></p>
+          </div>
         </aside>
       </div>
       <p id="countdown-setup-error" role="alert"></p>
-      <footer><button type="button" onclick="closeCountdownSetup()">Cancel</button><button type="button" id="countdown-save" onclick="saveCountdownSetup()">Add to agenda</button><button type="button" id="countdown-start-live" onclick="saveCountdownSetup(true)">Start</button></footer>
+      <footer><button type="button" onclick="closeCountdownSetup()">Cancel</button><button type="button" id="countdown-save" onclick="saveCountdownSetup()">Add to agenda</button><button type="button" id="countdown-start-live" onclick="saveCountdownSetup(true)">Start live</button></footer>
+    </section>
+  </div>
+  <div id="update-panel-backdrop" class="sf-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="update-panel-title" aria-hidden="true" inert>
+    <section class="sf-update-panel">
+      <div class="sf-update-panel-header"><h2 id="update-panel-title">Software updates</h2><button type="button" class="sf-update-panel-close" aria-label="Close updates" onclick="closeUpdatePanel()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div>
+      <div class="sf-update-versions" id="update-panel-versions"><span id="update-panel-installed">Installed version</span><span id="update-panel-latest" hidden></span></div>
+      <p class="sf-update-status" id="update-panel-status" role="status" aria-live="polite">Reading update status…</p>
+      <progress id="update-panel-progress" class="sf-update-progress" max="100" value="0" aria-label="Update download progress" hidden></progress>
+      <p id="update-panel-error" class="sf-update-error" role="status" hidden></p>
+      <section id="update-panel-notes" class="sf-update-notes" aria-labelledby="update-notes-version" tabindex="0" hidden><h3 id="update-notes-version">Release notes</h3><p id="update-notes-content">No release notes provided for this version.</p></section>
+      <div class="sf-update-actions"><button type="button" class="sf-update-action sf-update-primary" id="update-panel-action" onclick="runUpdateAction()">Check for Updates</button><button type="button" class="sf-update-action" id="update-panel-cancel" onclick="cancelUpdateDownload()" hidden>Cancel download</button></div>
+      <div class="sf-update-panel-links"><button type="button" id="update-panel-notes-toggle" aria-controls="update-panel-notes" aria-expanded="false" onclick="toggleUpdateReleaseNotes(event)">What’s new</button><button type="button" onclick="openUpdateSettings()">Update settings</button></div>
     </section>
   </div>
   <script src="js/announcements.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/app-updates.js"></script>
   <div id="session-save-warning" role="alert" hidden>
     <span>Changes have not been saved. Retry or export a copy before closing.</span>
     <button type="button" class="sf-action" onclick="sessionManager.saveCurrentSessionSnapshot()">Retry save</button>
@@ -2972,11 +3046,28 @@ My chains are gone, I've been set free..."></textarea>
   </div>
   <script src="js/operator-experience.js"></script>
   <script src="js/output-preview.js"></script>
-  <script src="js/stream-appearance.js"></script>
+  <script src="js/stream-appearance.js?v=20261005-01"></script>
   <script src="js/background-thumbnails.js"></script>
   <script src="js/stream-crop.js"></script>
   <script src="js/presentation-controls.js"></script>
-  <script src="js/presentation-model.js"></script>
-  <script src="js/presentation-library.js"></script>
+  <script src="js/presentation-model.js?v=20261012-01"></script>
+  <script src="js/countdown-renderer.js"></script>
+  <script src="js/media-video-deck.js?v=20261012-01"></script>
+  <script src="js/presentation-library.js?v=20261012-01"></script>
+  <div id="content-download-backdrop" class="modal-backdrop content-download-backdrop" aria-labelledby="content-download-title" aria-describedby="content-download-detail" hidden>
+  <section id="content-download-dialog" class="content-download-dialog" tabindex="-1">
+    <div class="content-download-heading">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg>
+      <h2 id="content-download-title">Download</h2>
+    </div>
+    <p id="content-download-detail" role="status" aria-live="polite">Preparing download…</p>
+    <progress id="content-download-progress" max="100" value="0" aria-label="Download progress"></progress>
+    <p class="content-download-note">Available offline after download.</p>
+    <div class="content-download-actions">
+      <button type="button" id="content-download-dismiss" class="mode-toggle-btn">Cancel download</button>
+      <button type="button" id="content-download-retry" class="mode-toggle-btn active" hidden>Retry</button>
+    </div>
+  </section>
+  </div>
 </body>
 </html>

@@ -1,0 +1,98 @@
+.ginomai-account-shield {
+  --account-card:var(--card,#161820);--account-soft:var(--card-2,#20222e);--account-text:var(--text,#f3f2f7);--account-dim:var(--dim,#aaa7bb);
+  --account-border:var(--border,rgba(255,255,255,.12));--account-border-strong:var(--border-strong,rgba(255,255,255,.22));--account-accent:var(--purple,#8a6dff);
+  position:fixed!important;inset:0!important;z-index:95000!important;background:rgba(8,8,12,.72)!important;align-items:center;justify-content:center;
+  padding:24px;opacity:1!important;visibility:visible!important;transition:none!important;pointer-events:auto!important;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+}
+:root[data-theme-mode=light] .ginomai-account-shield,body[data-theme-mode=light] .ginomai-account-shield {background:rgba(24,19,45,.28)!important}
+.ginomai-account-panel {box-sizing:border-box;width:min(480px,100%);max-height:calc(100dvh - 48px);overflow:auto;padding:28px;border:1px solid var(--account-border-strong);border-radius:20px;background:var(--account-card);color:var(--account-text);font:400 14px/1.55 Inter,system-ui,-apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 20px 64px rgba(0,0,0,.2)}
+.ginomai-account-panel[data-state=signed-in] {width:min(500px,100%)}
+.ginomai-account-panel svg {display:block;width:18px;height:18px;flex-shrink:0}
+.ginomai-account-header {display:flex;align-items:center;gap:12px;margin:0 0 18px}
+.ginomai-account-header>div {min-width:0;flex:1}
+.ginomai-account-mark {display:grid;place-items:center;width:46px;height:46px;flex-shrink:0;border:1px solid var(--purple-dim,rgba(138,109,255,.22));border-radius:14px;background:var(--purple-dim,rgba(138,109,255,.14));color:var(--account-accent)}
+.ginomai-account-mark svg {width:23px;height:23px}
+.ginomai-account-eyebrow {display:flex;align-items:center;gap:8px;font-size:10px;font-weight:650;letter-spacing:.09em;color:var(--account-dim)}
+.ginomai-account-panel h2 {font-size:22px;font-weight:650;letter-spacing:-.035em;line-height:1.3;margin:4px 0 0;color:var(--account-text)}
+.ginomai-account-panel h3 {font-size:15px;font-weight:650;margin:0 0 6px;color:var(--account-text)}
+.ginomai-account-panel p {font-size:13px;font-weight:400;line-height:1.65;margin:0;color:var(--account-dim)}
+.ginomai-account-intro {margin-bottom:22px!important;max-width:340px}
+.ginomai-account-test {padding:2px 5px;border-radius:4px;background:var(--account-soft);font-size:8px;letter-spacing:.03em}
+.ginomai-account-panel .ginomai-account-status {margin-bottom:14px;overflow-wrap:anywhere;color:var(--account-text);font-size:13px}
+.ginomai-account-panel .ginomai-account-email {display:flex;align-items:baseline;gap:6px;margin-top:5px;overflow-wrap:anywhere;font-size:11px;color:var(--account-dim)}
+.ginomai-account-email::before {content:'';display:block;width:6px;height:6px;border-radius:50%;background:var(--green,#3ecf7e);flex-shrink:0}
+.ginomai-account-panel form {display:flex;flex-direction:column;gap:16px;margin:0}
+.ginomai-account-panel label {display:block;font-size:12px;font-weight:600;color:var(--account-text)}
+.ginomai-account-panel input:not([type=checkbox]) {box-sizing:border-box;display:block;width:100%;min-height:46px;margin-top:7px;padding:12px 14px;border:1px solid var(--account-border-strong);border-radius:10px;background:var(--account-card);color:var(--account-text);font-family:inherit;font-size:14px;font-weight:400;line-height:1.4;outline:none;user-select:text;-webkit-user-select:text;transition:border-color .04s}
+.ginomai-account-panel input::placeholder {color:var(--account-dim);opacity:.65}
+.ginomai-code-form input {text-align:center;font-size:20px!important;font-weight:550!important;letter-spacing:.14em;font-variant-numeric:tabular-nums}
+.ginomai-code-form input::placeholder {font-size:14px;font-weight:400;letter-spacing:normal}
+.ginomai-account-panel .ginomai-code-form input:focus-visible {outline:none!important}
+.ginomai-code-form input:focus {box-shadow:0 0 0 1px var(--account-accent)}
+.ginomai-account-panel button,.ginomai-account-launcher {box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 13px;min-height:36px;border:1px solid var(--account-border-strong,var(--border-strong,#ffffff25));border-radius:9px;background:var(--account-card,var(--card,#161820));color:var(--account-text,var(--text,#f3f2f7));font-family:inherit;font-size:12px;font-weight:550;line-height:1.4;cursor:pointer;transition:background-color .04s,border-color .04s}
+.ginomai-account-launcher {flex-shrink:0;padding:6px 10px;min-height:30px;border-color:var(--border-strong,#ffffff25);background:var(--card,#161820);color:var(--text,#f3f2f7);font-size:11px}
+.bento-topbar>.ginomai-account-launcher {height:32px;min-height:32px;padding-block:0}
+@media(max-width:1280px) {.bento-topbar>.ginomai-account-launcher {height:28px;min-height:28px}}
+.ginomai-account-launcher svg {width:14px;height:14px}
+.ginomai-account-launcher.is-signed-in {color:var(--purple-text,#c3b6ff);border-color:var(--purple-dim,#8a6dff30);background:var(--purple-dim,#8a6dff16)}
+.ginomai-account-panel button:hover,.ginomai-account-launcher:hover {background:var(--account-soft,var(--card-2,#20222e))}
+.ginomai-account-panel .ginomai-account-primary {background:var(--account-accent);border-color:var(--account-accent);color:#fff;min-height:44px;font-weight:600}
+.ginomai-account-panel .ginomai-account-primary:hover {background:var(--account-accent);filter:brightness(1.07)}
+.ginomai-account-panel .ginomai-account-close {width:32px;height:32px;min-height:32px;flex-shrink:0;padding:7px;background:transparent;border-color:transparent;color:var(--account-dim);align-self:flex-start}
+.ginomai-account-panel button:disabled {opacity:.5;cursor:default;filter:none}
+.ginomai-account-panel button:focus-visible,.ginomai-account-launcher:focus-visible,.ginomai-account-panel input:focus-visible,.ginomai-account-panel summary:focus-visible {outline:2px solid var(--account-accent,var(--purple,#8a6dff));outline-offset:3px}
+.ginomai-account-panel input:focus {border-color:var(--account-accent)}
+.ginomai-account-panel .ginomai-account-text-button {background:none;border-color:transparent;padding:4px 0;min-height:28px;color:var(--account-accent);font-size:12px}
+.ginomai-code-actions {display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}
+.ginomai-account-panel .ginomai-account-offline {display:flex;align-items:flex-start;gap:8px;font-size:11px;margin:18px 0 0}
+.ginomai-account-offline svg {width:14px;height:14px;margin-top:2px;color:var(--account-dim)}
+.ginomai-account-panel .ginomai-account-feedback {margin-top:14px;padding:10px 12px;border:1px solid var(--account-border);border-radius:9px;background:var(--account-soft);color:var(--account-text);overflow-wrap:anywhere;font-size:12px}
+.ginomai-account-panel [hidden] {display:none!important}
+.ginomai-account-footer {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;margin-top:22px;border-top:1px solid var(--account-border);padding-top:14px;align-items:start}
+.ginomai-account-privacy {min-width:0}
+.ginomai-account-panel .ginomai-account-signout {border:0;background:transparent;padding:4px 0;min-height:28px;font-size:11px;font-weight:400;color:var(--account-dim)}
+.ginomai-account-signout svg {width:14px;height:14px}
+.ginomai-account-panel .ginomai-account-signout:hover {color:var(--account-text);background:transparent}
+.ginomai-account-privacy summary {display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;font-size:12px;font-weight:500;color:var(--account-dim);padding:4px 0}
+.ginomai-account-privacy summary::-webkit-details-marker {display:none}
+.ginomai-account-privacy summary>svg {width:15px;height:15px}
+.ginomai-account-privacy summary>span {flex:1}
+.ginomai-account-privacy[open] summary>svg:last-child {transform:rotate(90deg)}
+.ginomai-account-analytics {padding-top:14px}
+.ginomai-analytics-row {display:flex;align-items:flex-start;gap:8px;position:relative}
+.ginomai-account-panel .ginomai-analytics-toggle {display:flex;align-items:flex-start;gap:10px}
+.ginomai-analytics-row .ginomai-analytics-toggle {flex:1;min-width:0}
+.ginomai-analytics-toggle input {accent-color:var(--account-accent);width:16px;height:16px;margin-top:3px;cursor:pointer;flex-shrink:0}
+.ginomai-analytics-toggle strong {display:block;font-size:12px;font-weight:550}.ginomai-analytics-toggle small {display:block;font-size:11px;font-weight:400;color:var(--account-dim);margin-top:2px}
+.ginomai-account-panel .ginomai-analytics-info-button {min-height:28px;width:28px;padding:5px;border:0;background:transparent;color:var(--account-dim)}
+.ginomai-analytics-info {flex-shrink:0}
+.ginomai-account-panel .ginomai-analytics-tooltip {position:absolute;z-index:1;bottom:calc(100% + 8px);right:0;box-sizing:border-box;width:min(320px,100%);padding:12px 14px;border:1px solid var(--account-border-strong);border-radius:10px;background:var(--account-card);color:var(--account-text);font-size:11px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
+.ginomai-account-admin {margin-top:14px;font-size:11px}.ginomai-account-panel a {color:var(--account-accent);text-underline-offset:3px}
+.ginomai-cloud-backups {margin-top:20px;padding:18px;border:1px solid var(--account-border);border-radius:16px;background:var(--account-soft)}
+.ginomai-backup-heading {position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.ginomai-backup-heading h3 {margin:0;font-size:13px}
+.ginomai-backup-tools {display:flex;align-items:center;gap:2px}
+.ginomai-account-info {flex-shrink:0}
+.ginomai-account-panel .ginomai-account-info-button,.ginomai-account-panel .ginomai-backup-refresh {width:28px;min-height:28px;padding:5px;border:0;background:transparent;color:var(--account-dim)}
+.ginomai-account-panel .ginomai-account-info-button:hover,.ginomai-account-panel .ginomai-backup-refresh:hover {background:var(--account-card);color:var(--account-text)}
+.ginomai-account-panel .ginomai-account-tooltip {position:absolute;z-index:1;bottom:calc(100% + 8px);right:0;box-sizing:border-box;width:min(320px,100%);padding:12px 14px;border:1px solid var(--account-border-strong);border-radius:10px;background:var(--account-card);color:var(--account-text);font-size:11px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
+.ginomai-backup-empty {display:flex;align-items:center;flex-direction:column;text-align:center;padding:12px 0 22px}
+.ginomai-backup-mark {display:grid;place-items:center;width:52px;height:52px;margin-bottom:14px;border:1px solid var(--account-border);border-radius:15px;background:var(--account-card);color:var(--account-accent)}
+.ginomai-backup-mark svg {width:28px;height:28px}
+.ginomai-backup-empty h3 {font-size:15px;margin-bottom:4px}
+.ginomai-account-panel .ginomai-backup-empty p {font-size:12px}
+.ginomai-account-panel .ginomai-backup-loading {padding:20px 0;text-align:center;font-size:12px}
+.ginomai-backup-actions {margin-top:12px}
+.ginomai-backup-actions .ginomai-account-primary {width:100%;min-height:40px}
+.ginomai-backup-row {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 0;border-bottom:1px solid var(--account-border)}
+.ginomai-backup-row:last-child {border-bottom:0}
+.ginomai-backup-record {min-width:0}.ginomai-backup-record strong {display:block;font-size:12px;font-weight:550}
+.ginomai-backup-row p {font-size:10px;margin-top:3px;overflow-wrap:anywhere}
+.ginomai-backup-row-actions {display:flex;align-items:center;gap:5px;flex-shrink:0}
+.ginomai-backup-row button {min-height:30px;padding:6px 10px;font-size:11px}
+.ginomai-account-panel .ginomai-backup-delete {width:30px;padding:6px;border:0;background:transparent;color:var(--account-dim)}
+.ginomai-backup-delete svg {width:15px;height:15px}
+.ginomai-backup-confirm {padding:14px;border:1px solid var(--account-border-strong);background:var(--account-soft);margin-top:14px;border-radius:10px}
+.ginomai-backup-confirm p {margin-bottom:10px;font-size:12px}.ginomai-backup-confirm button {margin-right:8px}
+.ginomai-account-panel table {width:100%;border-collapse:collapse}.ginomai-account-panel td,.ginomai-account-panel th {padding:8px;text-align:left;border-bottom:1px solid var(--account-border)}
+@media(max-width:520px) {.ginomai-account-shield {padding:16px}.ginomai-account-panel {padding:22px;max-height:calc(100dvh - 32px);border-radius:16px}.ginomai-account-panel h2 {font-size:20px}.ginomai-account-panel input:not([type=checkbox]) {font-size:16px}.ginomai-account-launcher {min-height:36px}}

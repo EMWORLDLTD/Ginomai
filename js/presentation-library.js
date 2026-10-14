@@ -1,9 +1,11 @@
 /* Media and countdown cards use the same projection/staging controls as scripture and songs. */
 (() => {
   const state=window.state, el=id=>document.getElementById(id), model=window.PresentationModel;
-  let assets=[],loaded=false,selection=null,selectedPage=1,libraryQuery='',dialogItem=null,returnFocus=null;
-  let saveTimer=null,liveMediaCard=null,selectedMediaCard=null,playbackAssetId=null,outputFlags={clear:false,blackout:false};
+  let assets=bundledMediaAssets(),loaded=false,selection=null,selectedPage=1,libraryQuery='',dialogItem=null,returnFocus=null;
+  let saveTimer=null,liveMediaCard=null,selectedMediaCard=null,outputFlags={clear:false,blackout:false};
   let countdownMode='time',durationDeadline=NaN,previewFinished=false,countdownPriorInert=false;
+  let countdownSelectedBackground=null,countdownDialogToken=0,countdownUploading=false;
+  let libraryPreviewVideo=null,librarySelectedRow=null,libraryPreviewObserver=null;
   const documents=new Map(), jobs=new Map(), readyImages=new Map(),loadedImages=new Set();
   const batches=new Map(),preparationWaiters=[];let preparing=0;
   function acquirePreparation() {if(preparing<2) {preparing++;return Promise.resolve();}return new Promise(resolve=>preparationWaiters.push(resolve));}
@@ -12,6 +14,15 @@
   const playIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>';
   const escaped=value=>String(value ?? '').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const notify=message=>window.showToast(message,'info');
+  function bundledMediaAssets() {
+    const seen=new Set(),items=[];
+    for(const theme of Object.values(window.SANCTUARY_THEMES || {})) {
+      const kind=theme.type,url=kind==='video'?theme.videoUrl:theme.imageUrl;
+      if(theme.custom || !['image','video'].includes(kind) || !model.safeMediaUrl(url) || seen.has(url)) continue;
+      seen.add(url);items.push({id:'builtin_'+theme.id,name:theme.name,kind,url,posterUrl:theme.imageUrl,width:1920,height:1080,pageCount:1,pages:{},ready:kind==='video',builtIn:true});
+    }
+    return items.sort((a,b)=>Number(a.kind==='video')-Number(b.kind==='video'));
+  }
   function save() {
     clearTimeout(saveTimer);
     saveTimer=setTimeout(()=>{window.sessionManager?.saveCurrentSessionSnapshot(null,true);
@@ -28,10 +39,23 @@
   async function json(response) {const data=await response.json();if(!response.ok) throw new Error(data.error || 'Media request failed.');return data.item;}
   async function load() {
     if(loaded) return;
-    try {const response=await fetch('/api/presentation-media');const data=await response.json();if(!response.ok) throw new Error(data.error);assets=data.items || [];loaded=true;}
+    try {const response=await fetch('/api/presentation-media');const data=await response.json();if(!response.ok) throw new Error(data.error);assets=[...(data.items || []),...bundledMediaAssets()];loaded=true;window.MediaVideoDeck?.refresh();}
     catch(error) {if(el('media-upload-status')) el('media-upload-status').textContent=error.message || 'Could not load media.';}
     if(state.currentTab==='media') window.renderMediaLibrary();
   }
+  window.refreshMediaLibrary=async()=>{loaded=false;await load();};
+  window.onPresentationMediaDeleted=id=>{
+    assets=assets.filter(asset=>asset.id!==id);stopLibraryPreview();window.MediaVideoDeck?.deleted(id);
+    document.querySelector(`[data-media-library-id="${id}"]`)?.remove();
+    if(librarySelectedRow?.dataset.mediaLibraryId===id) librarySelectedRow=null;
+    if(state.activePresentation?.media?.assetId===id) {
+      state.activePresentation=null;state.activeLiveSlideId=null;state.activeLiveText='';state.activeLiveRef='';window.broadcastState({clear:true});
+    }
+    if(selection?.id===id && !state.mediaVideoDeckActive) showMissing(selection);
+    for(const item of state.agendaItems || []) if(item.countdown?.background?.id===id) item.countdown.background=null;
+    if(state.activePresentation?.countdown?.background?.id===id) {state.activePresentation.countdown.background=null;window.broadcastState();}
+    save();
+  };
   let pdfLibrary;
   async function pdfjs() {
     if(!pdfLibrary) pdfLibrary=import('../assets/pdfjs/pdf.mjs').then(module=>{module.GlobalWorkerOptions.workerSrc='/assets/pdfjs/pdf.worker.mjs';return module;});
@@ -75,6 +99,11 @@
     for(const card of document.querySelectorAll(`[data-media-id="${asset.id}"][data-page="${number}"]`)) {
       card.dataset.ready='true';card.querySelector('img').src=asset.pages[number].thumbnailUrl || asset.pages[number].url;card.querySelector('.media-load-status').textContent='';card.querySelector('.play-circle-btn').disabled=false;
     }
+    if(number===1) {
+      for(const row of document.querySelectorAll(`[data-media-library-id="${asset.id}"]`)) {
+        const image=row.querySelector('img');if(image) image.src=asset.pages[1].thumbnailUrl || asset.pages[1].url;
+      }
+    }
     updateNavigation();
   }
   // At most two rasterization jobs; selected pages are prepared before the background queue.
@@ -117,24 +146,83 @@
         if(document) {documents.delete('pending-'+file.name);documents.set(asset.id,Promise.resolve(document));}
         if(asset.kind==='image') await ensureImage(asset.url);
         if(asset.kind==='video') asset.ready=true;
-        window.renderMediaLibrary();if(selection?.type==='media' && !assets.some(item=>item.id===selection.id)) showMissing(selection);status.textContent=pdf ? 'Preparing PDF pages…':'Media saved. Select it to open the deck.';
+        window.renderMediaLibrary();if(selection?.type==='media' && !assets.some(item=>item.id===selection.id)) showMissing(selection);status.textContent=pdf ? 'Preparing PDF pages…':'';
         if(pdf) await prepareAll(asset);
-        status.textContent=file.name+' ready.';
+        await window.loadSanctuaryUploads?.(false,true);window.refreshStyleGallery?.();
+        status.textContent='';
       } catch(error) {status.textContent=file.name+': '+error.message;}
     }
   };
   function documentElementVideo() {const video=document.createElement('video');video.muted=true;video.preload='metadata';return video;}
+  function stopLibraryPreview(video=libraryPreviewVideo) {
+    if(!video) return;video.pause();
+    try {video.currentTime=0;} catch {}
+    if(libraryPreviewVideo===video) libraryPreviewVideo=null;
+  }
+  function playLibraryPreview(video) {
+    if(libraryPreviewVideo!==video) stopLibraryPreview();
+    libraryPreviewVideo=video;video.muted=true;video.defaultMuted=true;video.volume=0;
+    video.play().catch(()=>{if(libraryPreviewVideo===video) libraryPreviewVideo=null;});
+  }
+  function mediaLibraryCard(asset) {
+    const row=document.createElement('button');row.type='button';row.className='media-list-item';row.dataset.mediaLibraryId=asset.id;
+    row.title=asset.name;row.setAttribute('aria-label','Open '+asset.name);row.classList.toggle('active',state.activeMediaId===asset.id);
+    if(state.activeMediaId===asset.id) librarySelectedRow=row;
+    const preview=document.createElement('span');preview.className='media-library-preview';
+    const fallback=document.createElement('span');fallback.className='media-library-fallback';fallback.textContent=asset.kind==='pdf'?'Preparing first page…':'Loading preview…';
+    const type=document.createElement('span');type.className='media-library-type';type.textContent=asset.kind==='pdf'?'PDF · '+asset.pageCount+(asset.pageCount===1?' page':' pages'):asset.kind==='video'?'Video':'Image';
+    const title=document.createElement('span');title.className='media-library-name';title.textContent=asset.name;
+    const hint=document.createElement('span');hint.className='media-library-hint';hint.textContent=asset.kind==='video'?'Hover to preview · Muted':asset.kind==='pdf'?'First page · Click to open':'Click to open · Drag to agenda';
+    const caption=document.createElement('span');caption.className='media-library-caption';caption.append(title,hint);
+    preview.append(fallback,type);row.append(preview,caption);
+    if(asset.kind==='video') {
+      const video=documentElementVideo();video.className='media-library-thumbnail';video.defaultMuted=true;video.setAttribute('muted','');video.playsInline=true;video.loop=true;video.setAttribute('aria-hidden','true');
+      if(asset.posterUrl) {video.poster=asset.posterUrl;fallback.hidden=true;}
+      video.onloadeddata=()=>{fallback.hidden=true;};video.onerror=()=>{fallback.hidden=false;fallback.textContent='Preview unavailable';};video.src=asset.url;preview.prepend(video);
+      let dragging=false;
+      row.onpointerenter=()=>playLibraryPreview(video);row.onpointerleave=()=>{if(!dragging) stopLibraryPreview(video);};
+      row.ondragstart=event=>{dragging=true;event.dataTransfer.setData('application/presentation-id',asset.id);playLibraryPreview(video);};
+      row.ondragend=()=>{dragging=false;stopLibraryPreview(video);};
+    } else {
+      const image=document.createElement('img');image.className='media-library-thumbnail';image.loading='lazy';image.alt=asset.kind==='pdf'?'First page of '+asset.name:asset.name;image.draggable=false;
+      image.onload=()=>{fallback.hidden=true;};image.onerror=()=>{fallback.hidden=false;fallback.textContent='Preview unavailable';};preview.prepend(image);
+      const source=asset.kind==='pdf'?(asset.pages[1]?.thumbnailUrl || asset.pages[1]?.url):asset.url;
+      if(source) image.src=source;
+      else if(asset.kind==='pdf') preparePage(asset,1).catch(()=>{if(row.isConnected) fallback.textContent='Preview unavailable';});
+      row.ondragstart=event=>event.dataTransfer.setData('application/presentation-id',asset.id);
+    }
+    row.onclick=()=>{
+      stopLibraryPreview();librarySelectedRow?.classList.remove('active');row.classList.add('active');librarySelectedRow=row;
+      window.openPresentationItem({type:'media',id:asset.id,title:asset.name});
+    };
+    row.draggable=true;return row;
+  }
   window.renderMediaLibrary=(query=libraryQuery)=> {
     if(state.currentTab!=='media') return false;libraryQuery=query || '';
+    stopLibraryPreview();librarySelectedRow=null;
     const host=el('bento-library-list');host.classList.remove('bento-bible-grid');host.replaceChildren();
-    const drop=document.createElement('div');drop.id='media-dropzone';drop.textContent='Drop PDF, image or video files here';
-    const action=document.createElement('button');action.type='button';action.textContent='Upload media';action.onclick=()=>el('presentation-media-input').click();
-    const actions=document.createElement('div');actions.className='media-actions';actions.append(action);drop.append(actions);host.append(drop);
-    drop.ondragover=event=>{event.preventDefault();drop.classList.add('drag-over');};drop.ondragleave=()=>drop.classList.remove('drag-over');drop.ondrop=event=>{event.preventDefault();event.stopPropagation();drop.classList.remove('drag-over');window.uploadPresentationMedia(event.dataTransfer.files);};
-    for(const asset of assets.filter(asset=>asset.name.toLowerCase().includes(libraryQuery.toLowerCase()))) {
-      const row=document.createElement('button');row.type='button';row.className='bento-list-item media-list-item';row.textContent=asset.name;row.onclick=()=>window.openPresentationItem({type:'media',id:asset.id,title:asset.name});
-      row.draggable=true;row.ondragstart=event=>event.dataTransfer.setData('application/presentation-id',asset.id);host.append(row);
+    if(!libraryPreviewObserver) {
+      libraryPreviewObserver=new MutationObserver(()=>{if(libraryPreviewVideo && !libraryPreviewVideo.isConnected) stopLibraryPreview();});
+      libraryPreviewObserver.observe(host,{childList:true,subtree:true});
+      host.ondragover=event=>{if(Array.from(event.dataTransfer.types || []).includes('Files')) {event.preventDefault();host.classList.add('media-file-drag-over');}};
+      host.ondragleave=event=>{if(!host.contains(event.relatedTarget)) host.classList.remove('media-file-drag-over');};
+      host.ondrop=event=>{host.classList.remove('media-file-drag-over');if(event.dataTransfer.files.length) {event.preventDefault();event.stopPropagation();window.uploadPresentationMedia(event.dataTransfer.files);}};
+      document.addEventListener('visibilitychange',()=>{if(document.hidden) stopLibraryPreview();});
+      window.addEventListener('pagehide',()=>stopLibraryPreview());
     }
+    if(!assets.length) {
+    const drop=document.createElement('div');drop.id='media-dropzone';
+    const label=document.createElement('span');label.className='media-upload-label';label.textContent='Add your media';
+    const hint=document.createElement('span');hint.className='media-upload-hint';hint.textContent='Drop images, videos or PDFs here';
+    drop.append(label,hint);
+    const action=document.createElement('button');action.type='button';action.className='media-upload-icon';action.title='Upload media';action.setAttribute('aria-label','Upload media');action.onclick=()=>el('presentation-media-input').click();
+    action.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/></svg>';
+    drop.append(action);host.append(drop);
+    drop.ondragover=event=>{event.preventDefault();drop.classList.add('drag-over');};drop.ondragleave=()=>drop.classList.remove('drag-over');drop.ondrop=event=>{event.preventDefault();event.stopPropagation();drop.classList.remove('drag-over');window.uploadPresentationMedia(event.dataTransfer.files);};
+    }
+    const matching=assets.filter(asset=>asset.name.toLowerCase().includes(libraryQuery.toLowerCase()));
+    for(const asset of matching) host.append(mediaLibraryCard(asset));
+    if(loaded && !matching.length) {const empty=document.createElement('p');empty.className='media-library-empty';empty.textContent=libraryQuery?'No matching media.':'Your media previews will appear here.';host.append(empty);}
     if(!loaded) load();return true;
   };
   window.addPresentationAssetToAgenda=id=> {const asset=assets.find(item=>item.id===id);if(!asset)return;state.agendaItems.push({type:'media',id,title:asset.name,page:1,meta:'Media'});window.renderAgenda();save();};
@@ -146,6 +234,8 @@
     if(item.type==='media') {
       await load();const asset=assets.find(asset=>asset.id===item.id);
       if(!asset) {selection=item;selectedPage=Number(item.page)||1;state.activeMediaId=item.id;showMissing(item);save();return;}
+      if(['image','video'].includes(asset.kind) && window.MediaVideoDeck) {selection={...item,title:asset.name};selectedPage=1;window.MediaVideoDeck.open(asset);save();return;}
+      state.mediaVideoDeckActive=false;window.MediaVideoDeck?.suspend();
       selection={...item,title:asset.name};selectedPage=Math.max(1,Math.min(asset.pageCount,Number(item.page)||state.mediaPageSelections?.[item.id]||1));
       state.activeMediaId=item.id;state.activeDeckType='media';state.isMedleyMode=false;
       window.renderDeck();
@@ -155,7 +245,7 @@
         const card=el('bento_card_'+asset.id+'_page_1');if(card) {card.dataset.ready='true';card.querySelector('.media-load-status').textContent='';card.querySelector('.play-circle-btn').disabled=false;}
       }}
       catch(error) {notify(error.message);showMissing(item);}
-    } else if(item.type==='countdown') {selection=item;selectedPage=1;state.activeCountdownId=item.id;state.activeDeckType='countdown';state.isMedleyMode=false;window.renderDeck();}
+    } else if(item.type==='countdown') {state.mediaVideoDeckActive=false;window.MediaVideoDeck?.suspend();selection=item;selectedPage=1;state.activeCountdownId=item.id;state.activeDeckType='countdown';state.isMedleyMode=false;window.renderDeck();}
     save();
   };
   function showMissing(item) {
@@ -167,13 +257,15 @@
   }
   function cardFor(item,page,asset) {
     const card=document.createElement('article'),id=item.type==='countdown'?item.id:`${item.id}_page_${page}`;
-    card.id='bento_card_'+id;card.dataset.slideId=id;card.className='bento-single-card media-card';
-    const ready=!asset || (asset.kind==='video'?!!asset.ready:loadedImages.has(asset.kind==='pdf'?asset.pages[page]?.url:asset.url));
+    card.id='bento_card_'+id;card.dataset.slideId=id;
+    card.className='bento-single-card media-card';
+    const ready=!asset || loadedImages.has(asset.kind==='pdf'?asset.pages[page]?.url:asset.url);
     card.dataset.ready=String(ready);if(asset) {card.dataset.mediaId=asset.id;card.dataset.page=page;}
-    card.innerHTML=`<svg class="bento-live-shape-svg" aria-hidden="true"><path d=""/></svg><div class="head-tag-row"><span class="tag-title">${asset?.kind==='pdf'?'PAGE '+page:escaped(item.title)}</span><span class="live-pill" hidden>LIVE</span></div>${item.type==='countdown'?'<div class="countdown-preview"></div>':asset.kind==='video'?'<div class="media-video-label">Video</div>':'<img class="media-thumbnail" loading="lazy" alt="Slide preview">'}<p class="media-load-status">${ready?'':'Preparing page…'}</p><div class="bento-corner-dock"><button type="button" class="play-circle-btn" aria-label="Take live" ${ready?'':'disabled'}>${playIcon}</button></div>`;
-    if(asset && asset.kind!=='video') {const source=asset.kind==='pdf'?(asset.pages[page]?.thumbnailUrl || asset.pages[page]?.url):asset.url;if(source) card.querySelector('img').src=source;}
-    card.onclick=()=>take(item,page,false);card.ondblclick=()=>take(item,page,true);
+    card.innerHTML=`<svg class="bento-live-shape-svg" aria-hidden="true"><path d=""/></svg><div class="head-tag-row"><span class="tag-title">${asset?.kind==='pdf'?'PAGE '+page:escaped(item.title)}</span><span class="live-pill" hidden>LIVE</span></div>${item.type==='countdown'?'<div class="countdown-preview"></div>':'<img class="media-thumbnail" loading="lazy" alt="Slide preview">'}<p class="media-load-status">${ready?'':'Preparing page…'}</p><div class="bento-corner-dock"><button type="button" class="play-circle-btn" aria-label="Take live" ${ready?'':'disabled'}>${playIcon}</button></div>`;
+    if(asset) {const source=asset.kind==='pdf'?(asset.pages[page]?.thumbnailUrl || asset.pages[page]?.url):asset.url;if(source) card.querySelector('img').src=source;}
     card.querySelector('button').onclick=event=>{event.stopPropagation();take(item,page,true);};
+    card.onclick=e=>{if(e.target.closest('.media-deck-player-bar')) return; take(item,page,false);};
+    card.ondblclick=e=>{if(e.target.closest('.media-deck-player-bar')) return; take(item,page,true);};
     window.setupLiveCardObserver?.(card);
     return card;
   }
@@ -187,13 +279,19 @@
   }
   window.renderPresentationDeck=()=> {
     if(!['media','countdown'].includes(state.activeDeckType)) {
+      window.MediaVideoDeck?.suspend();
       el('media-controls-bar').hidden=true;
       for(const [id,display] of toolbarDisplays) if(el(id)) el(id).style.display=display;
       toolbarDisplays.clear();return false;
     }
+    if(state.activeDeckType==='media' && state.mediaVideoDeckActive && window.MediaVideoDeck) {
+      for(const id of ['bento-edit-btn','bento-add-song-btn','bento-compare-btn','bento-strongs-btn','bento-concordance-search-btn','bento-mode-seg','bento-lines-seg','bento-cols-seg']) if(el(id)) {if(!toolbarDisplays.has(id))toolbarDisplays.set(id,el(id).style.display);el(id).style.display='none';}
+      return window.MediaVideoDeck.render(el('bento-medley-container'));
+    }
     const item=selection || (state.activeMediaId?{type:'media',id:state.activeMediaId,title:'Media'}:null);if(!item)return false;
     const asset=assets.find(asset=>asset.id===item.id);if(item.type==='media'&&!asset) {showMissing(item);return true;}
-    const host=el('bento-medley-container');host.replaceChildren();host.className='bento-single-deck';host.dataset.cols='2';
+    if(['image','video'].includes(asset?.kind) && window.MediaVideoDeck) {state.mediaVideoDeckActive=true;return window.renderPresentationDeck();}
+    const host=el('bento-medley-container');host.replaceChildren();host.className='bento-single-deck';host.dataset.cols=asset?.kind==='video'?'1':'2';
     for(const id of ['bento-edit-btn','bento-add-song-btn','bento-compare-btn','bento-strongs-btn','bento-lines-seg','bento-cols-seg']) if(el(id)) {if(!toolbarDisplays.has(id)) toolbarDisplays.set(id,el(id).style.display);el(id).style.display='none';}
     el('bento-deck-title').textContent=item.title;el('bento-deck-sub').textContent=asset?.kind==='pdf'?asset.pageCount+' pages':item.type==='countdown'?'Service-start countdown':asset?.kind || 'Media';
     const bar=el('media-controls-bar');bar.hidden=false;
@@ -203,7 +301,7 @@
     if(el('media-agenda')) el('media-agenda').onclick=window.addMediaToAgenda;
     if(el('countdown-edit')) el('countdown-edit').onclick=()=>window.openCountdownSetup(selection);
     for(let page=1;page<=(asset?.pageCount || 1);page++) host.append(cardFor(item,page,asset));
-    syncPlaybackControls();
+    window.MediaVideoDeck?.sync();
     updateNavigation();highlight();tick();window.syncStagedCardVisuals?.();return true;
   };
   function navigate(delta) {
@@ -228,7 +326,7 @@
     window.cancelPreparedSlide?.();state.activePresentation=extra.presentation;state.activeLexiconData=null;state.compareData=null;
     state.activeLiveSlideId=slideId;state.activeLiveText=text;state.activeLiveRef=reference;state.liveEngagedDeck={type:extra.presentation.contentType};
     if(extra.presentation.media) {selectedPage=extra.presentation.media.page;state.mediaPageSelections={...state.mediaPageSelections,[extra.presentation.media.assetId]:selectedPage};}
-    save();highlight();window.broadcastState();updateNavigation();
+    save();highlight();window.broadcastState({slideId,text,reference,clear:false,blackout:false});updateNavigation();
   };
   function highlight() {
     const card=state.activeLiveSlideId?el('bento_card_'+state.activeLiveSlideId):null;
@@ -238,40 +336,92 @@
       if(liveMediaCard) {liveMediaCard.classList.add('live');const badge=liveMediaCard.querySelector('.live-pill');if(badge)badge.hidden=false;}
     }
   }
-  function syncPlaybackControls() {
-    const host=el('media-playback-controls'),current=state.activePresentation;
-    const asset=assets.find(item=>item.id===current?.media?.assetId);
-    host.hidden=!state.activeLiveSlideId || outputFlags.clear || outputFlags.blackout || current?.media?.kind!=='video' || !asset;
-    if(host.hidden || playbackAssetId===asset.id) return;
-    playbackAssetId=asset.id;
-    host.innerHTML='<div class="media-playback"><button id="media-play" type="button">Pause</button><button id="media-restart" type="button">Restart</button><input id="media-seek" type="range" min="0" max="0" value="0" step="0.1" aria-label="Video position"><label><input id="media-loop" type="checkbox"> Loop</label><label>Sound <select id="media-sound"><option value="">Off</option><option value="sanctuary">Projector</option><option value="livestream">Livestream</option></select></label></div>';
-    bindPlayback(asset);
-  }
-  function bindPlayback(asset) {
-    const metadata=documentElementVideo();metadata.src=asset.url;metadata.onloadedmetadata=()=> {if(el('media-seek')) el('media-seek').max=metadata.duration;metadata.removeAttribute('src');metadata.load();};
-    el('media-play').onclick=()=>patchPlayback({playing:!state.activePresentation?.playback?.playing});
-    el('media-restart').onclick=()=>patchPlayback({position:0,playing:true});
-    el('media-seek').oninput=()=>patchPlayback({position:Number(el('media-seek').value)});
-    el('media-loop').onchange=()=>patchPlayback({loop:el('media-loop').checked});
-    el('media-sound').onchange=()=>patchPlayback({soundTarget:el('media-sound').value});
-  }
-  function patchPlayback(patch) {
-    const current=state.activePresentation;if(state.isHoldLive || outputFlags.clear || outputFlags.blackout || !state.activeLiveSlideId || !current?.playback || current.media?.assetId!==playbackAssetId || REMOTE_MODE) return;
-    const duration=Number(el('media-seek')?.max)||Infinity;
-    current.playback={...current.playback,position:model.playbackPosition(current.playback,Date.now(),duration),...patch,updatedAt:Date.now()};window.broadcastState();
-  }
   function tick() {
     for(const card of document.querySelectorAll('.media-card .countdown-preview')) {const item=selection?.type==='countdown'?selection:null;if(item) {const text=model.countdownView(item.countdown).clock;if(card.textContent!==text)card.textContent=text;}}
     if(el('countdown-setup-preview') && !el('countdown-setup-shield').hidden) renderCountdownPreview();
-    const current=state.activePresentation;
-    if(el('media-play')) {const isLive=!!state.activeLiveSlideId && !outputFlags.clear && !outputFlags.blackout && current?.media?.assetId===playbackAssetId;el('media-play').textContent=current?.playback?.playing?'Pause':'Play';for(const id of ['media-play','media-restart','media-seek','media-loop','media-sound']) el(id).disabled=!isLive || state.isHoldLive || REMOTE_MODE;if(isLive) {const seek=el('media-seek');if(document.activeElement!==seek)seek.value=model.playbackPosition(current.playback,Date.now(),Number(seek.max)||Infinity);el('media-loop').checked=!!current.playback.loop;el('media-sound').value=current.playback.soundTarget || '';}}
   }
   setInterval(tick,250);
   function countdownFields() {return {mode:countdownMode,date:el('countdown-date').value,time:el('countdown-start').value,minutes:el('countdown-minutes').value};}
+  function countdownTheme(id) {
+    const theme=window.SANCTUARY_THEMES?.[id];
+    return theme?model.countdownBackground({...theme,id,fit:window.themeManager?.sanctuaryFits?.[id],dimmer:window.themeManager?.sanctuaryDimmer ?? 30}):null;
+  }
+  let countdownBackgroundButtons=new Map();
+  let countdownActiveBackgroundButton=null;
+  function countdownBackgroundOptions() {
+    const grid=el('countdown-background-grid');
+    grid.replaceChildren();countdownBackgroundButtons=new Map();countdownActiveBackgroundButton=null;
+    const themes=[['', {...window.themeManager?.getSanctuaryPayload?.(),name:'Output background'}],
+      ...Object.entries(window.SANCTUARY_THEMES || {}).filter(([id])=>id!=='deep_celestial')];
+    if(countdownSelectedBackground && !window.SANCTUARY_THEMES?.[countdownSelectedBackground.id])
+      themes.push([countdownSelectedBackground.id,{...countdownSelectedBackground,name:'Saved background'}]);
+    for(const [id,theme] of themes) {
+      const button=document.createElement('button'),swatch=document.createElement('span'),label=document.createElement('span');
+      button.type='button';button.className='countdown-background-tile';button.title=theme.name;
+      button.setAttribute('aria-label',theme.name);button.setAttribute('aria-pressed','false');
+      swatch.className='countdown-background-swatch';swatch.style.background=theme.bgCss || theme.previewGradient || '#10121c';
+      if(theme.imageUrl) {
+        const image=document.createElement('img');image.src=theme.imageUrl;image.alt='';image.loading='lazy';swatch.append(image);
+      } else if(theme.type==='video' && theme.videoUrl) {
+        const video=document.createElement('video');video.src=theme.videoUrl;video.muted=true;video.playsInline=true;video.preload='metadata';
+        video.onloadeddata=()=>{video.currentTime=Math.min(0.1,video.duration || 0);};swatch.append(video);
+      }
+      if(theme.type==='video') {const badge=document.createElement('small');badge.textContent='Motion';swatch.append(badge);}
+      label.className='countdown-background-name';label.textContent=theme.name;
+      button.append(swatch,label);button.onclick=()=>{el('countdown-background').value=id;window.selectCountdownBackground();};
+      countdownBackgroundButtons.set(id,button);grid.append(button);
+    }
+    el('countdown-background').value=countdownSelectedBackground?.id || '';
+    syncCountdownBackgroundSelection();
+    window.filterCountdownBackgrounds(el('countdown-background-search').value);
+  }
+  window.filterCountdownBackgrounds=query=> {
+    const term=String(query || '').trim().toLocaleLowerCase();
+    let matches=0;
+    for(const button of countdownBackgroundButtons.values()) {
+      const visible=!term || button.title.toLocaleLowerCase().includes(term);
+      button.hidden=!visible;if(visible)matches++;
+    }
+    el('countdown-background-empty').hidden=matches>0;
+  };
+  function syncCountdownBackgroundSelection() {
+    const next=countdownBackgroundButtons.get(el('countdown-background').value);
+    if(next===countdownActiveBackgroundButton)return;
+    countdownActiveBackgroundButton?.setAttribute('aria-pressed','false');
+    next?.setAttribute('aria-pressed','true');countdownActiveBackgroundButton=next;
+  }
+  window.selectCountdownBackground=()=> {
+    const id=el('countdown-background').value;
+    countdownSelectedBackground=id?(countdownTheme(id) || countdownSelectedBackground):null;
+    syncCountdownBackgroundSelection();window.updateCountdownSetup();
+  };
+  window.setCountdownStylePart=part=> {
+    for(const name of ['heading','timer','completion'])el(`countdown-style-${name}`).hidden=name!==part;
+  };
+  window.uploadCountdownBackground=async input=> {
+    if(REMOTE_MODE || el('countdown-setup-shield').hidden || countdownUploading) {input.value='';return;}
+    const requestToken=countdownDialogToken;countdownUploading=true;window.updateCountdownSetup();
+    try {
+      await window.uploadSanctuaryBackgrounds(input,{publish:false,buttonId:'countdown-upload-button',statusId:'countdown-upload-status',onSaved:item=>{
+        if(requestToken!==countdownDialogToken || el('countdown-setup-shield').hidden)return;
+        countdownSelectedBackground=countdownTheme(item.id);countdownBackgroundOptions();window.updateCountdownSetup();
+      }});
+    } catch(error) {if(requestToken===countdownDialogToken)el('countdown-upload-status').textContent=error.message || 'Could not upload background.';}
+    finally {if(requestToken===countdownDialogToken){countdownUploading=false;window.updateCountdownSetup();}}
+  };
+  window.setCountdownColor=(part,value)=> {
+    if(!['heading','timer','completion'].includes(part))return;
+    const valid=/^#[a-f0-9]{6}$/i.test(value);
+    el(`countdown-${part}-color-hex`).setAttribute('aria-invalid',String(!valid));
+    if(valid) {el(`countdown-${part}-color`).value=value;window.updateCountdownSetup();}
+  };
   function countdownDraft() {
     return {startsAt:countdownMode==='minutes'?durationDeadline:model.countdownDeadline(countdownFields()),
       message:el('countdown-message').value.trim() || 'Service starts in',completionMessage:el('countdown-completion').value.trim() || 'Service starting',
-      ...model.countdownAppearance({font:el('countdown-font').value,timerScale:el('countdown-size').value}),inputMode:countdownMode,
+      ...model.countdownAppearance({font:el('countdown-font').value,timerScale:el('countdown-size').value,
+        headingScale:el('countdown-heading-size').value,completionScale:el('countdown-completion-size').value,
+        headingColor:el('countdown-heading-color').value,timerColor:el('countdown-timer-color').value,completionColor:el('countdown-completion-color').value}),
+      background:model.countdownBackground(countdownSelectedBackground),inputMode:countdownMode,
       ...(countdownMode==='minutes'?{minutes:Number(el('countdown-minutes').value)}:{})};
   }
   function renderCountdownPreview() {
@@ -283,8 +433,17 @@
     message.hidden=view.finished && (valid || previewFinished);display.classList.toggle('countdown-finished',message.hidden);
     display.style.fontFamily=countdown.font?`'${countdown.font}', sans-serif`:`'${window.themeManager?.sanctuaryFont || 'Outfit'}', sans-serif`;
     display.style.setProperty('--countdown-scale',countdown.timerScale);
-    el('countdown-save').disabled=REMOTE_MODE || (!!dialogItem && state.isHoldLive);
-    el('countdown-start-live').disabled=REMOTE_MODE || state.isHoldLive;
+    window.CountdownRenderer.appearance(display,countdown,'cqw');
+    for(const part of ['heading','timer','completion']) {
+      const hex=el(`countdown-${part}-color-hex`);
+      if(document.activeElement!==hex) {hex.value=countdown[`${part}Color`];hex.setAttribute('aria-invalid','false');}
+    }
+    const preview=el('countdown-setup-preview'),background=countdown.background || window.themeManager?.getSanctuaryPayload?.();
+    window.CountdownRenderer.background(preview,background);
+    for(const [id,value] of [['countdown-heading-size-value',countdown.headingScale],['countdown-size-value',countdown.timerScale],['countdown-completion-size-value',countdown.completionScale]])el(id).textContent=`${Math.round(value*100)}%`;
+    el('countdown-save').disabled=countdownUploading || REMOTE_MODE || (!!dialogItem && state.isHoldLive);
+    el('countdown-start-live').disabled=countdownUploading || REMOTE_MODE || state.isHoldLive;
+    el('countdown-upload-button').disabled=countdownUploading || REMOTE_MODE;
   }
   window.updateCountdownSetup=(durationChanged=false)=>{
     if(durationChanged)durationDeadline=model.countdownDeadline(countdownFields());
@@ -305,26 +464,27 @@
   window.openCountdownSetup=item=> {
     if(!el('countdown-setup-shield').hidden)window.closeCountdownSetup();
     window.dismissAllOverlays?.();returnFocus=document.activeElement;dialogItem=item || null;
+    const requestToken=++countdownDialogToken;countdownUploading=false;
+    el('countdown-background-search').value='';
+    countdownSelectedBackground=model.countdownBackground(item?.countdown?.background);
+    countdownBackgroundOptions();el('countdown-upload-status').textContent='';
+    el('countdown-style-part').value='timer';window.setCountdownStylePart('timer');
+    window.loadSanctuaryUploads?.(false)?.then(()=>{if(requestToken===countdownDialogToken && !el('countdown-setup-shield').hidden)countdownBackgroundOptions();});
     const date=new Date(item?.countdown?.startsAt || Date.now()+15*60*1000);const local=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
     el('countdown-date').value=local.slice(0,10);el('countdown-start').value=local.slice(11);
     el('countdown-minutes').value=item?.countdown?.minutes || 15;
     el('countdown-message').value=item?.countdown?.message || 'Service starts in';el('countdown-completion').value=item?.countdown?.completionMessage || 'Service starting';el('countdown-dest').value=item?.destinations?.length===1?item.destinations[0]:'both';
     const appearance=model.countdownAppearance(item?.countdown);el('countdown-font').value=appearance.font;el('countdown-size').value=appearance.timerScale;
+    for(const part of ['heading','completion']) {el(`countdown-${part}-size`).value=appearance[`${part}Scale`];el(`countdown-${part}-color`).value=appearance[`${part}Color`];}
+    el('countdown-timer-color').value=appearance.timerColor;
     el('countdown-setup-error').textContent='';el('countdown-save').textContent=item?'Save changes':'Add to agenda';el('countdown-setup-shield').hidden=false;
     countdownPriorInert=el('bento-layout-root').inert;el('bento-layout-root').inert=true;
     window.setCountdownInputMode(item?.countdown?.inputMode);if(countdownMode==='minutes' && item)durationDeadline=item.countdown.startsAt;
-    const theme=window.themeManager?.getSanctuaryPayload?.(),preview=el('countdown-setup-preview');
-    preview.style.background=theme?.bgCss || '#10121c';
-    if(theme?.imageUrl && /^(?:Themes\/|\/media\/uploads\/)[a-zA-Z0-9_.-]+$/.test(theme.imageUrl)) {
-      const shade=Math.max(0,Math.min(100,Number(theme.dimmer) || 0))/100;
-      preview.style.backgroundImage=`linear-gradient(rgba(0,0,0,${shade}),rgba(0,0,0,${shade})),url("${theme.imageUrl}")`;
-      preview.style.backgroundSize=theme.fit || 'cover';preview.style.backgroundPosition='center';
-    }
     window.setCountdownPreviewFinished(false);window.updateCountdownSetup();el(countdownMode==='time'?'countdown-start':'countdown-minutes').focus();
   };
-  window.closeCountdownSetup=()=>{if(el('countdown-setup-shield').hidden)return;el('countdown-setup-shield').hidden=true;el('bento-layout-root').inert=countdownPriorInert;returnFocus?.focus({preventScroll:true});};
+  window.closeCountdownSetup=()=>{if(el('countdown-setup-shield').hidden)return;el('countdown-setup-shield').hidden=true;++countdownDialogToken;window.CountdownRenderer.stop(el('countdown-setup-preview'));el('bento-layout-root').inert=countdownPriorInert;returnFocus?.focus({preventScroll:true});};
   window.saveCountdownSetup=(startNow=false)=> {
-    if(REMOTE_MODE || el('countdown-setup-shield').hidden) return;
+    if(REMOTE_MODE || countdownUploading || el('countdown-setup-shield').hidden) return;
     if(countdownMode==='minutes' && (startNow || !dialogItem))durationDeadline=model.countdownDeadline(countdownFields());
     const countdown=countdownDraft(),startsAt=countdown.startsAt;
     if(!Number.isFinite(startsAt)||startsAt<=Date.now()) {el('countdown-setup-error').textContent=countdownMode==='minutes'?'Enter a countdown duration between 1 and 1440 minutes.':'Choose a service start time in the future.';return;}
@@ -344,16 +504,27 @@
   },true);
   window.toggleAgendaAdd=event=> {
     event.stopPropagation();const menu=el('agenda-add-options');if(!menu.hidden) {window.closeAgendaAdd();return;}
-    window.dismissAllOverlays?.();menu.hidden=false;el('agenda-add-shield').hidden=false;el('agenda-add-trigger').setAttribute('aria-expanded','true');menu.querySelector('button').focus();
+    window.dismissAllOverlays?.();menu.hidden=false;el('agenda-add-shield').hidden=false;
+    const trigger=el('agenda-add-trigger'),anchor=trigger.getBoundingClientRect();
+    const width=menu.offsetWidth,height=menu.offsetHeight;
+    const left=Math.max(8,Math.min(anchor.right-width,window.innerWidth-width-8));
+    const below=anchor.bottom+6,above=anchor.top-height-6;
+    const top=below+height<=window.innerHeight-8?below:Math.max(8,above);
+    menu.style.left=`${left}px`;menu.style.top=`${Math.min(top,window.innerHeight-height-8)}px`;
+    trigger.setAttribute('aria-expanded','true');menu.querySelector('button').focus({preventScroll:true});
   };
   window.closeAgendaAdd=()=>{el('agenda-add-options').hidden=true;el('agenda-add-shield').hidden=true;el('agenda-add-trigger').setAttribute('aria-expanded','false');};
+  window.addEventListener('resize',()=>{if(!el('agenda-add-options').hidden)window.closeAgendaAdd();});
+  document.addEventListener('scroll',event=>{const menu=el('agenda-add-options');if(!menu.hidden&&!menu.contains(event.target))window.closeAgendaAdd();},true);
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!el('agenda-add-options').hidden){event.preventDefault();event.stopImmediatePropagation();window.closeAgendaAdd();el('agenda-add-trigger').focus();}},true);
   const originalSync=window.syncPresentationControls;
-  window.syncPresentationControls=payload=>{if(payload)outputFlags={clear:!!payload.clear,blackout:!!payload.blackout};originalSync(payload);syncPlaybackControls();highlight();updateNavigation();tick();};
+  window.syncPresentationControls=payload=>{if(payload)outputFlags={clear:!!payload.clear,blackout:!!payload.blackout};originalSync(payload);window.MediaVideoDeck?.sync(payload);highlight();updateNavigation();tick();};
+  window.MediaVideoDeck?.configure({assets:()=>assets,save});
   window.restorePresentationSelection=()=>{
-    selection=null;
+    selection=null;window.MediaVideoDeck?.restore();
+    if(state.activeDeckType==='media' && state.mediaVideoDeckActive) {load().then(()=>window.renderDeck());return;}
     if(state.activeDeckType==='countdown') {const item=state.agendaItems.find(item=>item.type==='countdown'&&item.id===state.activeCountdownId);if(item) window.openPresentationItem(item);}
-    else if(state.activeDeckType==='media' && state.activeMediaId) window.openPresentationItem({type:'media',id:state.activeMediaId,title:'Media',page:state.mediaPageSelections?.[state.activeMediaId]});
+    else if(state.activeDeckType==='media' && state.activeMediaId) load().then(()=>{const asset=assets.find(asset=>asset.id===state.activeMediaId);if(asset?.kind==='video') {state.mediaVideoDeckActive=true;window.renderDeck();}else window.openPresentationItem({type:'media',id:state.activeMediaId,title:'Media',page:state.mediaPageSelections?.[state.activeMediaId]});});
   };
   document.addEventListener('DOMContentLoaded',window.restorePresentationSelection);
 })();

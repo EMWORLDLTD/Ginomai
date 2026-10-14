@@ -1,8 +1,9 @@
-/* Scale the production output canvas, never its individual text elements. */
+﻿/* Scale the production output canvas, never its individual text elements. */
 (() => {
   const dimensions = new Map();
   const entries = [];
-  const channel = new BroadcastChannel('ginomia_output_viewports');
+  let latestPayload = null;
+  const channel = new BroadcastChannel('ginomai_output_viewports');
   function layout(entry) {
     const target = entry.target;
     const selected = window.previewTargetMode === 'sanctuary' || !window.previewTargetMode ? 'sanctuary' : 'livestream';
@@ -15,10 +16,32 @@
   }
   window.getOutputPreviewDimensions = target => dimensions.get(target) || {width:1920,height:1080};
   window.syncOutputPreviews = () => entries.forEach(layout);
+  function applyPreview(frame, payload) {
+    const output = frame.contentWindow;
+    if (output && payload._operatorRequestId && !payload._timestamp) {
+      output.pendingOperatorPreview = {id:payload._operatorRequestId,startedAt:Date.now()};
+    }
+    // Local selection must not wait for a host echo or advance the server timestamp.
+    const next = {...output?.LATEST_STATE, ...payload};
+    if (!payload._timestamp) delete next._timestamp;
+    if (payload.contentType && payload.contentType !== 'lexicon') {
+      next.isLexicon = false;
+      next.lexiconData = null;
+    }
+    output?.applyState?.(next);
+  }
+  window.updateOutputPreviews = payload => {
+    latestPayload = { ...latestPayload, ...payload };
+    if (!payload._timestamp) delete latestPayload._timestamp;
+    for (const {frame} of entries) applyPreview(frame, payload);
+  };
   for (const [id, target, single] of [['bento-single-prev-wrap','sanctuary',true],['bento-single-prev-wrap','livestream',true],['bento-dual-sanctuary','sanctuary',false],['bento-dual-livestream','livestream',false]]) {
     const host = document.getElementById(id);
     if (!host) continue;
     const frame = document.createElement('iframe');
+    frame.addEventListener('load', () => {
+      if (latestPayload) applyPreview(frame, latestPayload);
+    });
     frame.className = 'actual-output-preview';
     frame.style.background = '#0A0E18';
     frame.src = `display.html?target=${target}&embedded=1`;

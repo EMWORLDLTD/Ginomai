@@ -111,6 +111,10 @@ function setupTestEnvironment() {
       append(...children) {
         children.forEach(c => { if (c && typeof c === 'object') this.appendChild(c); });
       },
+      replaceChildren(...children) {
+        el.children.slice().forEach(child => child.remove());
+        this.append(...children);
+      },
       insertBefore(child, reference) {
         if (child.parentElement) child.remove();
         const index = reference ? el.children.indexOf(reference) : -1;
@@ -256,6 +260,8 @@ function setupTestEnvironment() {
     URLSearchParams: global.URLSearchParams,
     location: { search: '' },
     navigator: { userAgent: 'node' },
+    addEventListener() {},
+    removeEventListener() {},
     window: {},
     document: {
       createElement: makeElement,

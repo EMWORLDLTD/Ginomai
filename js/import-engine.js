@@ -1,4 +1,4 @@
-// Import Engine & Online Repository Service for Ginomia
+﻿// Import Engine & Online Repository Service for Ginomai
 
 // Canonical Bible Books & Aliases Map
 const CANONICAL_BIBLE_BOOKS = [
@@ -90,7 +90,8 @@ class LibraryImportEngine {
         SONGBOOKS_DATABASE.length = 0;
       }
       if (typeof BIBLE_DATABASE !== 'undefined') {
-        for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k];
+        for (let k in BIBLE_DATABASE) if (k !== 'KJV') delete BIBLE_DATABASE[k];
+        BIBLE_DATABASE.KJV ||= {};
       }
       this.customBibles = {};
       this.customSongs = [];
@@ -133,7 +134,8 @@ class LibraryImportEngine {
     this.sanitizeExistingLibrary();
   }
 
-  clearAllData() {
+  async clearAllData() {
+    await this.clearDatabaseStores(['bibles', 'songs']);
     this.customBibles = {};
     this.customSongs = [];
     this.customSongbooks = [];
@@ -141,9 +143,10 @@ class LibraryImportEngine {
     localStorage.removeItem('sf_installed_bibles');
     localStorage.removeItem('sf_custom_songs');
     localStorage.removeItem('sf_custom_songbooks');
-    localStorage.setItem('sf_system_formatted', 'true');
+    localStorage.removeItem('sf_system_formatted');
     if (typeof BIBLE_DATABASE !== 'undefined') {
-      for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k];
+      for (let k in BIBLE_DATABASE) if (k !== 'KJV') delete BIBLE_DATABASE[k];
+      BIBLE_DATABASE.KJV ||= {};
     }
     if (typeof SONGS_DATABASE !== 'undefined') {
       SONGS_DATABASE.length = 0;
@@ -151,18 +154,28 @@ class LibraryImportEngine {
     if (typeof SONGBOOKS_DATABASE !== 'undefined') {
       SONGBOOKS_DATABASE.length = 0;
     }
-    if (this.db) {
-      try {
-        const tx = this.db.transaction(['bibles', 'songs'], 'readwrite');
-        tx.objectStore('bibles').clear();
-        tx.objectStore('songs').clear();
-      } catch (e) {}
-    }
+  }
+
+  async clearDatabaseStores(stores) {
+    if (!this.db && this.dbReady) await this.dbReady;
+    if (!this.db) return;
+    await new Promise((resolve, reject) => {
+      const tx = this.db.transaction(stores, 'readwrite');
+      tx.oncomplete = resolve;
+      tx.onerror = tx.onabort = () => reject(Error('Could not clear the local library database. Please retry.'));
+      for (const store of stores) tx.objectStore(store).clear();
+    });
   }
 
   initIndexedDB() {
     if (!('indexedDB' in window)) return;
     const request = indexedDB.open('ScriptureFlowStore', 1);
+    this.dbReady = new Promise((resolve, reject) => {
+      request.onerror = () => reject(Error('Could not open the local library database. Please retry.'));
+      this.resolveDbReady = resolve;
+      this.rejectDbReady = reject;
+    });
+    this.dbReady.catch(() => {});
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('bibles')) {
@@ -174,21 +187,26 @@ class LibraryImportEngine {
     };
     request.onsuccess = (e) => {
       this.db = e.target.result;
-      this.loadFromIndexedDB();
+      const recover = window.GinomaiRestoreJournal?.recoverSongs(this.db) || Promise.resolve();
+      recover.then(() => {
+        this.customSongs = JSON.parse(localStorage.getItem('sf_custom_songs') || '[]');
+        this.loadFromIndexedDB(() => this.resolveDbReady(), error => this.rejectDbReady(error));
+      }).catch(error => { window.ginomaiRestoreError = error; this.rejectDbReady(error); console.error(error); });
     };
   }
 
-  loadFromIndexedDB(onComplete) {
+  loadFromIndexedDB(onComplete, onError) {
     if (!this.db) return;
     if (localStorage.getItem('sf_system_formatted') === 'true') {
       if (typeof SONGS_DATABASE !== 'undefined') SONGS_DATABASE.length = 0;
       if (typeof SONGBOOKS_DATABASE !== 'undefined') SONGBOOKS_DATABASE.length = 0;
-      if (typeof BIBLE_DATABASE !== 'undefined') { for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k]; }
+      if (typeof BIBLE_DATABASE !== 'undefined') { for (let k in BIBLE_DATABASE) if (k !== 'KJV') delete BIBLE_DATABASE[k]; BIBLE_DATABASE.KJV ||= {}; }
       if (typeof onComplete === 'function') onComplete();
       return;
     }
     try {
       const tx = this.db.transaction(['bibles', 'songs'], 'readonly');
+      if (onError) tx.onerror = tx.onabort = () => onError(tx.error || Error('Could not read the local library. Restart before using cloud backups.'));
       const biblesStore = tx.objectStore('bibles');
       const songsStore = tx.objectStore('songs');
 
@@ -241,6 +259,7 @@ class LibraryImportEngine {
       };
     } catch (err) {
       console.warn('IndexedDB sync failed, using localStorage fallback', err);
+      if (onError) onError(err);
     }
   }
 
@@ -532,7 +551,7 @@ class LibraryImportEngine {
     return Boolean(json.title && (json.stanzas || json.lyrics || json.author));
   }
 
-  // Universal Bible Parser: parses JSON, XML, USFM, CSV, or Text into normalized Ginomia Bible object
+  // Universal Bible Parser: parses JSON, XML, USFM, CSV, or Text into normalized Ginomai Bible object
   parseBibleContent(content, fileName = 'Imported Bible') {
     const rawTrimmed = typeof content === 'string' ? content.trim() : '';
     const defaultCode = (fileName || 'BIBLE').replace(/\.[^/.]+$/, "").toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 10) || 'CUSTOM';
@@ -702,7 +721,7 @@ class LibraryImportEngine {
     };
   }
 
-  // Parse XML Bible formats (Zefania, OSIS, OpenSong, USX)
+  // Parse XML Bible formats (Zefania, OSIS, numbered books, OpenSong, USX)
   parseBibleXML(xmlText, defaultCode = 'BIBLE') {
     let translationCode = defaultCode;
     let translationName = defaultCode;
@@ -738,6 +757,35 @@ class LibraryImportEngine {
           });
         });
 
+        return { code: translationCode, name: translationName, data: bibleData };
+      }
+
+      // Numbered Scripture XML: <bible> <testament> <book number="1"> <chapter number="1"> <verse number="1">
+      const numberedBible = doc.querySelector('bible');
+      const numberedBooks = numberedBible ? numberedBible.querySelectorAll('book') : [];
+      if (numberedBooks.length > 0) {
+        translationName = numberedBible.getAttribute('translation') || numberedBible.getAttribute('name') || defaultCode;
+        numberedBooks.forEach(bEl => {
+          const canonicalBook = CANONICAL_BIBLE_BOOKS.find(book => book.num === Number(bEl.getAttribute('number')));
+          const rawBook = canonicalBook?.name || bEl.getAttribute('name');
+          if (!rawBook) return;
+          const normBook = this.normalizeBookName(rawBook);
+
+          bEl.querySelectorAll('chapter').forEach(chEl => {
+            const chNum = Number(chEl.getAttribute('number'));
+            if (!Number.isInteger(chNum) || chNum < 1) return;
+            const verses = [];
+            chEl.querySelectorAll('verse').forEach(vEl => {
+              const vNum = Number(vEl.getAttribute('number'));
+              if (!Number.isInteger(vNum) || vNum < 1) return;
+              verses.push({ verse: vNum, text: this.cleanMarkup(vEl.textContent) });
+            });
+            if (verses.length > 0) {
+              bibleData[normBook] = bibleData[normBook] || {};
+              bibleData[normBook][chNum] = verses;
+            }
+          });
+        });
         return { code: translationCode, name: translationName, data: bibleData };
       }
 
@@ -1178,7 +1226,7 @@ class LibraryImportEngine {
   }
 
   // Import Song JSON or Array of Songs with duplicate detection (supports batch mode)
-  importSongsData(songsData, overwriteDuplicates = false, skipNotify = false) {
+  importSongsData(songsData, overwriteDuplicates = false, skipNotify = false, persist = true) {
     const songsArray = Array.isArray(songsData) ? songsData : [songsData];
     let importedCount = 0;
     let skippedCount = 0;
@@ -1190,12 +1238,15 @@ class LibraryImportEngine {
         const cleanTitle = this.cleanSongTitle(rawTitle);
         const lowerTitle = cleanTitle.toLowerCase();
         const targetId = song.id || '';
+        const matchingSource = existing => song.sourceSoftware && existing.sourceSoftware === song.sourceSoftware && song.sourceId && song.sourceId === existing.sourceId;
+        const matchingTitle = existing => existing.title && existing.title.toLowerCase() === lowerTitle
+          && !(song.sourceSoftware && existing.sourceSoftware === song.sourceSoftware && song.sourceId && existing.sourceId && song.sourceId !== existing.sourceId);
 
         const existingCustomIdx = this.customSongs.findIndex(s =>
-          (targetId && s.id === targetId) || (s.title && s.title.toLowerCase() === lowerTitle)
+          (targetId && s.id === targetId) || matchingSource(s) || matchingTitle(s)
         );
         const existingDbIdx = (typeof SONGS_DATABASE !== 'undefined' && Array.isArray(SONGS_DATABASE))
-          ? SONGS_DATABASE.findIndex(s => (targetId && s.id === targetId) || (s.title && s.title.toLowerCase() === lowerTitle))
+          ? SONGS_DATABASE.findIndex(s => (targetId && s.id === targetId) || matchingSource(s) || matchingTitle(s))
           : -1;
 
         let stanzas = song.stanzas;
@@ -1218,6 +1269,10 @@ class LibraryImportEngine {
           songbook: song.songbook || 'Custom Library',
           stanzas: (Array.isArray(stanzas) && stanzas.length > 0) ? stanzas : [{ type: 'Verse 1', text: cleanTitle }]
         };
+        // Migration metadata must survive IndexedDB and local storage round trips.
+        for (const key of ['copyright', 'administrator', 'ccli', 'description', 'tags', 'sourceSoftware', 'sourceId', 'themeId']) {
+          if (song[key] !== undefined) formattedSong[key] = song[key];
+        }
 
         if (existingCustomIdx !== -1 || existingDbIdx !== -1) {
           if (overwriteDuplicates) {
@@ -1251,7 +1306,7 @@ class LibraryImportEngine {
           importedSongs.push(formattedSong);
         }
 
-        if (this.db) {
+        if (this.db && persist) {
           try {
             const tx = this.db.transaction(['songs'], 'readwrite');
             tx.objectStore('songs').put(formattedSong);
@@ -1289,6 +1344,7 @@ class LibraryImportEngine {
 
     const existingSong = SONGS_DATABASE[songIndex];
     const newSongObj = {
+      ...existingSong,
       id: existingSong.id,
       title: updatedData.title ? this.cleanSongTitle(updatedData.title) : existingSong.title,
       author: updatedData.author ? this.cleanMarkup(updatedData.author) : existingSong.author,
@@ -1399,18 +1455,31 @@ class LibraryImportEngine {
   }
 
   // Clear Only Downloaded Bibles
-  clearBiblesOnly() {
+  async removeStoredBible(code) {
+    if (!this.db && this.dbReady) await this.dbReady;
+    if (this.db) await new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['bibles'], 'readwrite');
+      tx.oncomplete = resolve;
+      tx.onerror = tx.onabort = () => reject(Error('Could not remove saved Bible data. Please retry.'));
+      tx.objectStore('bibles').delete(code);
+    });
+    delete this.customBibles[code];
+    localStorage.setItem('sf_custom_bibles', JSON.stringify(this.customBibles));
+    const installed = JSON.parse(localStorage.getItem('sf_installed_bibles') || '[]');
+    localStorage.setItem('sf_installed_bibles', JSON.stringify(installed.filter(item => item !== code)));
+    if (typeof BIBLE_DATABASE !== 'undefined') delete BIBLE_DATABASE[code];
+  }
+
+  async clearBiblesOnly() {
+    await this.clearDatabaseStores(['bibles']);
+    const importedKjv = Boolean(this.customBibles.KJV);
     this.customBibles = {};
     localStorage.removeItem('sf_custom_bibles');
     localStorage.removeItem('sf_installed_bibles');
     if (typeof BIBLE_DATABASE !== 'undefined') {
-      for (let k in BIBLE_DATABASE) delete BIBLE_DATABASE[k];
-    }
-    if (this.db) {
-      try {
-        const tx = this.db.transaction(['bibles'], 'readwrite');
-        tx.objectStore('bibles').clear();
-      } catch (e) {}
+      for (let k in BIBLE_DATABASE) if (k !== 'KJV') delete BIBLE_DATABASE[k];
+      if (importedKjv) BIBLE_DATABASE.KJV = {};
+      BIBLE_DATABASE.KJV ||= {};
     }
     if (typeof window.onLibraryDataUpdated === 'function') {
       window.onLibraryDataUpdated();
@@ -1418,7 +1487,8 @@ class LibraryImportEngine {
   }
 
   // Clear Only Saved Songs
-  clearSongsOnly() {
+  async clearSongsOnly() {
+    await this.clearDatabaseStores(['songs']);
     this.customSongs = [];
     this.customSongbooks = [];
     localStorage.removeItem('sf_custom_songs');
@@ -1428,12 +1498,6 @@ class LibraryImportEngine {
     }
     if (typeof SONGBOOKS_DATABASE !== 'undefined') {
       SONGBOOKS_DATABASE.length = 0;
-    }
-    if (this.db) {
-      try {
-        const tx = this.db.transaction(['songs'], 'readwrite');
-        tx.objectStore('songs').clear();
-      } catch (e) {}
     }
     if (typeof window.onLibraryDataUpdated === 'function') {
       window.onLibraryDataUpdated();
@@ -1473,7 +1537,7 @@ class LibraryImportEngine {
     try {
       const directUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(qTerm)}`;
       const resp = await fetch(directUrl, {
-        headers: { 'User-Agent': 'Ginomia/1.0' },
+        headers: { 'User-Agent': 'Ginomai/1.0' },
         signal: AbortSignal.timeout(5000)
       });
       if (resp.ok) {
@@ -1559,7 +1623,7 @@ class LibraryImportEngine {
 
             try {
               const lrcUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(trackTitle)}&artist_name=${encodeURIComponent(trackArtist)}`;
-              const lrcRes = await fetch(lrcUrl, { headers: { 'User-Agent': 'Ginomia/1.0' }, signal: AbortSignal.timeout(3000) });
+              const lrcRes = await fetch(lrcUrl, { headers: { 'User-Agent': 'Ginomai/1.0' }, signal: AbortSignal.timeout(3000) });
               if (lrcRes.ok) {
                 const lrcData = await lrcRes.json();
                 const rawLyrics = lrcData.plainLyrics || lrcData.syncedLyrics;
@@ -1644,6 +1708,10 @@ class LibraryImportEngine {
   async downloadCloudBible(code, name = '', onProgress = null) {
     if (!code) throw new Error('Bible code required');
     const upperCode = code.toUpperCase().trim();
+
+    if (typeof window.ensureContentPack === 'function') {
+      if (!await window.ensureContentPack(upperCode)) return { cancelled: true };
+    }
 
     if (typeof onProgress === 'function') onProgress({ status: 'downloading', percent: 20 });
 
@@ -1748,7 +1816,7 @@ class LibraryImportEngine {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ginomia_library_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `ginomai_library_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1815,7 +1883,7 @@ class LibraryImportEngine {
       .trim();
   }
 
-  // Convert VideoPsalm song object into Ginomia song format
+  // Convert VideoPsalm song object into Ginomai song format
   convertVideoPsalmSong(vpSong, songbookName = 'VideoPsalm Import', mediaMap = {}) {
     const rawTitle = (vpSong.Text || (vpSong.Verses && vpSong.Verses[0] && vpSong.Verses[0].Text) || 'Untitled Song').trim();
     const title = rawTitle.split('\n')[0].replace(/\[.*?\]/g, '').trim() || 'Untitled Song';
@@ -1905,17 +1973,56 @@ class LibraryImportEngine {
       throw new Error(err.error || `Server responded with ${res.status}`);
     }
     const result = await res.json();
+    if (!this.db && this.dbReady) await this.dbReady;
 
     // 1. Ingest imported songs into client memory & IndexedDB
     if (result.songs && result.songs.length > 0) {
-      this.importSongsData(result.songs, true, true);
+      const policy = options.duplicatePolicy || 'skip';
+      const existing = [...this.customSongs, ...(typeof SONGS_DATABASE !== 'undefined' ? SONGS_DATABASE : [])];
+      let skipped = 0;
+      const songs = result.songs.filter(song => {
+        const title = this.cleanSongTitle(song.title || '').toLowerCase();
+        const duplicate = existing.some(saved => saved.id === song.id ||
+          (song.sourceSoftware && saved.sourceSoftware === song.sourceSoftware && song.sourceId && saved.sourceId === song.sourceId) ||
+          (this.cleanSongTitle(saved.title || '').toLowerCase() === title &&
+           !(song.sourceSoftware && saved.sourceSoftware === song.sourceSoftware && song.sourceId && saved.sourceId && song.sourceId !== saved.sourceId)));
+        if (policy === 'skip' && duplicate) { skipped++; return false; }
+        existing.push(song);
+        return true;
+      });
+      const previousCustom = this.customSongs.slice();
+      const previousRuntime = typeof SONGS_DATABASE !== 'undefined' ? SONGS_DATABASE.slice() : null;
+      const imported = this.importSongsData(songs, policy === 'replace', true, false);
+      result.importedCounts.songs = imported.importedCount;
+      result.skippedCounts = { ...result.skippedCounts, songs: skipped };
+      result.songs = imported.songs;
+      // Confirm the batch is durable before reporting a successful migration.
+      try {
+        if (this.db && imported.songs.length) {
+          await new Promise((resolve, reject) => {
+            const tx = this.db.transaction(['songs'], 'readwrite');
+            tx.oncomplete = resolve;
+            tx.onerror = tx.onabort = () => reject(new Error('Could not save the imported songs. Retry the import.'));
+            for (const song of imported.songs) tx.objectStore('songs').put(song);
+          });
+        } else if (!this.db && imported.songs.length) localStorage.setItem('sf_custom_songs', JSON.stringify(this.customSongs));
+      } catch (error) {
+        this.customSongs = previousCustom;
+        if (previousRuntime) SONGS_DATABASE.splice(0, SONGS_DATABASE.length, ...previousRuntime);
+        throw error;
+      }
+    }
+
+    for (const theme of result.themes || []) {
+      if (window.SANCTUARY_THEMES) window.SANCTUARY_THEMES[theme.id] = theme;
     }
 
     // 2. Refresh custom backgrounds / sanctuary media
-    if (result.mediaItems && result.mediaItems.length > 0) {
+    if (result.mediaItems?.length || result.themes?.length) {
       if (typeof window.loadSanctuaryUploads === 'function') {
-        window.loadSanctuaryUploads();
+        await window.loadSanctuaryUploads(false, true);
       }
+      window.refreshStyleGallery?.();
     }
 
     // 3. Activate/install detected Bibles into memory and storage
@@ -1985,7 +2092,7 @@ const CLOUD_REPOSITORIES = {
     { code: "TYNDALE", name: "Tyndale 1537", lang: "English", size: "4.7 MB", booksCount: 66 },
     { code: "YLT", name: "Young's Literal Translation", lang: "English", size: "4.6 MB", booksCount: 66 },
     { code: "RVR1960", name: "Reina-Valera 1960", lang: "Spanish", size: "1.8 MB", booksCount: 66 },
-    { code: "YOR", name: "Bibeli Mimo", lang: "Yoruba", size: "1.6 MB", booksCount: 66 },
+    { code: "YOR", name: "Yoruba Contemporary Bible", lang: "Yoruba", size: "1.5 MB", booksCount: 66 },
     { code: "IGBO", name: "Baibul Nso", lang: "Igbo", size: "1.6 MB", booksCount: 66 },
     { code: "HAUSA", name: "Littafi Mai Tsarki", lang: "Hausa", size: "1.6 MB", booksCount: 66 }
   ]

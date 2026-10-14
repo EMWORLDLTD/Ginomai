@@ -64,9 +64,7 @@ test('Project Live opens the Bible deck before projection and reuses the current
   assert.equal(projected[0][0],'bible_Matthew_28_5');assert.equal(projected[0][3].takeLive,true);
   ctx.projectDetectedVerse({book:'Matthew',chapter:28,verse:6},'Verse six');
   assert.equal(renders.length,2);assert.equal(state.activeBibleVerse,6);
-  ctx.window.themeManager.currentStyle='classic';
-  ctx.projectDetectedVerse({book:'Matthew',chapter:28,verse:7},'Verse seven');
-  assert.equal(projected[2][0],'bible_KJV_Matthew_28_7');
+
 });
 
 test('Open loads a detected verse without projecting or changing auto mode',()=>{

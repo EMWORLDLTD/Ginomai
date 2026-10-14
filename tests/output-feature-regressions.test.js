@@ -16,7 +16,7 @@ test('real broadcast permits alert dismissal during Hold and preserves transmitt
   const sent = [];
   const c = { REMOTE_MODE:false, state:{isHoldLive:true}, window:{},
     pendingLiveStorage:{text:'Held lyric',slideId:'song_1_0',clear:true,blackout:true},
-    liveStorageTimer:null, createDashboardSnapshot:()=>({}),getNextSlideAnticipation:()=>null,
+    liveStorageTimer:null, liveStateHydrated:true, flushCommittedLiveStorage(){}, createDashboardSnapshot:()=>({}),getNextSlideAnticipation:()=>null,
     clearTimeout(){},setTimeout(){},syncChannel:{postMessage:p=>sent.push(p)},fetch:()=>Promise.resolve(),Date };
   vm.runInNewContext(functionSource(app,'broadcastState') + ';broadcastState({alert:{active:false,text:""}},true);',c);
   assert.equal(sent.length,1);
@@ -24,6 +24,60 @@ test('real broadcast permits alert dismissal during Hold and preserves transmitt
   assert.equal(sent[0].clear,true);
   assert.equal(sent[0].blackout,true);
   assert.equal(sent[0].alert.active,false);
+});
+
+test('announcement broadcast updates host previews directly and sends the actual remote alert', () => {
+  const previews = [], commands = [], sent = [];
+  const alert = { active: true, text: 'Welcome', position: 'fullscreen', background: { bgCss: '#123456' } };
+  const c = { REMOTE_MODE: false, state: { isHoldLive: true }, window: { updateOutputPreviews: payload => previews.push(payload) },
+    pendingLiveStorage: { clear: true, text: '', reference: '', alert: null }, liveStateHydrated: true,
+    liveStorageTimer: null, flushCommittedLiveStorage() {}, createDashboardSnapshot: () => ({}), getNextSlideAnticipation: () => null,
+    clearTimeout() {}, setTimeout() {}, syncChannel: { postMessage: payload => sent.push(payload) }, fetch: () => Promise.resolve(),
+    sendRemoteCommand: command => commands.push(command), Date };
+  vm.createContext(c);
+  vm.runInContext(functionSource(app, 'updateLivePreview') + '\n' + functionSource(app, 'broadcastState'), c);
+  c.broadcastState({ alert });
+  assert.equal(previews[0].clear, true);
+  assert.equal(previews[0].alert, alert);
+  assert.equal(sent[0].alert, previews[0].alert);
+  c.REMOTE_MODE = true; c.broadcastState({ alert });
+  assert.equal(commands[0].type, 'ALERT_UPDATE');
+  assert.equal(commands[0].alert, alert);
+  assert.equal(previews.at(-1).alert, alert);
+});
+
+test('full-screen announcement backgrounds render on cleared output and stop videos on dismissal', () => {
+  const elements = {};
+  for (const id of ['live-alert-container', 'live-alert-content', 'live-alert-tag', 'live-alert-text-wrap', 'live-alert-background', 'live-alert-background-video', 'live-alert-background-dimmer']) {
+    elements[id] = { className: '', style: {}, dataset: {}, attributes: {}, textContent: '',
+      getAttribute(key) { return this.attributes[key]; }, setAttribute(key, value) { this.attributes[key] = value; } };
+  }
+  let plays = 0, pauses = 0;
+  const video = elements['live-alert-background-video']; video.play = () => { plays++; return Promise.resolve(); }; video.pause = () => pauses++;
+  const c = { liveAlertExpiryTimer: null, clearTimeout() {}, setTimeout() {}, Date,
+    isSanctuary: true, isObs: false, isStage: false, isExplicitLt: false, targetType: 'sanctuary', stageServiceTimer: {},
+    window: {}, document: { getElementById: id => elements[id], body: { classList: { add() {}, remove() {} } } },
+    isLowerThirdLayout: () => false, applySanctuaryTheme() {}, ensureAlphaTransparent() {}, lastProcessedTimestamp: 0, lastRenderedKey: '',
+    container: { classList: { contains: () => false, remove() {} } }, standbyEl: null, activeSlotIndex: 0,
+    slots: [0, 1].map(() => ({ el: { getAttribute: () => null, removeAttribute() {} }, box: {}, content: { dataset: {} } })) };
+  vm.createContext(c); vm.runInContext(functionSource(display, 'applyLiveAlert') + '\n' + functionSource(display, 'applyState'), c);
+  const alert = { active: true, text: 'Welcome', position: 'fullscreen', destinations: { sanctuary: true },
+    background: { id: 'image', type: 'image', imageUrl: 'Themes/gold.webp', dimmer: 30, textColor: '#fff8e0', font: 'Outfit' } };
+  c.applyState({ clear: true, text: '', alert });
+  assert.equal(elements['live-alert-container'].className, 'active alert-fullscreen');
+  assert.equal(elements['live-alert-background'].style.background, '#10131b', 'opaque fallback remains beneath the image');
+  assert.equal(elements['live-alert-background'].style.backgroundImage, 'url("Themes/gold.webp")');
+  assert.equal(elements['live-alert-background-dimmer'].style.opacity, '0.3');
+  assert.equal(elements['live-alert-text-wrap'].style.color, '#fff8e0');
+  c.applyState({ clear: true, text: '', alert, songScaleFull: 4.4 });
+  assert.equal(elements['live-alert-text-wrap'].dataset.textScale, '2', 'announcement receives the song scale through the real output renderer');
+  c.applyLiveAlert({ ...alert, background: { type: 'video', videoUrl: 'Themes/motion.webm' } });
+  assert.equal(video.src, 'Themes/motion.webm'); assert.equal(plays, 1);
+  c.applyLiveAlert({ ...alert, background: { type: 'video', videoUrl: 'Themes/motion.webm' } });
+  assert.equal(plays, 1, 'repeated state must not restart a motion background');
+  c.applyLiveAlert(null);
+  assert.equal(elements['live-alert-container'].className, '');
+  assert.equal(video.style.display, 'none'); assert.ok(pauses > 0);
 });
 test('real stage renderer treats imported markup as text', () => {
   const els={};
@@ -46,6 +100,42 @@ test('real output handles theme-only and SSE theme updates without clearing or r
   assert.deepEqual(themes.map(t=>t.id),['one','two']);
   c.applyState({_timestamp:1,alert:{active:true}});
   assert.equal(alerts.length,1,'stale state cannot restore dismissed alerts');
+});
+test('microphone status preserves projected songs and Bible verses until an explicit clear', () => {
+  for (const contentType of ['song', 'bible']) {
+    const visible = new Set();
+    const classes = { contains:key=>visible.has(key), add:key=>visible.add(key), remove:key=>visible.delete(key) };
+    const slot = () => ({ el:{className:'slide-slot',getAttribute:()=>null,removeAttribute(){}},box:{},content:{dataset:{}} });
+    const alerts = [];
+    const c = { isStage:false,isSanctuary:true,isExplicitLt:false,targetType:'sanctuary',stageServiceTimer:{},
+      applyLiveAlert:alert=>alerts.push(alert),applySanctuaryTheme(){},isLowerThirdLayout:()=>false,
+      window:{},document:{getElementById:()=>null,documentElement:{style:{setProperty(){}}},
+        body:{classList:{add(){},remove(){}}}},
+      slots:[slot(),slot()],activeSlotIndex:0,standbyEl:null,container:{classList:classes},
+      ensureAlphaTransparent(){},lastProcessedTimestamp:0,lastRenderedKey:'',transitionTimer:null,
+      populateSlot:(slot,data)=>slot.text=data.text,applyTargetMode:()=>visible.add('visible'),
+      clearTimeout(){},Date };
+    vm.createContext(c);vm.runInContext(functionSource(display,'applyState'),c);
+    const live = { slideId:contentType+'_live',contentType,text:'Projected text',reference:'Live reference',
+      mode:'full',transitionType:'cut',transitionDuration:0,_timestamp:100,alert:{active:true,text:'Welcome'} };
+    c.applyState(live);
+    assert.equal(visible.has('visible'),true);
+    const renderedKey = c.lastRenderedKey;
+    for (const event of [
+      {type:'SPEECH_AI_UPDATE',audioLevel:50},
+      {type:'SPEECH_AI_UPDATE',transcript:'Spoken words',hostSpeechState:{isListening:true}},
+      {type:'SPEECH_AI_UPDATE',status:'idle',isListening:false,_timestamp:200}
+    ]) c.applyState(event);
+    assert.equal(visible.has('visible'),true,'speech status must not hide the slide');
+    assert.equal(c.window.LATEST_STATE,live);
+    assert.equal(c.lastRenderedKey,renderedKey);
+    assert.equal(c.lastProcessedTimestamp,100,'status timestamps must not supersede live state');
+    assert.equal(alerts.length,1,'status updates must not dismiss the live announcement');
+    assert.equal(c.slots[0].el.className,'slide-slot active');
+    assert.equal(c.slots[0].text,'Projected text');
+    c.applyState({...live,text:'',reference:'',clear:true,_timestamp:101});
+    assert.equal(visible.has('visible'),false,'an explicit clear must still hide the slide');
+  }
 });
 test('draft frames never poll committed state through the output watchdog', () => {
   const start=display.indexOf('    // High-Frequency Realtime Watchdog');
@@ -108,6 +198,30 @@ test('real announcement renderer loops edge tickers, applies speed and stops ins
   assert.equal(elements['live-alert-content'].textContent,'');
 });
 
+test('full-screen announcement covers output without a ticker and releases it on expiry', () => {
+  const elements = {
+    'live-alert-container': { className: '', style: {} },
+    'live-alert-content': { textContent: '' },
+    'live-alert-tag': { textContent: '' },
+    'live-alert-text-wrap': { style: {}, dataset: {} }
+  };
+  let expiry, fits = 0;
+  const c = { liveAlertExpiryTimer: null, clearTimeout() {}, setTimeout(fn) { expiry = fn; },
+    window: { scheduleOutputFit() { fits++; } },
+    document: { getElementById: id => elements[id] }, isSanctuary: true, isObs: false, isStage: false };
+  vm.createContext(c); vm.runInContext(functionSource(display, 'applyLiveAlert'), c);
+  c.applyLiveAlert({ active: true, text: 'Welcome\nPlease be seated', position: 'fullscreen', expiresAt: Date.now() + 30000, destinations: { sanctuary: true } });
+  assert.equal(elements['live-alert-container'].className, 'active alert-fullscreen');
+  assert.equal(elements['live-alert-content'].textContent, 'Welcome\nPlease be seated');
+  assert.equal(fits, 1);
+  expiry();
+  assert.equal(elements['live-alert-container'].className, '');
+  assert.equal(elements['live-alert-content'].textContent, '');
+  c.isSanctuary = false; c.isObs = true;
+  c.applyLiveAlert({ active: true, text: 'Projector only', position: 'fullscreen', destinations: { sanctuary: true } });
+  assert.equal(elements['live-alert-container'].className, '');
+});
+
 test('preview +/- uses the displayed song setting for custom IDs and respects Settings limits', () => {
   const state = { currentMode:'lt',currentTab:'songs',activeLiveSlideId:'custom-verse-1',activeLiveText:'Lyrics',songScaleFull:2.2,songScaleLt:1.4,textSize:1 };
   const c = { state,window:{previewTargetMode:'sanctuary'},
@@ -131,6 +245,30 @@ test('preview +/- uses the displayed song setting for custom IDs and respects Se
   c.adjustTextScale(-0.1);
   assert.equal(state.textSize,0.9);
 });
+test('full-screen announcement sizing takes priority over the underlying Bible and uses the full-screen scale on either output', () => {
+  const state = {currentTab:'bible',activeLiveSlideId:'bible_Genesis_1_1',textSize:1,songScaleFull:2.2,songScaleLt:1.4};
+  const alert = {active:true,position:'fullscreen',text:'Welcome',destinations:{sanctuary:true,livestream:true}};
+  const c = {state,window:{previewTargetMode:'sanctuary',liveAlertEngine:{currentAlert:alert}},
+    updateSongScaleFullSetting:value=>state.songScaleFull=value,
+    updateSongScaleLtSetting:value=>state.songScaleLt=value,updateTextScale:value=>state.textSize=value};
+  vm.runInNewContext(functionSource(app,'getPreviewTextScaleControl')+'\n'+functionSource(app,'adjustTextScale'),c);
+  c.adjustTextScale(0.1);
+  assert.equal(state.songScaleFull,2.3);
+  assert.equal(state.textSize,1,'announcement sizing must not resize the underlying Bible');
+  c.window.previewTargetMode='livestream'; c.adjustTextScale(-0.1);
+  assert.equal(state.songScaleFull,2.2);
+  assert.equal(state.songScaleLt,1.4,'full-screen announcements do not use the lower-third scale');
+  state.songScaleFull=6; c.adjustTextScale(0.1); assert.equal(state.songScaleFull,6);
+  alert.destinations.livestream=false;
+  assert.equal(c.getPreviewTextScaleControl().key,'textSize');
+  c.window.previewTargetMode='sanctuary'; alert.position='upperthird';
+  assert.equal(c.getPreviewTextScaleControl().key,'textSize');
+  alert.position='fullscreen'; alert.expiresAt=1;
+  assert.equal(c.getPreviewTextScaleControl().key,'textSize');
+  delete alert.expiresAt; alert.active=false;
+  assert.equal(c.getPreviewTextScaleControl().key,'textSize');
+});
+
 test('quick sizing patches the readout and preserves clear without running the legacy preview layout', () => {
   const calls=[],label={},delivery=[];
   const context={document:{getElementById:id=>id==='bento-textscale-label'?label:{classList:{contains:()=>true}}},

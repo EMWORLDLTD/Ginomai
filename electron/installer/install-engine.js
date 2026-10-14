@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const fs = require('node:fs');
 const fsp = fs.promises;
@@ -57,7 +57,7 @@ function validateDirectory(directory, platform = process.platform) {
   }
   const normalized = paths.normalize(directory);
   if (normalized === paths.parse(normalized).root) throw new Error('Choose an application folder, rather than a drive root.');
-  if (platform === 'darwin' && paths.basename(normalized) !== 'Ginomia.app') throw new Error('The application must be installed as Ginomia.app.');
+  if (platform === 'darwin' && paths.basename(normalized) !== 'Ginomai.app') throw new Error('The application must be installed as Ginomai.app.');
   return normalized;
 }
 
@@ -84,7 +84,7 @@ class InstallEngine {
     this.directory = validateDirectory(directory, this.platform);
   }
 
-  report(message, percent = null, heading = 'Installing Ginomia') {
+  report(message, percent = null, heading = 'Installing Ginomai') {
     this.onProgress({ state:'installing', heading, message, percent });
   }
 
@@ -94,12 +94,12 @@ class InstallEngine {
     this.busy = true;
     try {
       if (this.manifest.platform !== this.platform) throw new Error('This installer is for a different operating system.');
-      this.report('Checking the installation package…', null, 'Preparing Ginomia');
+      this.report('Checking the installation package…', null, 'Preparing Ginomai');
       if (this.platform === 'win32') await this.installWindows(desktopShortcut);
       else if (this.platform === 'darwin') await this.installMac();
-      else throw new Error('Ginomia Setup supports Windows and macOS.');
+      else throw new Error('Ginomai Setup supports Windows and macOS.');
       this.complete = true;
-      this.onProgress({ state:'complete', heading:'Ginomia is ready', message:'Your next service starts here.', percent:100 });
+      this.onProgress({ state:'complete', heading:'Ginomai is ready', message:'Your next service starts here.', percent:100 });
     } catch (error) {
       this.onProgress({ state:'error', heading:'Installation needs attention', message:error.message, percent:null });
       throw error;
@@ -110,7 +110,7 @@ class InstallEngine {
 
   async installWindows(desktopShortcut) {
     const setup = path.join(this.resources, 'payload', 'setup.exe');
-    if (await sha256(setup) !== this.manifest.payloadSha256) throw new Error('The installation package is damaged. Download Ginomia Setup again.');
+    if (await sha256(setup) !== this.manifest.payloadSha256) throw new Error('The installation package is damaged. Download Ginomai Setup again.');
     await fsp.mkdir(path.dirname(this.directory), { recursive:true });
     await ensureSpace(path.dirname(this.directory), this.manifest.installedBytes * 2);
     this.report('Copying application files and creating shortcuts…');
@@ -120,8 +120,8 @@ class InstallEngine {
     await this.run(setup, args, { windowsVerbatimArguments:true });
     this.report('Verifying the installed application…');
     const archive = path.join(this.directory, 'resources', 'app.asar');
-    if (await sha256(archive) !== this.manifest.appSha256) throw new Error('The installed files could not be verified. Close Ginomia and try again.');
-    await fsp.access(path.join(this.directory, 'Ginomia.exe'));
+    if (await sha256(archive) !== this.manifest.appSha256) throw new Error('The installed files could not be verified. Close Ginomai and try again.');
+    await fsp.access(path.join(this.directory, 'Ginomai.exe'));
   }
 
   async macBundleId(bundle) {
@@ -129,11 +129,11 @@ class InstallEngine {
   }
 
   async installMac() {
-    const source = path.join(this.resources, 'payload', 'Ginomia.app');
-    if (await this.macBundleId(source) !== this.manifest.appId) throw new Error('The installation package is not a Ginomia application.');
+    const source = path.join(this.resources, 'payload', 'Ginomai.app');
+    if (await this.macBundleId(source) !== this.manifest.appId) throw new Error('The installation package is not a Ginomai application.');
     const processes = await this.run('/bin/ps', ['-axo', 'command=']);
     if (processes.split('\n').some(line => line.startsWith(`${this.directory}/Contents/MacOS/`))) {
-      throw new Error('Close Ginomia before installing this version.');
+      throw new Error('Close Ginomai before installing this version.');
     }
     const parent = path.dirname(this.directory);
     await fsp.mkdir(parent, { recursive:true });
@@ -148,8 +148,8 @@ class InstallEngine {
       existing = true;
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
-    const stagingRoot = await fsp.mkdtemp(path.join(parent, '.ginomia-setup-'));
-    const staging = path.join(stagingRoot, 'Ginomia.app');
+    const stagingRoot = await fsp.mkdtemp(path.join(parent, '.ginomai-setup-'));
+    const staging = path.join(stagingRoot, 'Ginomai.app');
     const backup = path.join(stagingRoot, 'previous.app');
     let backedUp = false;
     let committed = false;
@@ -160,10 +160,10 @@ class InstallEngine {
     try {
       const files = await inventory(source);
       const total = files.reduce((sum, file) => sum + file.size, 0);
-      this.report('Copying Ginomia to Applications…', 0);
+      this.report('Copying Ginomai to Applications…', 0);
       const poll = () => {
         polling = copiedBytes(staging, files).then(bytes => {
-          if (!stopped) this.report('Copying Ginomia to Applications…', total ? Math.min(99, Math.floor(bytes / total * 100)) : 0);
+          if (!stopped) this.report('Copying Ginomai to Applications…', total ? Math.min(99, Math.floor(bytes / total * 100)) : 0);
         }).catch(() => {}).finally(() => { if (!stopped) timer = setTimeout(poll, 600); });
       };
       timer = setTimeout(poll, 100);
@@ -177,7 +177,7 @@ class InstallEngine {
           await sha256(path.join(staging, 'Contents', 'Resources', 'app.asar')) !== this.manifest.appSha256) {
         throw new Error('The copied application could not be verified.');
       }
-      await fsp.access(path.join(staging, 'Contents', 'MacOS', 'Ginomia'), fs.constants.X_OK);
+      await fsp.access(path.join(staging, 'Contents', 'MacOS', 'Ginomai'), fs.constants.X_OK);
       if (this.manifest.signed) await this.run('/usr/bin/codesign', ['--verify', '--deep', '--strict', staging]);
       if (existing) { await fsp.rename(this.directory, backup); backedUp = true; }
       await fsp.rename(staging, this.directory);

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ginomai — Private userbase report</title>
+  <link rel="stylesheet" href="../css/cloud-account.css">
+  <script src="cloud-config.js"></script><script type="module" src="cloud-admin.mjs"></script>
+  <style>body{margin:0;background:#0b0d13;color:#f4f5fa;font:15px/1.5 Arial,sans-serif}main{max-width:760px;margin:48px auto;padding:24px}.topbar{display:flex;justify-content:space-between;align-items:center}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:12px;text-align:left;border-bottom:1px solid #454955}button{padding:10px;margin:10px 0}a{color:#b9d6ff}</style>
+</head>
+<body><main><header class="topbar"><h1>Userbase report</h1></header>
+  <p>Private report for assigned Ginomai administrators.</p>
+  <p id="report-status" role="status">Sign in to view the report.</p><button id="report-refresh" hidden>Refresh report</button>
+  <table id="report-table" hidden><thead><tr><th scope="col">Measure</th><th scope="col">Count</th></tr></thead><tbody id="report-body"></tbody></table>
+  <p>Daily activity covers the current UTC day. Monthly activity covers the last 30 UTC days. Activity counts cover consenting users only. Installations represent app/browser storage profiles, not unique people.</p>
+</main></body></html>

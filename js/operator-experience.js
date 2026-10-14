@@ -103,12 +103,6 @@
       if (tag && !tag.querySelector('.staged-pill')) {
         tag.insertAdjacentHTML('beforeend', '<span class="staged-pill">CUE</span>');
       }
-    } else {
-      // Classic theme cards
-      const targetHeader = card.querySelector('.slide-header') || card.querySelector('.song-stanza-label')?.parentElement;
-      if (targetHeader && !targetHeader.querySelector('.staged-pill')) {
-        targetHeader.insertAdjacentHTML('beforeend', '<span class="staged-pill classic">CUE · ENTER</span>');
-      }
     }
   }
 
@@ -126,7 +120,7 @@
     // Apply .staged class and inject the on-card Take Live action button
     if (typeof document.querySelectorAll === 'function') {
       const cards = document.querySelectorAll(
-        `[data-slide-id="${slideId}"], #bento_card_${slideId}, #card_${slideId}`
+        `[data-slide-id="${slideId}"], #bento_card_${slideId}`
       );
       cards.forEach(c => {
         c.classList.add('staged');
@@ -266,20 +260,18 @@
     }
   }
 
+  let connectionRefreshPending = false;
   async function refreshConnections() {
+    if (connectionRefreshPending) return;
+    connectionRefreshPending = true;
+    try {
     if (new URLSearchParams(location.search).get('remote') === '1') {
       try {
-        const session = await (await fetch('/api/session')).json();
-        if (!session.enabled) {
-          window.sfOperatorPaired = false;
-          window.setRemoteSessionLocked(true);
-        } else if (!window.sfOperatorPaired && document.getElementById('operator-join-modal-backdrop').style.display === 'none') {
-          window.openOperatorJoinModal(false);
-        }
+        await window.refreshRemoteOperatorSession();
       } catch {}
     }
     try {
-      const response = await fetch('/api/output-status');
+      const response = await fetch('/api/output-status', { signal: AbortSignal.timeout(10000) });
       if (!response.ok) throw new Error('Offline');
       const { outputs } = await response.json();
       for (const [target, label] of [['sanctuary', 'Projector'], ['livestream', 'Livestream']]) {
@@ -308,13 +300,14 @@
     }
     if (new URLSearchParams(location.search).get('remote') !== '1' && document.getElementById('links-modal-backdrop').classList.contains('open')) {
       try {
-        const response = await fetch('/api/session');
+        const response = await fetch('/api/session', { signal: AbortSignal.timeout(10000) });
         const session = await response.json();
         let code = document.getElementById('host-pairing-code');
         if (!code) { code = document.createElement('p'); code.id = 'host-pairing-code'; code.className = 'sf-output-status'; document.getElementById('hub-remote-row').after(code); }
         code.textContent = session.pairingCode ? `Pair a device with code ${session.pairingCode}. Share it only with your operator; stopping remote control revokes access.` : 'Start remote control to generate a device pairing code.';
       } catch {}
     }
+    } finally { connectionRefreshPending = false; }
   }
 
   function setup() {
@@ -339,7 +332,7 @@
     const right = document.querySelector('.bento-tb-right');
     right.append(tools);
     for (const button of [...right.querySelectorAll('.bento-icon-btn')]) {
-      if (/Switch to|Desktop projector/i.test(button.title)) {
+      if (/Switch to/i.test(button.title)) {
         let labelText = button.title.replace(/^Switch to\s+/i, '');
         button.setAttribute('aria-label', button.title);
         button.classList.add('sf-tools-menu-item');

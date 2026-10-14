@@ -17,7 +17,7 @@
     const manager = window.themeManager;
     return {activeSanctuaryTheme:manager.activeSanctuaryTheme, sanctuaryFont:manager.sanctuaryFont,
       sanctuaryDimmer:manager.sanctuaryDimmer, sanctuaryFits:{...manager.sanctuaryFits},
-      obsModeRule:manager.obsModeRule === 'follow' ? (window.state.currentMode === 'lt' ? 'always_lt' : 'always_full') : manager.obsModeRule,
+      obsModeRule:manager.obsModeRule === 'follow' ? 'always_lt' : manager.obsModeRule,
       streamAppearance:{...window.state.streamAppearance}, transparentBg:window.state.transparentBg};
   }
   function previewPayload() {
@@ -51,7 +51,10 @@
     if (payload) lastPayload = payload;
     const state = window.state;
     const liveStatus = el('bento-live-status');
-    if (liveStatus) liveStatus.textContent = lastPayload?.blackout ? 'BLACKOUT' : lastPayload?.clear ? 'CLEARED' : state.activeLiveSlideId ? 'LIVE' : 'IDLE';
+    const alert = lastPayload?.alert;
+    const destination = window.previewTargetMode === 'livestream' ? 'livestream' : 'sanctuary';
+    const announcementLive = alert?.active && alert.text && (!alert.expiresAt || alert.expiresAt > Date.now()) && (!alert.destinations || alert.destinations[destination]);
+    if (liveStatus) liveStatus.textContent = announcementLive ? 'ANNOUNCEMENT LIVE' : lastPayload?.blackout ? 'BLACKOUT' : lastPayload?.clear ? 'CLEARED' : state.activeLiveSlideId ? 'LIVE' : 'IDLE';
     const label = el('bento-hold-btn')?.querySelector('.btn-label');
     if (label) label.textContent = state.isHoldLive ? 'Release hold' : 'Hold live';
     if (!draft) return;
@@ -68,6 +71,13 @@
       el(id).setAttribute('aria-pressed',String(surface===value)); el(id).disabled=uploading || REMOTE_MODE;
     }
     el('stream-upload-trigger').disabled=uploading || REMOTE_MODE;
+    el('stream-bottom-fade-row').hidden=surface!=='none';
+    el('stream-bottom-fade').checked=style.bottomFade;
+    el('stream-bottom-fade').disabled=uploading || REMOTE_MODE;
+    el('stream-fade-strength-row').hidden=surface!=='none' || !style.bottomFade;
+    el('stream-fade-strength').value=style.opacity;
+    el('stream-fade-strength').disabled=uploading || REMOTE_MODE;
+    el('stream-fade-strength-value').textContent=style.opacity+'%';
     if(el('stream-image-crop')) el('stream-image-crop').disabled=uploading || REMOTE_MODE;
     el('stream-image-library').hidden=surface!=='image';
     syncStreamImageSelection();
@@ -85,6 +95,8 @@
   };
   window.updateStyleDraft = patch => {
     if (!draft || REMOTE_MODE) return;
+    const importedStyle = window.SANCTUARY_THEMES?.[patch.activeSanctuaryTheme];
+    if (importedStyle?.importedStyle && importedStyle.font && patch.sanctuaryFont === undefined) patch = { ...patch, sanctuaryFont: importedStyle.font };
     for (const [key,value] of Object.entries(patch)) if (Object.hasOwn(draft,key) && !['streamAppearance','sanctuaryFits'].includes(key)) { draft[key]=value; dirty.add(key); }
     comparison=false; window.syncPresentationControls();
   };
@@ -296,6 +308,7 @@
       const result=await response.json(); if (!response.ok) throw new Error(result.error || 'Upload failed.');
       window.SANCTUARY_THEMES[result.item.id]=result.item;
       gallery();
+      await window.refreshMediaLibrary?.();
       if (draft && token===requestToken) { window.updateStreamAppearance({imageUrl:result.item.imageUrl,surface:'image'}); el('stream-image-name').textContent=file.name; status.textContent='Ready to preview.'; uploading=false;window.cropStreamBackground(); }
     } catch(error) { if (draft && token===requestToken) status.textContent=error.message; }
     finally { if(token===requestToken) uploading=false; URL.revokeObjectURL(url); window.syncPresentationControls(); }
@@ -318,6 +331,7 @@
         const response=await fetch(`/api/sanctuary-media?${params}`,{method:'POST',body:blob});
         const result=await response.json();if(!response.ok) throw new Error(result.error || 'Could not save this crop.');
         window.SANCTUARY_THEMES[result.item.id]=result.item;gallery();
+        await window.refreshMediaLibrary?.();
         if(isCurrent() && draft && token===requestToken && draft.streamAppearance.imageUrl===url) window.updateStreamAppearance({imageUrl:result.item.imageUrl,position:50,surface:'image'});
       }finally {if(token===requestToken)uploading=false;window.syncPresentationControls();}
     }});

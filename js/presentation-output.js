@@ -21,9 +21,17 @@
       const expected=window.PresentationModel.playbackPosition(playback,now,video.duration);
       if(Math.abs(video.currentTime-expected)>.35) video.currentTime=expected;
       video.loop=!!playback.loop;
-      video.muted=embedded || playback.soundTarget!==outputTarget;
-      if(playback.playing && !blocked && (video.loop || expected<video.duration)) video.play().catch(()=>{blocked=true;error.hidden=false;error.textContent='Playback blocked. Open this output and enable playback.';});
-      else video.pause();
+      video.muted=!window.PresentationModel.videoSoundEnabled(playback,outputTarget,embedded);
+      if(playback.playing && !blocked && (video.loop || expected<video.duration)) {
+        if(video.paused) {
+          const requestedIdentity=identity;
+          video.play().catch(failure=>{
+            // Pause/replacement can cancel a pending play; it is not an autoplay failure.
+            if(requestedIdentity!==identity || !current?.playback?.playing || failure?.name==='AbortError')return;
+            blocked=true;error.hidden=false;error.textContent=failure?.name==='NotAllowedError'?'Playback blocked. Open this output and enable playback.':'Media could not be played. Check its format or relink its file.';
+          });
+        }
+      } else video.pause();
     }
   }
   video.addEventListener('loadedmetadata',tick);
@@ -36,10 +44,11 @@
     const visible=special && !data.clear && !data.blackout && !context.isExplicitLt && !context.isStage && destinations.includes(target) && (target==='sanctuary'?data.projectorActive!==false:data.livestreamActive!==false);
     outputTarget=target;embedded=context.embedded;
     stageCountdown=context.isStage && !data.clear && !data.blackout ? data.countdown:null;
-    if(!visible) {layer.hidden=true;video.pause();video.muted=true;current=null;if(!special) identity='';return special;}
+    if(!visible) {layer.hidden=true;video.pause();video.muted=true;window.CountdownRenderer.stop(layer);current=null;if(!special) identity='';return special;}
     current=data;layer.hidden=false;
     image.hidden=data.contentType!=='media' || data.media?.kind==='video';video.hidden=data.media?.kind!=='video';countdown.hidden=data.contentType!=='countdown';
     layer.classList.toggle('is-countdown',data.contentType==='countdown');
+    if(data.contentType!=='countdown')window.CountdownRenderer.stop(layer);
     const key=data.media?.url || data.slideId;
     if(key!==identity) {
       identity=key;error.hidden=true;blocked=false;video.pause();video.muted=true;
@@ -52,6 +61,8 @@
       message.textContent=data.countdown.message || 'Service starts in';
       countdown.style.fontFamily=appearance.font?`'${appearance.font}', sans-serif`:'var(--sf-sanctuary-font, Outfit, sans-serif)';
       countdown.style.fontSize=`${10*appearance.timerScale}vw`;
+      window.CountdownRenderer.appearance(countdown,data.countdown);
+      window.CountdownRenderer.background(layer,data.countdown.background);
     }
     tick();return true;
   };
